@@ -10,6 +10,7 @@ import pytest
 
 if TYPE_CHECKING:
     from hpo_link.data.repository import HpoRepository
+    from hpo_link.services.hpo_service import HpoService
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -56,3 +57,11 @@ def repo(built_test_db: Path) -> HpoRepository:  # type: ignore[return]
     r = HpoRepository(built_test_db)
     yield r  # type: ignore[misc]
     r.close()
+
+
+@pytest.fixture(scope="session")
+def hpo_service(repo: HpoRepository) -> "HpoService":
+    """Return an HpoService bound to the fixture repository."""
+    from hpo_link.services.hpo_service import HpoService
+
+    return HpoService(repo)

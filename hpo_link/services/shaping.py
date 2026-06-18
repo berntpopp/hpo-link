@@ -1,9 +1,9 @@
-"""Response-mode projection for Mondo disease payloads.
+"""Response-mode projection for HPO term payloads.
 
 ``standard`` / ``full`` are the identity (the complete record, with structured
 synonyms carrying scope/type/sources). ``compact`` (the default) drops null/empty
 values and collapses synonyms to plain strings. ``minimal`` keeps only the
-identity anchors (``mondo_id`` + ``name``).
+identity anchors (``hpo_id`` + ``name``).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Any
 RESPONSE_MODES: list[str] = ["minimal", "compact", "standard", "full"]
 DEFAULT_RESPONSE_MODE = "compact"
 
-#: Default cap for the compact search snippet (chars). search_diseases is the
+#: Default cap for the compact search snippet (chars). search_terms is the
 #: broadest-fan-out tool, so its default page must stay token-cheap: identity +
 #: score + a short snippet, with the full definition reserved for standard/full.
 SEARCH_SNIPPET_CHARS = 140
@@ -21,11 +21,11 @@ SEARCH_SNIPPET_CHARS = 140
 _PRESERVE_KEYS: frozenset[str] = frozenset({"_meta", "success"})
 
 #: Identity anchors kept in ``minimal`` mode.
-_MINIMAL_KEEP: frozenset[str] = frozenset({"mondo_id", "name", "_meta"})
+_MINIMAL_KEEP: frozenset[str] = frozenset({"hpo_id", "name", "_meta"})
 
 #: Identity/grounding anchors a sparse fieldset always retains.
 _FIELD_ANCHORS: frozenset[str] = frozenset(
-    {"mondo_id", "name", "mondo_version", "_meta", "success"}
+    {"hpo_id", "name", "hpo_version", "_meta", "success"}
 )
 
 
@@ -46,43 +46,42 @@ def _plain_synonyms(synonyms: Any) -> list[str]:
     return out
 
 
-def shape_disease(record: dict[str, Any], mode: str) -> dict[str, Any]:
-    """Project a disease record to the requested verbosity.
+def shape_term(record: dict[str, Any], mode: str) -> dict[str, Any]:
+    """Project a term record to the requested verbosity.
 
-    - ``minimal``: ``mondo_id`` + ``name`` (and any preserved keys).
-    - ``compact``: drop null/empty, collapse synonyms to plain strings.
+    - ``minimal``: ``hpo_id`` + ``name`` (and any preserved keys).
+    - ``compact``: drop null/empty, collapse synonyms to plain strings,
+      truncate definition to snippet.
     - ``standard`` / ``full``: the complete record incl. structured synonyms.
     """
     if mode == "minimal":
         return {k: v for k, v in record.items() if k in _MINIMAL_KEEP}
     if mode in ("standard", "full"):
         return dict(record)
+    # compact
     out: dict[str, Any] = {}
     for key, value in record.items():
         if key == "synonyms":
             value = _plain_synonyms(value)
+        if key == "definition" and isinstance(value, str):
+            value = _snippet(value, SEARCH_SNIPPET_CHARS)
         if key not in _PRESERVE_KEYS and _is_empty(value):
             continue
         out[key] = value
     return out
 
 
-def shape_hit(hit: dict[str, Any], mode: str) -> dict[str, Any]:
-    """Project a search-hit row to the requested verbosity."""
-    if mode == "minimal":
-        return {"mondo_id": hit.get("mondo_id"), "name": hit.get("name")}
-    if mode in ("standard", "full"):
-        return dict(hit)
-    return {k: v for k, v in hit.items() if not _is_empty(v)}
+# Keep legacy alias for any remaining callers.
+shape_disease = shape_term
 
 
 def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
     """Project a payload to a caller-requested sparse fieldset.
 
-    Identity/grounding anchors (``mondo_id``, ``name``, ``mondo_version``, plus the
+    Identity/grounding anchors (``hpo_id``, ``name``, ``hpo_version``, plus the
     preserved ``_meta``/``success``) are always retained. Supports top-level keys
-    and ONE level of dotting into a grouped object -- e.g. ``"xrefs.OMIM"`` keeps
-    only the OMIM group under ``xrefs``. Unknown fields are skipped (open-world).
+    and ONE level of dotting into a grouped object -- e.g. ``"xrefs.UMLS"`` keeps
+    only the UMLS group under ``xrefs``. Unknown fields are skipped (open-world).
     Returns the payload unchanged when ``fields`` is falsy.
     """
     if not fields:
@@ -116,13 +115,13 @@ def shape_search_hit(
 ) -> dict[str, Any]:
     """Project a search hit, keeping the hot path token-cheap.
 
-    - ``minimal`` / ``compact``: ``{mondo_id, name, score}`` -- compact adds a
+    - ``minimal`` / ``compact``: ``{hpo_id, name, score}`` -- compact adds a
       ``definition_snippet`` (truncated to ``snippet_chars``) when a definition
       exists, but never the full paragraph.
     - ``standard`` / ``full``: identity + score + the complete ``definition``.
     """
     out: dict[str, Any] = {
-        "mondo_id": hit.get("mondo_id"),
+        "hpo_id": hit.get("hpo_id"),
         "name": hit.get("name"),
         "score": hit.get("score"),
     }

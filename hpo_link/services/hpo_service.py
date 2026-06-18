@@ -1,129 +1,132 @@
-"""Orchestration over the read-only Mondo repository.
+"""Orchestration over the read-only HPO repository.
 
 Returns plain dicts (no envelope); the MCP layer owns ``success``/``_meta``.
-Every record payload carries ``mondo_version`` (from build provenance) for
-grounding. The resolution cascade (MONDO id -> primary/synonym label -> external
+Every record payload carries ``hpo_version`` (from build provenance) for
+grounding. The resolution cascade (HP id -> primary/synonym label -> external
 xref CURIE) returns the match provenance and raises typed exceptions instead of
 silently collapsing ambiguity.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import structlog
+
+from hpo_link.constants import RECOMMENDED_CITATION
+from hpo_link.data.repository import HpoRepository
 from hpo_link.exceptions import InvalidInputError, NotFoundError
-from hpo_link.identifiers import normalize_xref
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.resolution import Resolver
 from hpo_link.services.shaping import (
     DEFAULT_RESPONSE_MODE,
     select_fields,
-    shape_disease,
     shape_search_hit,
+    shape_term,
 )
 
-if TYPE_CHECKING:
-    from hpo_link.data.repository import MondoRepository
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 _MAX_LIMIT = 1000
 
 
-def _finalize_xref_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    """Drop the ``predicates`` list when a target id has a single predicate (token-lean)."""
-    if len(entry["predicates"]) <= 1:
-        del entry["predicates"]
-    return entry
-
-
 class HpoService:
-    def __init__(self, repository: MondoRepository | None) -> None:
-        self._repo = repository
+    """Service layer over the read-only HPO SQLite index."""
 
-    @property
-    def repo(self) -> MondoRepository:
-        from hpo_link.exceptions import DataUnavailableError
-
-        if self._repo is None:
-            raise DataUnavailableError("The Mondo index is not built. Run `hpo-link-data build`.")
-        return self._repo
-
-    @property
-    def _resolution(self) -> Resolver:
-        """Resolver bound to the (guarded) repository; preserves data_unavailable."""
-        return Resolver(self.repo)
+    def __init__(self, repo: HpoRepository) -> None:
+        """Bind the service to a pre-opened HPO repository."""
+        self._repo = repo
+        self._hpo_version: str | None = None
 
     # -- provenance ------------------------------------------------------------
 
-    def _mondo_version(self) -> str | None:
-        """Return the built Mondo release string (for grounding), or ``None``."""
-        meta = self.repo.read_meta()
-        return meta.get("mondo_version") if meta else None
+    @property
+    def _version(self) -> str | None:
+        """Return the built HPO release string (lazily cached)."""
+        if self._hpo_version is None:
+            meta = self._repo.read_meta()
+            self._hpo_version = meta.get("hpo_version") if meta else None
+        return self._hpo_version
 
-    # -- diagnostics -----------------------------------------------------------
+    @property
+    def _resolution(self) -> Resolver:
+        """Resolver bound to the repository."""
+        return Resolver(self._repo)
 
-    def get_diagnostics(self) -> dict[str, Any]:
-        """Return data-source provenance and freshness; never raises if unbuilt."""
-        if self._repo is None:
-            return {
-                "index_built": False,
-                "db_path": None,
-                "message": "Local Mondo index not built. Run `hpo-link-data build`.",
-            }
-        meta = self._repo.read_meta()
-        return {
-            "index_built": True,
-            "db_path": str(self._repo._path),
-            "mondo_version": meta.get("mondo_version") if meta else None,
-            "schema_version": meta.get("schema_version") if meta else None,
-            "build_utc": meta.get("build_utc") if meta else None,
-            "counts": self._repo.counts(),
-        }
+    # -- internal helpers ------------------------------------------------------
 
-    # -- resolve ---------------------------------------------------------------
-
-    def resolve_disease(
-        self, query: str, *, response_mode: str = DEFAULT_RESPONSE_MODE
-    ) -> dict[str, Any]:
-        """Resolve any id/label/xref to a canonical MONDO term with provenance."""
+    def _resolve_to_id(self, query: str) -> str:
+        """Resolve any HP id / label / xref to a canonical HP id, raise NotFoundError on miss."""
         raw = (query or "").strip()
         if not raw:
             raise InvalidInputError(
-                "query must be a non-empty MONDO id, label, or xref.", field="query"
+                "term must be a non-empty HP id, label, or xref.", field="term"
             )
-        match_type, mondo_id = self._resolution.classify_resolution(raw)
-        record = self.repo.get_term(mondo_id)
+        return self._resolution.resolve_term_id(raw)
+
+    def _version_fields(self) -> dict[str, Any]:
+        """Return version + citation anchors appended to every response."""
+        return {
+            "hpo_version": self._version,
+            "recommended_citation": RECOMMENDED_CITATION,
+        }
+
+    # -- resolve_term ----------------------------------------------------------
+
+    def resolve_term(
+        self,
+        query: str,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+    ) -> dict[str, Any]:
+        """Resolve any id/label/xref to a canonical HPO term with match provenance.
+
+        Raises:
+            InvalidInputError: when ``query`` is empty.
+            AmbiguousQueryError: when a label maps to multiple distinct HPO ids.
+            NotFoundError: when nothing matches.
+        """
+        raw = (query or "").strip()
+        if not raw:
+            raise InvalidInputError(
+                "query must be a non-empty HP id, label, or xref.", field="query"
+            )
+        match_type, hpo_id = self._resolution.classify_resolution(raw)
+        record = self._repo.get_term(hpo_id)
         if record is None:  # pragma: no cover - defensive
-            raise NotFoundError(f"No Mondo term for {mondo_id}.")
+            raise NotFoundError(f"No HPO term for {hpo_id}.")
         out: dict[str, Any] = {
             "query": raw,
-            "mondo_id": mondo_id,
+            "hpo_id": hpo_id,
             "name": record["name"],
             "match_type": match_type,
             "obsolete": record["is_obsolete"],
-            "mondo_version": self._mondo_version(),
+            **self._version_fields(),
         }
-        if record["replaced_by"]:
+        if record.get("replaced_by"):
             out["replaced_by"] = record["replaced_by"]
         return out
 
-    # -- search ----------------------------------------------------------------
+    # -- search_terms ----------------------------------------------------------
 
-    def search_diseases(
+    def search_terms(
         self,
         query: str,
-        *,
         limit: int = 25,
         offset: int = 0,
         include_obsolete: bool = False,
         response_mode: str = DEFAULT_RESPONSE_MODE,
     ) -> dict[str, Any]:
-        """Free-text search over disease name/synonyms/definition."""
+        """Free-text search over HPO name/synonyms/definition.
+
+        Raises:
+            InvalidInputError: when ``query`` is empty.
+        """
         raw = (query or "").strip()
         if not raw:
             raise InvalidInputError("query must be a non-empty search string.", field="query")
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
-        hits, total = self.repo.search(
+        hits, total = self._repo.search(
             raw, limit=limit, offset=offset, include_obsolete=include_obsolete
         )
         results = [shape_search_hit(hit, response_mode) for hit in hits]
@@ -131,205 +134,193 @@ class HpoService:
             "query": raw,
             "results": results,
             **page_fields(total=total, returned=len(results), limit=limit, offset=offset),
-            "mondo_version": self._mondo_version(),
+            **self._version_fields(),
         }
 
-    # -- full record -----------------------------------------------------------
+    # -- get_term --------------------------------------------------------------
 
-    def get_disease(
+    def get_term(
         self,
         term: str,
-        *,
         response_mode: str = DEFAULT_RESPONSE_MODE,
         fields: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Return the full disease record (hierarchy + grouped xrefs)."""
-        mondo_id = self._resolution.resolve_term_id(term)
-        record = self.repo.get_term(mondo_id)
+        """Return the full HPO term record (hierarchy + xrefs) with response-mode projection.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
+        """
+        hpo_id = self._resolve_to_id(term)
+        record = self._repo.get_term(hpo_id)
         if record is None:  # pragma: no cover - defensive
-            raise NotFoundError(f"No Mondo term for {mondo_id}.")
+            raise NotFoundError(f"No HPO term for {hpo_id}.")
+        parents = self._repo.parents(hpo_id)
+        children = self._repo.children(hpo_id)
         payload: dict[str, Any] = {
-            "mondo_id": mondo_id,
+            "hpo_id": hpo_id,
             "name": record["name"],
             "definition": record["definition"],
             "synonyms": record["synonyms"],
+            "alt_ids": record["alt_ids"],
             "subsets": record["subsets"],
+            "comments": record.get("comments"),
             "obsolete": record["is_obsolete"],
             "replaced_by": record["replaced_by"],
-            "consider": record["consider"],
-            "parents": self.repo.parents(mondo_id),
-            "children": self.repo.children(mondo_id),
-            "top_groupings": self.repo.top_groupings(mondo_id),
-            "xrefs": self._grouped_xrefs(mondo_id),
-            "mondo_version": self._mondo_version(),
+            "parents": parents,
+            "children": children,
+            **self._version_fields(),
         }
-        return select_fields(shape_disease(payload, response_mode), fields)
+        shaped = shape_term(payload, response_mode)
+        return select_fields(shaped, fields)
 
-    def _grouped_xrefs(self, mondo_id: str, prefixes: list[str] | None = None) -> dict[str, Any]:
-        """Group cross-references by prefix, ONE entry per target id.
+    # -- term_parents / term_children ------------------------------------------
 
-        A single target id can be asserted by several rows (an OBO xref plus an SSSOM
-        mapping, or two predicates). Rows arrive predicate-ranked (strongest first), so
-        the first row for an id sets the primary ``predicate``/``origin``/``source`` (and
-        ``name`` when the target label is known); any further predicates collect into a
-        ``predicates`` list (only when there is more than one). Collapsing here keeps the
-        payload token-lean -- the common case is one entry, with multiplicity surfaced
-        only when it exists -- and drops the wasteful ``source: null`` of OBO xrefs.
+    def term_parents(
+        self,
+        term: str,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+    ) -> dict[str, Any]:
+        """Return immediate parents of a term.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
         """
-        grouped: dict[str, dict[str, dict[str, Any]]] = {}
-        for xref in self.repo.xrefs_for(mondo_id, prefixes):
-            bucket = grouped.setdefault(xref["prefix"], {})
-            entry = bucket.get(xref["object_id"])
-            if entry is None:
-                entry = {"object_id": xref["object_id"], "predicate": xref["predicate"]}
-                label = xref.get("object_label")
-                if label:
-                    entry["name"] = label
-                entry["origin"] = xref["origin"]
-                if xref.get("source"):
-                    entry["source"] = xref["source"]
-                entry["predicates"] = [xref["predicate"]]
-                bucket[xref["object_id"]] = entry
-            else:
-                if xref["predicate"] not in entry["predicates"]:
-                    entry["predicates"].append(xref["predicate"])
-                if "name" not in entry and xref.get("object_label"):
-                    entry["name"] = xref["object_label"]
-        return {
-            prefix: [_finalize_xref_entry(entry) for entry in bucket.values()]
-            for prefix, bucket in grouped.items()
-        }
-
-    # -- hierarchy -------------------------------------------------------------
-
-    def get_ancestors(
-        self,
-        term: str,
-        *,
-        limit: int = 200,
-        offset: int = 0,
-        response_mode: str = DEFAULT_RESPONSE_MODE,
-    ) -> dict[str, Any]:
-        """Return transitive ancestors of a term (closure walk)."""
-        return self._closure(term, kind="ancestors", limit=limit, offset=offset)
-
-    def get_descendants(
-        self,
-        term: str,
-        *,
-        limit: int = 200,
-        offset: int = 0,
-        response_mode: str = DEFAULT_RESPONSE_MODE,
-    ) -> dict[str, Any]:
-        """Return transitive descendants of a term (closure walk)."""
-        return self._closure(term, kind="descendants", limit=limit, offset=offset)
-
-    def _closure(self, term: str, *, kind: str, limit: int, offset: int = 0) -> dict[str, Any]:
-        mondo_id = self._resolution.resolve_term_id(term)
-        record = self.repo.get_term(mondo_id)
-        limit = max(1, min(limit, _MAX_LIMIT))
-        offset = max(0, offset)
-        if kind == "ancestors":
-            rows = self.repo.ancestors(mondo_id, limit=limit, offset=offset)
-            total = self.repo.count_ancestors(mondo_id)
-        else:
-            rows = self.repo.descendants(mondo_id, limit=limit, offset=offset)
-            total = self.repo.count_descendants(mondo_id)
-        return {
-            "mondo_id": mondo_id,
-            "name": record["name"] if record else None,
-            kind: rows,
-            **page_fields(total=total, returned=len(rows), limit=limit, offset=offset),
-            "mondo_version": self._mondo_version(),
-        }
-
-    def get_parents(
-        self, term: str, *, response_mode: str = DEFAULT_RESPONSE_MODE
-    ) -> dict[str, Any]:
-        """Return the immediate parents of a term."""
         return self._neighbours(term, kind="parents")
 
-    def get_children(
-        self, term: str, *, response_mode: str = DEFAULT_RESPONSE_MODE
+    def term_children(
+        self,
+        term: str,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
     ) -> dict[str, Any]:
-        """Return the immediate children of a term."""
+        """Return immediate children of a term.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
+        """
         return self._neighbours(term, kind="children")
 
     def _neighbours(self, term: str, *, kind: str) -> dict[str, Any]:
-        mondo_id = self._resolution.resolve_term_id(term)
-        record = self.repo.get_term(mondo_id)
-        rows = self.repo.parents(mondo_id) if kind == "parents" else self.repo.children(mondo_id)
+        hpo_id = self._resolve_to_id(term)
+        record = self._repo.get_term(hpo_id)
+        rows = self._repo.parents(hpo_id) if kind == "parents" else self._repo.children(hpo_id)
         return {
-            "mondo_id": mondo_id,
+            "hpo_id": hpo_id,
             "name": record["name"] if record else None,
             kind: rows,
             "count": len(rows),
-            "mondo_version": self._mondo_version(),
+            **self._version_fields(),
         }
 
-    # -- cross-ontology --------------------------------------------------------
+    # -- term_ancestors / term_descendants ------------------------------------
 
-    def resolve_xref(
+    def term_ancestors(
         self,
-        xref_id: str,
-        *,
+        term: str,
         limit: int = 50,
         offset: int = 0,
         response_mode: str = DEFAULT_RESPONSE_MODE,
     ) -> dict[str, Any]:
-        """Reverse lookup: external CURIE -> MONDO terms that cross-reference it."""
+        """Return paginated transitive ancestors of a term.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
+        """
+        return self._closure(term, kind="ancestors", limit=limit, offset=offset)
+
+    def term_descendants(
+        self,
+        term: str,
+        limit: int = 50,
+        offset: int = 0,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+    ) -> dict[str, Any]:
+        """Return paginated transitive descendants of a term.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
+        """
+        return self._closure(term, kind="descendants", limit=limit, offset=offset)
+
+    def _closure(self, term: str, *, kind: str, limit: int, offset: int = 0) -> dict[str, Any]:
+        hpo_id = self._resolve_to_id(term)
+        record = self._repo.get_term(hpo_id)
+        limit = max(1, min(limit, _MAX_LIMIT))
+        offset = max(0, offset)
+        if kind == "ancestors":
+            rows = self._repo.ancestors(hpo_id, limit=limit, offset=offset)
+            total = self._repo.count_ancestors(hpo_id)
+        else:
+            rows = self._repo.descendants(hpo_id, limit=limit, offset=offset)
+            total = self._repo.count_descendants(hpo_id)
+        return {
+            "hpo_id": hpo_id,
+            "name": record["name"] if record else None,
+            kind: rows,
+            **page_fields(total=total, returned=len(rows), limit=limit, offset=offset),
+            **self._version_fields(),
+        }
+
+    # -- resolve_xref ----------------------------------------------------------
+
+    def resolve_xref(
+        self,
+        xref_id: str,
+        limit: int = 25,
+        offset: int = 0,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+    ) -> dict[str, Any]:
+        """Reverse lookup: external xref CURIE -> HPO terms that cross-reference it.
+
+        Raises:
+            InvalidInputError: when ``xref_id`` is empty.
+        """
         raw = (xref_id or "").strip()
         if not raw:
             raise InvalidInputError(
-                "xref_id must be a non-empty CURIE like OMIM:143100.", field="xref_id"
-            )
-        normalized = normalize_xref(raw)
-        if normalized is None:
-            raise InvalidInputError(
-                f"'{raw}' is not a valid CURIE (expected PREFIX:LOCAL, e.g. OMIM:143100).",
-                field="xref_id",
+                "xref_id must be a non-empty CURIE like UMLS:C0151888.", field="xref_id"
             )
         limit = max(1, min(limit, _MAX_LIMIT))
         offset = max(0, offset)
-        key = normalized.upper()
-        total = self.repo.count_mondo_for_xref(key)
-        matches = self.repo.mondo_for_xref(key, limit=limit, offset=offset)
-        results = [
-            {
-                "mondo_id": m["mondo_id"],
-                "name": m["name"],
-                "predicate": m["predicate"],
-                "origin": m["origin"],
-            }
-            for m in matches
-        ]
+        total = self._repo.count_hpo_for_xref(raw)
+        matches = self._repo.hpo_for_xref(raw, limit=limit, offset=offset)
+        results = [{"hpo_id": m["hpo_id"], "name": m["name"]} for m in matches]
         return {
             "xref_id": raw,
-            "normalized": normalized,
             "matches": results,
             **page_fields(total=total, returned=len(results), limit=limit, offset=offset),
-            "mondo_version": self._mondo_version(),
+            **self._version_fields(),
         }
+
+    # -- map_cross_ontology ----------------------------------------------------
 
     def map_cross_ontology(
         self,
         term: str,
-        *,
         prefixes: list[str] | None = None,
         response_mode: str = DEFAULT_RESPONSE_MODE,
-        fields: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Return all cross-ontology mappings for a term, grouped by prefix."""
-        mondo_id = self._resolution.resolve_term_id(term)
-        record = self.repo.get_term(mondo_id)
+        """Return all cross-ontology mappings for a term, grouped by prefix.
+
+        Raises:
+            InvalidInputError: when ``term`` is empty.
+            NotFoundError: when nothing matches.
+        """
+        hpo_id = self._resolve_to_id(term)
+        record = self._repo.get_term(hpo_id)
         normalized = [p.strip().upper() for p in prefixes if p.strip()] if prefixes else None
-        mappings = self._grouped_xrefs(mondo_id, normalized)
-        payload = {
-            "mondo_id": mondo_id,
+        xrefs = self._repo.xrefs_for(hpo_id, normalized)
+        mappings: dict[str, list[dict[str, Any]]] = {}
+        for xref in xrefs:
+            bucket = mappings.setdefault(xref["prefix"], [])
+            bucket.append({"object_id": xref["object_id"], "origin": xref.get("origin")})
+        return {
+            "hpo_id": hpo_id,
             "name": record["name"] if record else None,
             "mappings": mappings,
-            "count": sum(len(rows) for rows in mappings.values()),
-            "prefixes_filter": normalized,
-            "mondo_version": self._mondo_version(),
+            **self._version_fields(),
         }
-        return select_fields(payload, fields)
