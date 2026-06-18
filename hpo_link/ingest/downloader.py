@@ -104,7 +104,6 @@ def download_file(
     *,
     force: bool,
     cached_validators: dict[str, str | None],
-    data_dir: Path,
     config: ServerSettings,
 ) -> DownloadResult:
     """Conditionally download ``url`` to ``dest``.
@@ -165,9 +164,7 @@ def _validators_from_results(
     return {k: {"etag": r.etag, "last_modified": r.last_modified} for k, r in results.items()}
 
 
-def download_bulk(
-    config: ServerSettings, *, force: bool = False
-) -> dict[str, DownloadResult]:
+def download_bulk(config: ServerSettings, *, force: bool = False) -> dict[str, DownloadResult]:
     """Resolve the latest HPO release and download all required files.
 
     Returns a ``dict`` keyed by:
@@ -202,7 +199,6 @@ def download_bulk(
                 dest,
                 force=force,
                 cached_validators=cached_validators,
-                data_dir=data_dir,
                 config=config,
             )
 

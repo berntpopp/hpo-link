@@ -107,23 +107,25 @@ def _load_terms(conn: sqlite3.Connection, parsed: ParsedOntology) -> tuple[int, 
     for hpo_id, rec in parsed.terms.items():
         name = rec.name or ""
         syn_text = " ".join(s["text"] for s in rec.synonyms)
-        term_rows.append((
-            hpo_id,
-            name,
-            name.upper(),
-            rec.definition,
-            1 if rec.is_obsolete else 0,
-            rec.replaced_by,
-            json.dumps([]),  # consider not in TermRecord
-            json.dumps(rec.alt_ids),
-            json.dumps(rec.synonyms),
-            json.dumps(rec.subsets),
-            json.dumps(rec.comments),
-        ))
+        term_rows.append(
+            (
+                hpo_id,
+                name,
+                name.upper(),
+                rec.definition,
+                1 if rec.is_obsolete else 0,
+                rec.replaced_by,
+                json.dumps([]),  # consider not in TermRecord
+                json.dumps(rec.alt_ids),
+                json.dumps(rec.synonyms),
+                json.dumps(rec.subsets),
+                json.dumps(rec.comments),
+            )
+        )
         if name:
             lookups.append((name.upper(), hpo_id, "primary"))
         for syn in rec.synonyms:
-            label_type = _SCOPE_TO_LABEL_TYPE.get(syn["scope"], syn["scope"] + "_synonym")
+            label_type = _SCOPE_TO_LABEL_TYPE[syn["scope"]]
             lookups.append((syn["text"].upper(), hpo_id, label_type))
         for alt_id in rec.alt_ids:
             lookups.append((alt_id.upper(), hpo_id, "alt_id"))
@@ -141,9 +143,7 @@ def _load_graph(conn: sqlite3.Connection, parsed: ParsedOntology) -> int:
     """Insert hpo_parent / hpo_closure. Returns closure_count."""
     parent_sql = "INSERT INTO hpo_parent (hpo_id, parent_id) VALUES (?, ?)"
     parent_rows: list[tuple[str, str]] = [
-        (hpo_id, parent)
-        for hpo_id, parents in parsed.parents.items()
-        for parent in parents
+        (hpo_id, parent) for hpo_id, parents in parsed.parents.items() for parent in parents
     ]
     _executemany(conn, parent_sql, parent_rows)
 
@@ -195,12 +195,25 @@ def _load_disease_phenotype(conn: sqlite3.Connection, path: Path | None) -> tupl
     )
     batch: list[tuple[Any, ...]] = []
     for row in rows:
-        batch.append((
-            row.database_id, row.disease_name, row.hpo_id, row.qualifier,
-            row.reference, row.evidence, row.onset, row.frequency,
-            row.frequency_hpo, row.frequency_ratio, row.frequency_percent,
-            row.sex, row.modifier, row.aspect, row.biocuration,
-        ))
+        batch.append(
+            (
+                row.database_id,
+                row.disease_name,
+                row.hpo_id,
+                row.qualifier,
+                row.reference,
+                row.evidence,
+                row.onset,
+                row.frequency,
+                row.frequency_hpo,
+                row.frequency_ratio,
+                row.frequency_percent,
+                row.sex,
+                row.modifier,
+                row.aspect,
+                row.biocuration,
+            )
+        )
         if len(batch) >= _BATCH:
             _executemany(conn, sql, batch)
             batch.clear()
@@ -221,10 +234,16 @@ def _load_gene_phenotype(conn: sqlite3.Connection, path: Path | None) -> int:
     )
     batch: list[tuple[Any, ...]] = []
     for row in rows:
-        batch.append((
-            row.ncbi_gene_id, row.gene_symbol, row.gene_symbol.upper(),
-            row.hpo_id, row.frequency, row.disease_id,
-        ))
+        batch.append(
+            (
+                row.ncbi_gene_id,
+                row.gene_symbol,
+                row.gene_symbol.upper(),
+                row.hpo_id,
+                row.frequency,
+                row.disease_id,
+            )
+        )
         if len(batch) >= _BATCH:
             _executemany(conn, sql, batch)
             batch.clear()
@@ -245,10 +264,16 @@ def _load_gene_disease(conn: sqlite3.Connection, path: Path | None) -> int:
     )
     batch: list[tuple[Any, ...]] = []
     for row in rows:
-        batch.append((
-            row.ncbi_gene_id, row.gene_symbol, row.gene_symbol.upper(),
-            row.association_type, row.disease_id, row.source,
-        ))
+        batch.append(
+            (
+                row.ncbi_gene_id,
+                row.gene_symbol,
+                row.gene_symbol.upper(),
+                row.association_type,
+                row.disease_id,
+                row.source,
+            )
+        )
         if len(batch) >= _BATCH:
             _executemany(conn, sql, batch)
             batch.clear()
@@ -293,8 +318,7 @@ def build_database(
             parsed = parse_hp_json(text)
             logger.info("parsed_ontology", terms=len(parsed.terms), version=parsed.version)
 
-            conn = sqlite3.connect(tmp_path)
-            try:
+            with sqlite3.connect(tmp_path) as conn:
                 conn.executescript(load_schema_sql())
                 term_count, obsolete_count = _load_terms(conn, parsed)
                 closure_count = _load_graph(conn, parsed)
@@ -304,9 +328,7 @@ def build_database(
                 gd_count = _load_gene_disease(conn, paths.get("genes_to_disease"))
                 conn.execute("INSERT INTO term_fts(term_fts) VALUES ('optimize')")
 
-                source_purls = json.dumps(
-                    {k: str(v) for k, v in paths.items() if v is not None}
-                )
+                source_purls = json.dumps({k: str(v) for k, v in paths.items() if v is not None})
                 meta = BuildMeta(
                     schema_version=SCHEMA_VERSION,
                     hpo_version=parsed.version,
@@ -325,19 +347,18 @@ def build_database(
                 )
                 _insert_meta(conn, meta)
                 conn.commit()
-            finally:
-                conn.close()
+            conn.close()
             os.replace(tmp_path, config.data.db_path)
+            logger.info(
+                "database_built",
+                db=str(config.data.db_path),
+                terms=meta.term_count,
+                duration_s=meta.build_duration_s,
+            )
         except BaseException:
             tmp_path.unlink(missing_ok=True)
             raise
 
-    logger.info(
-        "database_built",
-        db=str(config.data.db_path),
-        terms=meta.term_count,
-        duration_s=meta.build_duration_s,
-    )
     return meta
 
 

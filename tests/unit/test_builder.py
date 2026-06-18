@@ -20,15 +20,15 @@ def test_build_database(tmp_path: Path, mini_paths: dict[str, Path | None]) -> N
     meta = build_database(_settings(tmp_path), paths=mini_paths, validators={})  # type: ignore[arg-type]
     db = tmp_path / "hpo.sqlite"
     assert db.exists()
-    conn = sqlite3.connect(db)
-    assert conn.execute("SELECT count(*) FROM term").fetchone()[0] >= 4
-    assert conn.execute(
-        "SELECT count(*) FROM hpo_closure WHERE hpo_id=ancestor_id"
-    ).fetchone()[0] >= 4
-    assert conn.execute("SELECT count(*) FROM disease_phenotype").fetchone()[0] >= 1
-    assert conn.execute("SELECT count(*) FROM gene_phenotype").fetchone()[0] >= 1
-    assert conn.execute("SELECT count(*) FROM gene_disease").fetchone()[0] >= 1
-    conn.close()
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT count(*) FROM term").fetchone()[0] >= 4
+        assert (
+            conn.execute("SELECT count(*) FROM hpo_closure WHERE hpo_id=ancestor_id").fetchone()[0]
+            >= 4
+        )
+        assert conn.execute("SELECT count(*) FROM disease_phenotype").fetchone()[0] >= 1
+        assert conn.execute("SELECT count(*) FROM gene_phenotype").fetchone()[0] >= 1
+        assert conn.execute("SELECT count(*) FROM gene_disease").fetchone()[0] >= 1
     assert meta.hpo_version == "2026-06-06"
     assert isinstance(meta, BuildMeta)
 
