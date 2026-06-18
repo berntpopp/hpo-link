@@ -60,7 +60,7 @@ def repo(built_test_db: Path) -> HpoRepository:  # type: ignore[return]
 
 
 @pytest.fixture(scope="session")
-def hpo_service(repo: HpoRepository) -> "HpoService":
+def hpo_service(repo: HpoRepository) -> HpoService:
     """Return an HpoService bound to the fixture repository."""
     from hpo_link.services.hpo_service import HpoService
 
