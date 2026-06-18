@@ -1,0 +1,95 @@
+{
+  "graphs": [
+    {
+      "id": "http://purl.obolibrary.org/obo/hp.owl",
+      "meta": {
+        "version": "http://purl.obolibrary.org/obo/hp/releases/2026-06-06/hp.json"
+      },
+      "nodes": [
+        {
+          "id": "http://purl.obolibrary.org/obo/HP_0000001",
+          "lbl": "All",
+          "type": "CLASS",
+          "meta": {}
+        },
+        {
+          "id": "http://purl.obolibrary.org/obo/HP_0000118",
+          "lbl": "Phenotypic abnormality",
+          "type": "CLASS",
+          "meta": {}
+        },
+        {
+          "id": "http://purl.obolibrary.org/obo/HP_0000478",
+          "lbl": "Abnormality of the eye",
+          "type": "CLASS",
+          "meta": {}
+        },
+        {
+          "id": "http://purl.obolibrary.org/obo/HP_0000479",
+          "lbl": "Abnormal retinal morphology",
+          "type": "CLASS",
+          "meta": {
+            "definition": {
+              "val": "An abnormality of the retina.",
+              "xrefs": []
+            },
+            "synonyms": [
+              {
+                "pred": "hasExactSynonym",
+                "val": "Abnormal retina",
+                "xrefs": []
+              },
+              {
+                "pred": "hasRelatedSynonym",
+                "val": "Retinal abnormality",
+                "xrefs": []
+              }
+            ],
+            "xrefs": [
+              {
+                "val": "UMLS:C0151888"
+              }
+            ],
+            "basicPropertyValues": [
+              {
+                "pred": "http://www.geneontology.org/formats/oboInOwl#hasAlternativeId",
+                "val": "HP:0001098"
+              }
+            ]
+          }
+        },
+        {
+          "id": "http://purl.obolibrary.org/obo/HP_0000489",
+          "lbl": "obsolete Abnormal electroretinogram",
+          "type": "CLASS",
+          "meta": {
+            "deprecated": true,
+            "basicPropertyValues": [
+              {
+                "pred": "http://purl.obolibrary.org/obo/IAO_0100001",
+                "val": "http://purl.obolibrary.org/obo/HP_0000479"
+              }
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {
+          "sub": "http://purl.obolibrary.org/obo/HP_0000118",
+          "pred": "is_a",
+          "obj": "http://purl.obolibrary.org/obo/HP_0000001"
+        },
+        {
+          "sub": "http://purl.obolibrary.org/obo/HP_0000478",
+          "pred": "is_a",
+          "obj": "http://purl.obolibrary.org/obo/HP_0000118"
+        },
+        {
+          "sub": "http://purl.obolibrary.org/obo/HP_0000479",
+          "pred": "is_a",
+          "obj": "http://purl.obolibrary.org/obo/HP_0000478"
+        }
+      ]
+    }
+  ]
+}
