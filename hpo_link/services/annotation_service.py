@@ -98,15 +98,11 @@ class AnnotationService:
 
         kind, value = normalize_gene(gene)
         rows = self._repo.phenotypes_for_gene(kind, value, limit, offset)
-
-        if not rows and offset == 0:
-            total = self._repo.count_phenotypes_for_gene(kind, value)
-            if total == 0:
-                raise NotFoundError(
-                    f"No HPO phenotype annotations found for gene '{gene}'.",
-                )
-
         total = self._repo.count_phenotypes_for_gene(kind, value)
+        if total == 0:
+            raise NotFoundError(
+                f"No HPO phenotype annotations found for gene '{gene}'.",
+            )
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
