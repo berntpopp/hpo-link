@@ -4,6 +4,7 @@ from __future__ import annotations
 
 EXPECTED_TOOLS = {
     "get_server_capabilities",
+    "get_diagnostics",
     "hpo_resolve_term",
     "hpo_search_terms",
     "hpo_get_term",
@@ -13,6 +14,12 @@ EXPECTED_TOOLS = {
     "hpo_get_term_descendants",
     "hpo_resolve_xref",
     "hpo_map_cross_ontology",
+    "hpo_get_phenotypes_for_gene",
+    "hpo_get_genes_for_phenotype",
+    "hpo_get_phenotypes_for_disease",
+    "hpo_get_diseases_for_phenotype",
+    "hpo_get_genes_for_disease",
+    "hpo_get_diseases_for_gene",
 }
 
 

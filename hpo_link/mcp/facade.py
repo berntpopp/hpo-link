@@ -8,6 +8,7 @@ from hpo_link.mcp.capabilities import register_capability_resources
 from hpo_link.mcp.middleware import ArgValidationMiddleware
 from hpo_link.mcp.resources import HPO_SERVER_INSTRUCTIONS
 from hpo_link.mcp.tools import (
+    register_annotation_tools,
     register_discovery_tools,
     register_hierarchy_tools,
     register_ontology_tools,
@@ -27,7 +28,7 @@ def create_hpo_mcp() -> FastMCP:
     register_ontology_tools(mcp)
     register_hierarchy_tools(mcp)
     register_xref_tools(mcp)
-    # NOTE: Annotation tools (Part 2) are registered here after this comment.
+    register_annotation_tools(mcp)
     register_capability_resources(mcp)
     mcp.add_middleware(ArgValidationMiddleware())
 

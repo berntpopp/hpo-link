@@ -30,9 +30,9 @@ class UnifiedServerManager:
 
         from hpo_link.app import app as fastapi_app
         from hpo_link.config import settings
-        from hpo_link.mcp.facade import create_mondo_mcp
+        from hpo_link.mcp.facade import create_hpo_mcp
 
-        mcp = create_mondo_mcp()
+        mcp = create_hpo_mcp()
         mcp_asgi = mcp.http_app(path=settings.mcp_path)
 
         original_lifespan = fastapi_app.router.lifespan_context
@@ -72,12 +72,12 @@ class UnifiedServerManager:
             self.logger.info("Starting stdio MCP server")
         from hpo_link.config import settings
         from hpo_link.logging_config import configure_logging
-        from hpo_link.mcp.facade import create_mondo_mcp
+        from hpo_link.mcp.facade import create_hpo_mcp
         from hpo_link.services.refresh import bootstrap_data
 
         # Bootstrap the index before serving (stdio has no FastAPI lifespan).
         await bootstrap_data(settings.data, self.logger or configure_logging())
-        mcp = create_mondo_mcp()
+        mcp = create_hpo_mcp()
         # show_banner=False is critical: stray stdout bytes corrupt JSON-RPC framing.
         await mcp.run_async(transport="stdio", show_banner=False)
 

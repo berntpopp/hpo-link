@@ -55,3 +55,25 @@ FieldsArg = Annotated[
         examples=[["synonyms", "definition"], ["parents"]],
     ),
 ]
+
+GeneStr = Annotated[
+    str,
+    Field(
+        description=(
+            "A gene symbol (e.g. 'PAX6') or NCBI gene CURIE (e.g. 'NCBIGene:5080'). "
+            "Bare NCBI numeric ids (e.g. '5080') are also accepted."
+        ),
+        examples=["PAX6", "NCBIGene:5080", "5080"],
+    ),
+]
+
+DiseaseIdStr = Annotated[
+    str,
+    Field(
+        description=(
+            "A disease CURIE, e.g. 'OMIM:106210' (MIM Morbid) or 'ORPHA:550' (Orphanet). "
+            "The prefix is case-sensitive."
+        ),
+        examples=["OMIM:106210", "ORPHA:550"],
+    ),
+]

@@ -157,3 +157,24 @@ CROSS_ONTOLOGY_SCHEMA = _envelope(
     mappings=_OBJ,
     hpo_version=_STR_NULL,
 )
+
+ANNOTATION_SCHEMA = _envelope(
+    total=_INT,
+    returned=_INT,
+    limit=_INT,
+    offset=_INT,
+    next_offset=_INT,
+    truncated=_BOOL,
+    hpo_version=_STR_NULL,
+    recommended_citation=_STR_NULL,
+)
+
+DIAGNOSTICS_SCHEMA = _envelope(
+    server=_STR,
+    index_status=_STR,
+    hpo_version=_STR_NULL,
+    hpoa_version=_STR_NULL,
+    counts=_OBJ,
+    build_utc=_STR_NULL,
+    runtime_metrics=_OBJ,
+)
