@@ -26,7 +26,9 @@ from hpo_link.mcp.tools._common import ResponseMode, TermStr
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-_ClosureLimit = Annotated[int, Field(ge=1, le=1000, description="Max rows returned (default 200).")]
+_ClosureLimit = Annotated[
+    int, Field(ge=1, le=1000, description="Max rows returned (default 50).")
+]
 _ClosureOffset = Annotated[
     int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
 ]
@@ -36,131 +38,139 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
     """Register the is_a hierarchy tools on a FastMCP instance."""
 
     @mcp.tool(
-        name="get_disease_ancestors",
-        title="Get Disease Ancestors",
+        name="hpo_get_term_ancestors",
+        title="Get HPO Term Ancestors",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANCESTORS_SCHEMA,
-        tags={"disease", "hierarchy", "closure"},
+        tags={"hpo", "hierarchy", "closure"},
         description=(
-            "Return all transitive is_a ancestors (broader diseases) of a Mondo term "
-            "via the precomputed closure, with a pagination block {total, returned, "
+            "Return all transitive is_a ancestors (broader phenotype terms) of an HPO "
+            "term via the precomputed closure, with a pagination block {total, returned, "
             "limit, offset, truncated, next_offset}. When truncated, next_commands "
             "carries a forward-page step (offset) so you can walk a >limit closure "
-            "without re-sending rows. Use get_disease_parents for only the immediate "
+            "without re-sending rows. Use hpo_get_term_parents for only the immediate "
             "parents. "
-            "Signature: get_disease_ancestors(term, limit=, offset=, response_mode=)."
+            "Signature: hpo_get_term_ancestors(term, limit=, offset=, response_mode=)."
         ),
     )
-    async def get_disease_ancestors(
+    async def hpo_get_term_ancestors(
         term: TermStr,
-        limit: _ClosureLimit = 200,
+        limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_ancestors(
+            payload = get_hpo_service().term_ancestors(
                 term, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = after_ancestors(payload)
             return payload
 
         return await run_mcp_tool(
-            "get_disease_ancestors",
+            "hpo_get_term_ancestors",
             call,
             context=McpErrorContext(
-                "get_disease_ancestors", arguments={"term": term}, response_mode=response_mode
+                "hpo_get_term_ancestors",
+                arguments={"term": term},
+                response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="get_disease_descendants",
-        title="Get Disease Descendants",
+        name="hpo_get_term_descendants",
+        title="Get HPO Term Descendants",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=DESCENDANTS_SCHEMA,
-        tags={"disease", "hierarchy", "closure"},
+        tags={"hpo", "hierarchy", "closure"},
         description=(
-            "Return all transitive is_a descendants (more specific diseases) of a "
-            "Mondo term via the precomputed closure, with a pagination block {total, "
+            "Return all transitive is_a descendants (more specific phenotype terms) of an "
+            "HPO term via the precomputed closure, with a pagination block {total, "
             "returned, limit, offset, truncated, next_offset}. When truncated, "
             "next_commands carries a forward-page step (offset) so you can walk a "
-            ">limit closure without re-sending rows. Use get_disease_children for only "
+            ">limit closure without re-sending rows. Use hpo_get_term_children for only "
             "the immediate children. "
-            "Signature: get_disease_descendants(term, limit=, offset=, response_mode=)."
+            "Signature: hpo_get_term_descendants(term, limit=, offset=, response_mode=)."
         ),
     )
-    async def get_disease_descendants(
+    async def hpo_get_term_descendants(
         term: TermStr,
-        limit: _ClosureLimit = 200,
+        limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_descendants(
+            payload = get_hpo_service().term_descendants(
                 term, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = after_descendants(payload)
             return payload
 
         return await run_mcp_tool(
-            "get_disease_descendants",
+            "hpo_get_term_descendants",
             call,
             context=McpErrorContext(
-                "get_disease_descendants", arguments={"term": term}, response_mode=response_mode
+                "hpo_get_term_descendants",
+                arguments={"term": term},
+                response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="get_disease_parents",
-        title="Get Disease Parents",
+        name="hpo_get_term_parents",
+        title="Get HPO Term Parents",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=PARENTS_SCHEMA,
-        tags={"disease", "hierarchy"},
+        tags={"hpo", "hierarchy"},
         description=(
-            "Return the direct is_a parents (immediate broader diseases) of a Mondo "
-            "term. Use get_disease_ancestors for the full transitive set. "
-            "Signature: get_disease_parents(term, response_mode=)."
+            "Return the direct is_a parents (immediate broader phenotype terms) of an HPO "
+            "term. Use hpo_get_term_ancestors for the full transitive set. "
+            "Signature: hpo_get_term_parents(term, response_mode=)."
         ),
     )
-    async def get_disease_parents(
+    async def hpo_get_term_parents(
         term: TermStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_parents(term, response_mode=response_mode)
+            payload = get_hpo_service().term_parents(term, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_parents(payload)
             return payload
 
         return await run_mcp_tool(
-            "get_disease_parents",
+            "hpo_get_term_parents",
             call,
             context=McpErrorContext(
-                "get_disease_parents", arguments={"term": term}, response_mode=response_mode
+                "hpo_get_term_parents",
+                arguments={"term": term},
+                response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="get_disease_children",
-        title="Get Disease Children",
+        name="hpo_get_term_children",
+        title="Get HPO Term Children",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=CHILDREN_SCHEMA,
-        tags={"disease", "hierarchy"},
+        tags={"hpo", "hierarchy"},
         description=(
-            "Return the direct is_a children (immediate more-specific diseases) of a "
-            "Mondo term. Use get_disease_descendants for the full transitive set. "
-            "Signature: get_disease_children(term, response_mode=)."
+            "Return the direct is_a children (immediate more-specific phenotype terms) of "
+            "an HPO term. Use hpo_get_term_descendants for the full transitive set. "
+            "Signature: hpo_get_term_children(term, response_mode=)."
         ),
     )
-    async def get_disease_children(
+    async def hpo_get_term_children(
         term: TermStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_children(term, response_mode=response_mode)
+            payload = get_hpo_service().term_children(term, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_children(payload)
             return payload
 
         return await run_mcp_tool(
-            "get_disease_children",
+            "hpo_get_term_children",
             call,
             context=McpErrorContext(
-                "get_disease_children", arguments={"term": term}, response_mode=response_mode
+                "hpo_get_term_children",
+                arguments={"term": term},
+                response_mode=response_mode,
             ),
         )

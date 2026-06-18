@@ -26,11 +26,11 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         output_schema=CAPABILITIES_SCHEMA,
         tags={"discovery"},
         description=(
-            "Return the hpo-link discovery surface: identity/build/Mondo release, "
+            "Return the hpo-link discovery surface: identity/build/HPO release, "
             "the tool list WITH call signatures, response modes, recommended "
-            "workflows, the cross-reference predicate ranking, the error taxonomy, and "
-            "limits. detail='full' adds the full policy notes. Call this first in a "
-            "cold session, or read hpo://tools / hpo://capabilities. "
+            "workflows, the xref prefixes, the error taxonomy, and limits. "
+            "detail='full' adds the full policy notes. Call this first in a cold "
+            "session, or read hpo://tools / hpo://capabilities. "
             "Signature: get_server_capabilities(detail=)."
         ),
     )
@@ -52,3 +52,5 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             context=McpErrorContext("get_server_capabilities"),
         )
 
+    # NOTE: get_diagnostics is NOT registered here — it comes in Part 2 (annotation tools).
+    # Leave this comment as a marker for the Part 2 implementer.
