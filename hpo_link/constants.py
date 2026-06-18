@@ -1,50 +1,54 @@
-"""Domain constants for hpo-link: schema version, roots, xref prefixes, ranks."""
+# hpo_link/constants.py
+"""Project-wide constants for hpo-link."""
 
 from __future__ import annotations
 
-#: Bumped whenever the on-disk SQLite schema changes. v2 added xref.object_label
-#: (the target term's human-readable name, from SSSOM); a rebuild populates it.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
+HPO_ROOT = "HP:0000001"
+PHENOTYPIC_ABNORMALITY = "HP:0000118"
 
-#: The Mondo ontology root term ("disease or disorder").
-MONDO_ROOT = "MONDO:0000001"
+GITHUB_OWNER_REPO = "obophenotype/human-phenotype-ontology"
+GITHUB_RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_OWNER_REPO}/releases/latest"
 
-#: Root of Mondo's non-human-animal disease branch. Its descendants are veterinary
-#: terms (e.g. "Marfan syndrome, FBN1-related, pig"); the resolver demotes them below
-#: human terms in the fuzzy fallback so a human-disease query is not led by livestock.
-NON_HUMAN_ANIMAL_ROOT = "MONDO:0005583"
 
-#: Hard cap on items accepted by a single batch tool call (bounds token blowup /
-#: abuse). Surfaced in capabilities.limits and enforced by the batch tools.
-MAX_BATCH_ITEMS = 50
+def obo_purl(date: str, filename: str) -> str:
+    """Version-pinned OBO PURL, e.g. obo_purl('2026-06-06','hp.json')."""
+    return f"http://purl.obolibrary.org/obo/hp/releases/{date}/{filename}"
 
-#: Cross-ontology prefixes surfaced as first-class xref sources.
-XREF_PREFIXES = ("OMIM", "ORPHA", "DOID", "NCIT", "UMLS", "MESH", "MEDGEN", "SCTID", "GARD")
 
-#: Mapping predicate -> rank for ordering cross-references (lower is stronger).
-PREDICATE_RANK = {
-    "exactMatch": 0,
-    "equivalentTo": 1,
-    "closeMatch": 2,
-    "narrowMatch": 3,
-    "broadMatch": 4,
-    "xref": 5,
-}
-
-#: How a resolve match was made, strongest first. ``fuzzy`` is a conservative
-#: FTS fallback used only when no exact id/xref/label match exists.
-MATCH_TYPES = ("mondo_id", "primary", "exact_synonym", "related_synonym", "fuzzy", "xref")
-
-#: Canonical citation pasted verbatim into capability/_meta payloads.
-RECOMMENDED_CITATION = (
-    "Vasilevsky NA, Matentzoglu NA, Toro S, et al. Mondo: Unifying diseases for the "
-    "world, by the world. medRxiv 2022.04.13.22273750. "
-    "doi:10.1101/2022.04.13.22273750. Mondo Disease Ontology, Monarch Initiative, "
-    "https://mondo.monarchinitiative.org/."
+ONTOLOGY_FILES = ("hp.json", "hp-base.json")
+HPOA_FILES = (
+    "phenotype.hpoa",
+    "genes_to_phenotype.txt",
+    "phenotype_to_genes.txt",
+    "genes_to_disease.txt",
 )
 
-#: License attribution surfaced in capability/reference notes.
-MONDO_LICENSE = (
-    "The Mondo Disease Ontology is distributed under CC BY 4.0 "
-    "(https://creativecommons.org/licenses/by/4.0/). Cite Mondo / the Monarch Initiative."
+# xref namespaces HPO terms carry (UMLS/SNOMED dominant)
+XREF_PREFIXES = (
+    "UMLS",
+    "SNOMEDCT_US",
+    "NCIT",
+    "MEDDRA",
+    "ICD-10",
+    "ICD-9",
+    "ORPHA",
+    "MONDO",
+    "DOID",
+    "EFO",
+    "MP",
+    "MSH",
+    "MESH",
+)
+
+RECOMMENDED_CITATION = (
+    "Köhler S, Gargano M, Matentzoglu N, et al. The Human Phenotype Ontology in 2024: "
+    "phenotypes around the world. Nucleic Acids Res. 2024;52(D1):D1333-D1346. "
+    "Human Phenotype Ontology, https://hpo.jax.org/."
+)
+HPO_LICENSE_URL = "https://hpo.jax.org/app/license"
+HPO_LICENSE = (
+    "The Human Phenotype Ontology is distributed under the custom HPO license "
+    f"({HPO_LICENSE_URL}). Acknowledge the HPO Consortium, display the release version, "
+    "and do not alter term relationships."
 )

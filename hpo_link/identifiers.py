@@ -1,62 +1,45 @@
+# hpo_link/identifiers.py
+"""HPO / gene / disease identifier normalization."""
+
 from __future__ import annotations
 
 import re
 
-_MONDO_ID_RE = re.compile(r"^MONDO:(\d{7})$", re.IGNORECASE)
-_BARE_ID_RE = re.compile(r"^\d{7}$")
-_XREF_PREFIX_RE = re.compile(r"^([A-Za-z][A-Za-z0-9]*):(.+)$")
-_KNOWN_PREFIX_ALIASES = {
-    "ORPHANET": "ORPHA",
-    "ORPHA": "ORPHA",
-    "OMIM": "OMIM",
-    "MIM": "OMIM",
-    "DOID": "DOID",
-    "NCIT": "NCIT",
-    "UMLS": "UMLS",
-    "MESH": "MESH",
-    "MSH": "MESH",
-    "MEDGEN": "MEDGEN",
-    "SCTID": "SCTID",
-    "SNOMEDCT": "SCTID",
-    "GARD": "GARD",
-    "ICD10CM": "ICD10CM",
-    "ICD10": "ICD10",
-    "EFO": "EFO",
-}
+_HP_RE = re.compile(r"(?:HP[:_])?0*(\d{1,7})$", re.IGNORECASE)
+_IRI_RE = re.compile(r"HP[_:](\d{7})$", re.IGNORECASE)
 
 
-def normalize_mondo_id(value: str) -> str | None:
-    text = (value or "").strip()
-    m = _MONDO_ID_RE.match(text)
-    if m:
-        return f"MONDO:{m.group(1)}"
-    if _BARE_ID_RE.match(text):
-        return f"MONDO:{text}"
-    return None
-
-
-def looks_like_mondo_id(value: str) -> bool:
-    return normalize_mondo_id(value) is not None
-
-
-def normalize_xref(value: str) -> str | None:
-    text = (value or "").strip()
-    m = _XREF_PREFIX_RE.match(text)
+def normalize_hpo_id(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    s = raw.strip()
+    m = _IRI_RE.search(s) or _HP_RE.match(s)
     if not m:
         return None
-    prefix, local = m.group(1).upper(), m.group(2).strip()
-    prefix = _KNOWN_PREFIX_ALIASES.get(prefix, prefix)
-    if not local:
-        return None
-    return f"{prefix}:{local}"
+    return f"HP:{int(m.group(1)):07d}"
 
 
-def xref_prefix(value: str) -> str | None:
-    norm = normalize_xref(value)
-    return norm.split(":", 1)[0] if norm else None
+def iri_to_curie(iri: str) -> str:
+    return normalize_hpo_id(iri) or iri
 
 
-def infer_xref_source(value: str) -> str | None:
-    if looks_like_mondo_id(value):
-        return None
-    return xref_prefix(value)
+def is_hpo_id(s: str | None) -> bool:
+    return bool(s and re.match(r"^HP:\d{7}$", s.strip(), re.IGNORECASE))
+
+
+def normalize_gene(raw: str) -> tuple[str, str]:
+    s = (raw or "").strip()
+    low = s.lower()
+    if low.startswith("ncbigene:"):
+        return ("ncbi", s.split(":", 1)[1])
+    if s.isdigit():
+        return ("ncbi", s)
+    return ("symbol", s.upper())
+
+
+def normalize_disease_id(raw: str) -> str:
+    s = (raw or "").strip()
+    if ":" in s:
+        prefix, rest = s.split(":", 1)
+        return f"{prefix.upper()}:{rest}"
+    return s
