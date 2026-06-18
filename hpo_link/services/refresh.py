@@ -8,7 +8,7 @@ first start if absent — non-fatal: the server still starts and tools report
 The frozen ingest builder (``ensure_database`` / ``rebuild``) is imported lazily
 inside function bodies so this module stays importable (and the app boots) even
 if the ingest plane is mid-build. The builder reads ``config.data.*``, so the
-``MondoDataConfig`` handed to us by the server entry points is wrapped back into
+``HPODataConfig`` handed to us by the server entry points is wrapped back into
 a full :class:`ServerSettings` before the build runs.
 """
 
@@ -22,11 +22,11 @@ from typing import TYPE_CHECKING, Any
 from hpo_link.exceptions import DownloadError, MondoError
 
 if TYPE_CHECKING:
-    from hpo_link.config import MondoDataConfig, ServerSettings
+    from hpo_link.config import HPODataConfig, ServerSettings
 
 
-def _as_settings(config: MondoDataConfig) -> ServerSettings:
-    """Wrap a :class:`MondoDataConfig` into the ``ServerSettings`` the builder reads.
+def _as_settings(config: HPODataConfig) -> ServerSettings:
+    """Wrap a :class:`HPODataConfig` into the ``ServerSettings`` the builder reads.
 
     The server entry points hand us ``settings.data``; the frozen builder reads
     ``config.data.*``. Reuse the live ``settings`` when it already carries this
@@ -39,7 +39,7 @@ def _as_settings(config: MondoDataConfig) -> ServerSettings:
     return ServerSettings(data=config)
 
 
-async def bootstrap_data(config: MondoDataConfig, logger: Any) -> None:
+async def bootstrap_data(config: HPODataConfig, logger: Any) -> None:
     """Ensure the index exists, building it in a worker thread. Non-fatal."""
     from hpo_link.ingest.builder import ensure_database
     from hpo_link.mcp.service_adapters import reset_services
@@ -52,7 +52,7 @@ async def bootstrap_data(config: MondoDataConfig, logger: Any) -> None:
         logger.warning("hpo_data_bootstrap_failed", error=str(exc))
 
 
-async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
+async def _refresh_loop(config: HPODataConfig, logger: Any) -> None:
     """Conditionally rebuild the index on an interval; reset the service on change."""
     from hpo_link.ingest.builder import rebuild
     from hpo_link.mcp.service_adapters import reset_services
@@ -74,7 +74,7 @@ async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
             logger.warning("hpo_data_refresh_failed", error=str(exc))
 
 
-def start_refresh_scheduler(config: MondoDataConfig, logger: Any) -> asyncio.Task[None] | None:
+def start_refresh_scheduler(config: HPODataConfig, logger: Any) -> asyncio.Task[None] | None:
     """Start the optional refresh loop; returns the task, or ``None`` if disabled."""
     if not config.refresh_enabled:
         return None
