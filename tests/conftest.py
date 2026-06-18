@@ -10,6 +10,7 @@ import pytest
 
 if TYPE_CHECKING:
     from hpo_link.data.repository import HpoRepository
+    from hpo_link.services.annotation_service import AnnotationService
     from hpo_link.services.hpo_service import HpoService
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -65,3 +66,11 @@ def hpo_service(repo: HpoRepository) -> HpoService:
     from hpo_link.services.hpo_service import HpoService
 
     return HpoService(repo)
+
+
+@pytest.fixture(scope="session")
+def annotation_service(repo: HpoRepository) -> AnnotationService:
+    """Return an AnnotationService bound to the fixture repository."""
+    from hpo_link.services.annotation_service import AnnotationService
+
+    return AnnotationService(repo)
