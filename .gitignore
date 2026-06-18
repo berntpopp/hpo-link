@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Data (built/downloaded artifacts)
+data/*.sqlite
+data/*.sqlite-*
+data/*.zst
+data/download_cache.json
+data/raw/
+# Env
+.env
+.env.local
