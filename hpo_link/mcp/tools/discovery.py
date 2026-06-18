@@ -30,7 +30,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             "the tool list WITH call signatures, response modes, recommended "
             "workflows, the cross-reference predicate ranking, the error taxonomy, and "
             "limits. detail='full' adds the full policy notes. Call this first in a "
-            "cold session, or read mondo://tools / mondo://capabilities. "
+            "cold session, or read hpo://tools / hpo://capabilities. "
             "Signature: get_server_capabilities(detail=)."
         ),
     )

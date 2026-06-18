@@ -47,9 +47,9 @@ async def bootstrap_data(config: MondoDataConfig, logger: Any) -> None:
     try:
         path = await asyncio.to_thread(ensure_database, _as_settings(config))
         reset_services()
-        logger.info("mondo_data_ready", db_path=str(path))
+        logger.info("hpo_data_ready", db_path=str(path))
     except (MondoError, DownloadError, OSError) as exc:
-        logger.warning("mondo_data_bootstrap_failed", error=str(exc))
+        logger.warning("hpo_data_bootstrap_failed", error=str(exc))
 
 
 async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
@@ -66,19 +66,19 @@ async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
             result = await asyncio.to_thread(rebuild, settings, force=False)
             if result.changed:
                 reset_services()
-                version = result.meta.mondo_version if result.meta else None
-                logger.info("mondo_data_refreshed", mondo_version=version)
+                version = result.meta.hpo_version if result.meta else None
+                logger.info("hpo_data_refreshed", hpo_version=version)
             else:
-                logger.debug("mondo_data_unchanged")
+                logger.debug("hpo_data_unchanged")
         except (MondoError, DownloadError, OSError) as exc:
-            logger.warning("mondo_data_refresh_failed", error=str(exc))
+            logger.warning("hpo_data_refresh_failed", error=str(exc))
 
 
 def start_refresh_scheduler(config: MondoDataConfig, logger: Any) -> asyncio.Task[None] | None:
     """Start the optional refresh loop; returns the task, or ``None`` if disabled."""
     if not config.refresh_enabled:
         return None
-    logger.info("mondo_refresh_scheduler_enabled", interval_hours=config.refresh_interval_hours)
+    logger.info("hpo_refresh_scheduler_enabled", interval_hours=config.refresh_interval_hours)
     return asyncio.create_task(_refresh_loop(config, logger))
 
 
