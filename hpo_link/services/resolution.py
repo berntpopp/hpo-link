@@ -91,9 +91,7 @@ class Resolver:
         """
         raw = (term or "").strip()
         if not raw:
-            raise InvalidInputError(
-                "term must be a non-empty HP id, label, or xref.", field="term"
-            )
+            raise InvalidInputError("term must be a non-empty HP id, label, or xref.", field="term")
         return self.classify_resolution(raw, fuzzy=False)[1]
 
     def classify_resolution(self, raw: str, *, fuzzy: bool = True) -> tuple[str, str]:
@@ -157,8 +155,7 @@ class Resolver:
             return "fuzzy", str(payload["hpo_id"])
         if kind == "ambiguous" and isinstance(payload, list):
             cands = [
-                {"hpo_id": h["hpo_id"], "name": h["name"], "label_type": "fuzzy"}
-                for h in payload
+                {"hpo_id": h["hpo_id"], "name": h["name"], "label_type": "fuzzy"} for h in payload
             ]
             raise AmbiguousQueryError(
                 f"'{raw}' has no exact match; the closest HPO terms are in candidates.",
@@ -225,6 +222,4 @@ class Resolver:
 
 def _hits_to_suggestions(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Project FTS hits to compact ``{hpo_id, name, score}`` suggestion rows."""
-    return [
-        {"hpo_id": h["hpo_id"], "name": h["name"], "score": h.get("score")} for h in hits[:3]
-    ]
+    return [{"hpo_id": h["hpo_id"], "name": h["name"], "score": h.get("score")} for h in hits[:3]]

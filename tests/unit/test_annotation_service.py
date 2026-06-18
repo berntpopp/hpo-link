@@ -51,9 +51,19 @@ def test_phenotypes_for_gene_ncbi_curie(annotation_service: AnnotationService) -
 def test_phenotypes_for_gene_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required pagination fields."""
     result = annotation_service.get_phenotypes_for_gene("PAX6")
-    for field in ("gene", "gene_kind", "gene_value", "phenotypes",
-                  "total", "returned", "limit", "offset", "truncated",
-                  "hpo_version", "recommended_citation"):
+    for field in (
+        "gene",
+        "gene_kind",
+        "gene_value",
+        "phenotypes",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 
@@ -91,7 +101,9 @@ def test_phenotypes_for_gene_pagination(annotation_service: AnnotationService) -
     assert result["returned"] <= 1
 
 
-def test_phenotypes_for_gene_truncated_has_next_offset(annotation_service: AnnotationService) -> None:
+def test_phenotypes_for_gene_truncated_has_next_offset(
+    annotation_service: AnnotationService,
+) -> None:
     """When limit=1 and there are multiple phenotypes, next_offset must be present."""
     result = annotation_service.get_phenotypes_for_gene("PAX6", limit=1)
     # Only assert next_offset if truncated (it may be that fixture has only 1 phenotype)
@@ -130,13 +142,25 @@ def test_genes_for_phenotype_with_descendants(annotation_service: AnnotationServ
 def test_genes_for_phenotype_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required fields."""
     result = annotation_service.get_genes_for_phenotype("HP:0000479")
-    for field in ("term", "hpo_id", "genes", "total", "returned", "limit",
-                  "offset", "truncated", "include_descendants",
-                  "hpo_version", "recommended_citation"):
+    for field in (
+        "term",
+        "hpo_id",
+        "genes",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "include_descendants",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 
-def test_genes_for_phenotype_include_descendants_field(annotation_service: AnnotationService) -> None:
+def test_genes_for_phenotype_include_descendants_field(
+    annotation_service: AnnotationService,
+) -> None:
     """include_descendants flag is echoed in the response."""
     result_no = annotation_service.get_genes_for_phenotype("HP:0000479", include_descendants=False)
     result_yes = annotation_service.get_genes_for_phenotype("HP:0000479", include_descendants=True)
@@ -173,8 +197,17 @@ def test_phenotypes_for_disease_omim_106210(annotation_service: AnnotationServic
 def test_phenotypes_for_disease_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required fields."""
     result = annotation_service.get_phenotypes_for_disease("OMIM:106210")
-    for field in ("disease_id", "phenotypes", "total", "returned", "limit",
-                  "offset", "truncated", "hpo_version", "recommended_citation"):
+    for field in (
+        "disease_id",
+        "phenotypes",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 
@@ -236,9 +269,19 @@ def test_diseases_for_phenotype_with_descendants(annotation_service: AnnotationS
 def test_diseases_for_phenotype_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required fields."""
     result = annotation_service.get_diseases_for_phenotype("HP:0000479")
-    for field in ("term", "hpo_id", "diseases", "total", "returned", "limit",
-                  "offset", "truncated", "include_descendants",
-                  "hpo_version", "recommended_citation"):
+    for field in (
+        "term",
+        "hpo_id",
+        "diseases",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "include_descendants",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 
@@ -272,8 +315,17 @@ def test_genes_for_disease_omim_106210(annotation_service: AnnotationService) ->
 def test_genes_for_disease_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required fields."""
     result = annotation_service.get_genes_for_disease("OMIM:106210")
-    for field in ("disease_id", "genes", "total", "returned", "limit",
-                  "offset", "truncated", "hpo_version", "recommended_citation"):
+    for field in (
+        "disease_id",
+        "genes",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 
@@ -318,9 +370,19 @@ def test_diseases_for_gene_ncbi_id(annotation_service: AnnotationService) -> Non
 def test_diseases_for_gene_fields(annotation_service: AnnotationService) -> None:
     """Response must include all required fields."""
     result = annotation_service.get_diseases_for_gene("PAX6")
-    for field in ("gene", "gene_kind", "gene_value", "diseases",
-                  "total", "returned", "limit", "offset", "truncated",
-                  "hpo_version", "recommended_citation"):
+    for field in (
+        "gene",
+        "gene_kind",
+        "gene_value",
+        "diseases",
+        "total",
+        "returned",
+        "limit",
+        "offset",
+        "truncated",
+        "hpo_version",
+        "recommended_citation",
+    ):
         assert field in result, f"Missing field: {field}"
 
 

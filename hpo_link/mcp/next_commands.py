@@ -68,9 +68,7 @@ def default_error_next_commands(
             return [cmd("hpo_resolve_term", query=value), cmd("get_server_capabilities")]
     if tool == "hpo_resolve_xref":
         value = str(arguments.get("xref_id", ""))
-        return (
-            [cmd("hpo_search_terms", query=value)] if value else [cmd("get_server_capabilities")]
-        )
+        return [cmd("hpo_search_terms", query=value)] if value else [cmd("get_server_capabilities")]
     if error_code == "data_unavailable":
         return [cmd("get_server_capabilities")]
     return [cmd("get_server_capabilities")]

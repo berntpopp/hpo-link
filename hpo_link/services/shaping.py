@@ -27,9 +27,7 @@ _MINIMAL_KEEP: frozenset[str] = frozenset(
 )
 
 #: Identity/grounding anchors a sparse fieldset always retains.
-_FIELD_ANCHORS: frozenset[str] = frozenset(
-    {"hpo_id", "name", "hpo_version", "_meta", "success"}
-)
+_FIELD_ANCHORS: frozenset[str] = frozenset({"hpo_id", "name", "hpo_version", "_meta", "success"})
 
 
 def _is_empty(value: Any) -> bool:
@@ -72,7 +70,6 @@ def shape_term(record: dict[str, Any], mode: str) -> dict[str, Any]:
             continue
         out[key] = value
     return out
-
 
 
 def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:

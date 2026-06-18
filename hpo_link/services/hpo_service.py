@@ -66,9 +66,7 @@ class HpoService:
         """Resolve any HP id / label / xref to a canonical HP id, raise NotFoundError on miss."""
         raw = (query or "").strip()
         if not raw:
-            raise InvalidInputError(
-                "term must be a non-empty HP id, label, or xref.", field="term"
-            )
+            raise InvalidInputError("term must be a non-empty HP id, label, or xref.", field="term")
         return self._resolution.resolve_term_id(raw)
 
     def _version_fields(self) -> dict[str, Any]:

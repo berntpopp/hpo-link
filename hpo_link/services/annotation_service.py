@@ -105,7 +105,9 @@ class AnnotationService:
             NotFoundError: When the gene has no HPO annotations.
         """
         if not gene or not gene.strip():
-            raise InvalidInputError("gene must be a non-empty gene symbol or NCBI id.", field="gene")
+            raise InvalidInputError(
+                "gene must be a non-empty gene symbol or NCBI id.", field="gene"
+            )
 
         kind, value = normalize_gene(gene)
         rows = self._db.phenotypes_for_gene(kind, value, limit, offset)

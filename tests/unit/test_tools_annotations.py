@@ -123,9 +123,7 @@ async def test_get_genes_for_phenotype_with_descendants(live_annotation_service)
     result = await run_mcp_tool(
         "hpo_get_genes_for_phenotype",
         call,
-        context=McpErrorContext(
-            "hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}
-        ),
+        context=McpErrorContext("hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     assert result["success"] is True
     gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
@@ -147,9 +145,7 @@ async def test_get_genes_for_phenotype_no_descendants(live_annotation_service) -
     result = await run_mcp_tool(
         "hpo_get_genes_for_phenotype",
         call,
-        context=McpErrorContext(
-            "hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}
-        ),
+        context=McpErrorContext("hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     # Either not_found (no direct annotations) or success with PAX6 absent
     if result["success"]:
@@ -204,16 +200,11 @@ async def test_get_diseases_for_phenotype(live_annotation_service) -> None:
     result = await run_mcp_tool(
         "hpo_get_diseases_for_phenotype",
         call,
-        context=McpErrorContext(
-            "hpo_get_diseases_for_phenotype", arguments={"term": "HP:0000479"}
-        ),
+        context=McpErrorContext("hpo_get_diseases_for_phenotype", arguments={"term": "HP:0000479"}),
     )
     assert result["success"] is True
     # The repository returns database_id (HPOA column name)
-    disease_ids = [
-        d.get("database_id") or d.get("disease_id")
-        for d in result.get("diseases", [])
-    ]
+    disease_ids = [d.get("database_id") or d.get("disease_id") for d in result.get("diseases", [])]
     assert "OMIM:106210" in disease_ids
 
 
@@ -262,9 +253,7 @@ async def test_get_diseases_for_gene(live_annotation_service) -> None:
     result = await run_mcp_tool(
         "hpo_get_diseases_for_gene",
         call,
-        context=McpErrorContext(
-            "hpo_get_diseases_for_gene", arguments={"gene": "PAX6"}
-        ),
+        context=McpErrorContext("hpo_get_diseases_for_gene", arguments={"gene": "PAX6"}),
     )
     assert result["success"] is True
     disease_ids = [d["disease_id"] for d in result.get("diseases", []) if "disease_id" in d]

@@ -73,9 +73,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
     )
     async def hpo_search_terms(
         query: QueryStr,
-        limit: Annotated[
-            int, Field(ge=1, le=200, description="Max hits (default 25).")
-        ] = 25,
+        limit: Annotated[int, Field(ge=1, le=200, description="Max hits (default 25).")] = 25,
         offset: Annotated[
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
@@ -126,9 +124,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         fields: FieldsArg = None,
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_term(
-                term, response_mode=response_mode, fields=fields
-            )
+            payload = get_hpo_service().get_term(term, response_mode=response_mode, fields=fields)
             payload.setdefault("_meta", {})["next_commands"] = after_get_term(payload)
             return payload
 

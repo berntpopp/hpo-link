@@ -26,9 +26,7 @@ from hpo_link.mcp.tools._common import ResponseMode, TermStr
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-_ClosureLimit = Annotated[
-    int, Field(ge=1, le=1000, description="Max rows returned (default 50).")
-]
+_ClosureLimit = Annotated[int, Field(ge=1, le=1000, description="Max rows returned (default 50).")]
 _ClosureOffset = Annotated[
     int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
 ]

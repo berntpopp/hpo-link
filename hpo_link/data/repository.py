@@ -36,9 +36,7 @@ class HpoRepository(AnnotationsMixin):
                 check_same_thread=False,
             )
         except sqlite3.Error as exc:  # pragma: no cover - rare OS-level failure
-            raise DataUnavailableError(
-                f"Cannot open HPO database at {self._path}: {exc}."
-            ) from exc
+            raise DataUnavailableError(f"Cannot open HPO database at {self._path}: {exc}.") from exc
         self._conn.row_factory = sqlite3.Row
 
     def close(self) -> None:
@@ -97,9 +95,7 @@ class HpoRepository(AnnotationsMixin):
 
     def get_term(self, hpo_id: str) -> dict[str, Any] | None:
         """Return the ``term`` row for a canonical HP id, or ``None``."""
-        row = self._conn.execute(
-            "SELECT * FROM term WHERE hpo_id = ?", (hpo_id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM term WHERE hpo_id = ?", (hpo_id,)).fetchone()
         return self._term_from_row(row) if row is not None else None
 
     def resolve_label(self, label: str) -> list[dict[str, Any]]:
@@ -236,14 +232,9 @@ class HpoRepository(AnnotationsMixin):
 
     # -- cross-references ------------------------------------------------------
 
-    def xrefs_for(
-        self, hpo_id: str, prefixes: list[str] | None = None
-    ) -> list[dict[str, Any]]:
+    def xrefs_for(self, hpo_id: str, prefixes: list[str] | None = None) -> list[dict[str, Any]]:
         """Cross-references for ``hpo_id``, optionally filtered by prefix."""
-        sql = (
-            "SELECT x.prefix, x.object_id, x.origin FROM xref x "
-            "WHERE x.hpo_id = ?"
-        )
+        sql = "SELECT x.prefix, x.object_id, x.origin FROM xref x WHERE x.hpo_id = ?"
         params: list[Any] = [hpo_id]
         if prefixes:
             placeholders = ", ".join("?" for _ in prefixes)
@@ -256,9 +247,7 @@ class HpoRepository(AnnotationsMixin):
             for r in rows
         ]
 
-    def hpo_for_xref(
-        self, xref_id: str, *, limit: int, offset: int = 0
-    ) -> list[dict[str, Any]]:
+    def hpo_for_xref(self, xref_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
         """HPO terms cross-referencing ``xref_id`` (one row per distinct HP id).
 
         ``xref_id`` may be a bare object id (``C0151888``) or a CURIE

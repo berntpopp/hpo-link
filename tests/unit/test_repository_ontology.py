@@ -36,9 +36,7 @@ def test_get_term_has_synonym(repo: HpoRepository) -> None:
     """HP:0000479 should have 'Abnormal retina' as an exact synonym."""
     term = repo.get_term("HP:0000479")
     assert term is not None
-    synonym_texts = [
-        s["text"] if isinstance(s, dict) else s for s in term["synonyms"]
-    ]
+    synonym_texts = [s["text"] if isinstance(s, dict) else s for s in term["synonyms"]]
     assert any("Abnormal retina" in str(s) for s in synonym_texts), (
         f"Expected 'Abnormal retina' in synonyms, got: {term['synonyms']}"
     )

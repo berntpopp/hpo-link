@@ -37,9 +37,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
     )
     async def hpo_resolve_xref(
         xref_id: XrefIdStr,
-        limit: Annotated[
-            int, Field(ge=1, le=1000, description="Max matches (default 25).")
-        ] = 25,
+        limit: Annotated[int, Field(ge=1, le=1000, description="Max matches (default 25).")] = 25,
         offset: Annotated[
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
