@@ -4,19 +4,19 @@ Guidance for agents and contributors working in this repository.
 
 ## What this is
 
-`hpo-link` is an MCP + REST server that grounds disease work in the Mondo
-Disease Ontology. It builds a local SQLite index from the Mondo OBO + SSSOM
-releases and serves read-only tools for disease lookup, the `is_a` hierarchy,
-and cross-ontology mapping. It mirrors the sibling `mgi-link` stack/architecture.
+`hpo-link` is an MCP + REST server that grounds phenotype work in the Human
+Phenotype Ontology (HPO). It builds a local SQLite index from the HPO OBO
+releases and serves read-only tools for phenotype term lookup, the `is_a`
+hierarchy, and cross-ontology mapping. It mirrors the sibling `mgi-link` stack/architecture.
 
 ## Two planes (non-negotiable boundary)
 
 - **Data plane** — `config.py`, `constants.py`, `identifiers.py`, `ingest/`,
-  `data/`, `services/`. Downloads the Mondo release (conditional GET), atomically
+  `data/`, `services/`. Downloads the HPO release (conditional GET), atomically
   builds the SQLite index (terms, labels, synonyms, definitions, `is_a` closure,
-  merged OBO + SSSOM cross-references with provenance + predicate,
-  deprecated/`replaced_by`), and **returns plain dicts**. It raises typed
-  exceptions from `hpo_link.exceptions`; it never builds error envelopes.
+  cross-references with provenance + predicate, deprecated/`replaced_by`), and
+  **returns plain dicts**. It raises typed exceptions from `hpo_link.exceptions`;
+  it never builds error envelopes.
 - **MCP plane** — `mcp/`. Domain-agnostic scaffolding shared with siblings.
   `run_mcp_tool` (in `mcp/envelope.py`) owns `success` / `_meta` and converts
   exceptions into **returned** structured errors (never raised to the client).
@@ -47,10 +47,10 @@ and cross-ontology mapping. It mirrors the sibling `mgi-link` stack/architecture
   (omitted in `minimal`).
 - Keep `mcp/capabilities.py::TOOLS` in sync with the registered tool set
   (`tests/unit/test_tool_names.py` enforces this).
-- Identifiers are normalised in `identifiers.py` (`MONDO:NNNNNNN`; external
-  CURIEs case-folded, `Orphanet` → `ORPHA`).
-- Ground every claim in the local index and cite the MONDO id + Mondo release
-  version (`mondo_version` is echoed in record payloads).
+- Identifiers are normalised in `identifiers.py` (`HP:NNNNNNN`; external
+  CURIEs case-folded).
+- Ground every claim in the local index and cite the HPO id + HPO release
+  version (`hpo_version` is echoed in record payloads).
 
 ## Definition of done
 
@@ -82,7 +82,7 @@ fixes never reached the running container.
 - TDD: write the failing test first. Keep unit tests self-contained (build a
   fixture SQLite from `load_schema_sql()` or `tests/fixtures/`).
 - Frozen contracts: `mcp/` scaffolding, `ingest/schema.sql`, and the
-  `HpoService` / `MondoRepository` signatures are the seams other modules code
+  `HpoService` / `HpoRepository` signatures are the seams other modules code
   against — change them deliberately.
 
 ## Layout

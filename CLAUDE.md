@@ -8,8 +8,8 @@ file only highlights the essentials.
 
 ## Essentials
 
-- `hpo-link` is an MCP + REST server over the Mondo Disease Ontology, backed
-  by a locally-built SQLite index. It mirrors the sibling `mgi-link` stack.
+- `hpo-link` is an MCP + REST server over the Human Phenotype Ontology (HPO),
+  backed by a locally-built SQLite index. It mirrors the sibling `mgi-link` stack.
 - **Two planes:** the data plane (`config`/`constants`/`identifiers`/`ingest`/
   `data`/`services`) builds & reads the index and returns plain dicts; the MCP
   plane (`mcp/`) is domain-agnostic scaffolding where `run_mcp_tool` owns
@@ -19,7 +19,7 @@ file only highlights the essentials.
   7-code error
   taxonomy; each tool has `output_schema` + `READ_ONLY_OPEN_WORLD` and a first
   sentence ending `Signature: tool(args...)`; keep `capabilities.TOOLS` in sync;
-  normalise ids in `identifiers.py`; cite the MONDO id + Mondo release version.
+  normalise ids in `identifiers.py`; cite the HPO id + HPO release version.
 - **Definition of done:** `make ci-local` green (format-check, lint-ci, lint-loc
   ≤500 lines/file, mypy strict, tests ≥80% coverage).
 - `structlog` → stderr only; stdout is reserved for the stdio MCP protocol.
@@ -35,4 +35,4 @@ make mcp-serve      # stdio MCP server
 make ci-local       # the full gate
 ```
 
-Research use only; not for clinical decision support. Mondo data is CC BY 4.0.
+Research use only; not for clinical decision support. HPO data is CC BY 4.0.

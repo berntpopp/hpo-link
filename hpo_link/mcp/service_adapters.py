@@ -21,7 +21,8 @@ _hpo_service: HpoService | None = None
 _annotation_service: AnnotationService | None = None
 
 
-def _build_services() -> tuple[HpoService, AnnotationService]:
+def _open_repo() -> HpoRepository | None:
+    """Open the HPO SQLite repository, or return None if not yet built."""
     repo: HpoRepository | None = None
     db_path = settings.data.db_path
     if db_path.exists():
@@ -29,22 +30,30 @@ def _build_services() -> tuple[HpoService, AnnotationService]:
             repo = HpoRepository(db_path)
         except DataUnavailableError as exc:  # pragma: no cover - corrupt db
             logger.warning("hpo_repo_open_failed path=%s err=%s", db_path, exc)
-    return HpoService(repo), AnnotationService(repo)
+    return repo
+
+
+def _build_hpo_service() -> HpoService:
+    return HpoService(_open_repo())
+
+
+def _build_annotation_service() -> AnnotationService:
+    return AnnotationService(_open_repo())
 
 
 def get_hpo_service() -> HpoService:
     """Return a process-wide :class:`HpoService` (built on first use)."""
-    global _hpo_service, _annotation_service
+    global _hpo_service
     if _hpo_service is None:
-        _hpo_service, _annotation_service = _build_services()
+        _hpo_service = _build_hpo_service()
     return _hpo_service
 
 
 def get_annotation_service() -> AnnotationService:
     """Return a process-wide :class:`AnnotationService` (built on first use)."""
-    global _hpo_service, _annotation_service
+    global _annotation_service
     if _annotation_service is None:
-        _hpo_service, _annotation_service = _build_services()
+        _annotation_service = _build_annotation_service()
     return _annotation_service
 
 

@@ -41,6 +41,11 @@ def _more_steps(
     return steps
 
 
+def _looks_like_xref_curie(value: str) -> bool:
+    """Return True when value looks like an external CURIE (PREFIX:local, not HP:)."""
+    return ":" in value and not is_hpo_id(value)
+
+
 def default_error_next_commands(
     tool: str, error_code: str, arguments: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -55,6 +60,8 @@ def default_error_next_commands(
         "hpo_map_cross_ontology",
     ):
         value = str(arguments.get("term", "") or arguments.get("query", ""))
+        if value and _looks_like_xref_curie(value):
+            return [cmd("hpo_resolve_xref", xref_id=value), cmd("hpo_search_terms", query=value)]
         if value and not is_hpo_id(value):
             return [cmd("hpo_search_terms", query=value), cmd("get_server_capabilities")]
         if is_hpo_id(value):

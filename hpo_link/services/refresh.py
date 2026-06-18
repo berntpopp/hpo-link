@@ -42,11 +42,11 @@ def _as_settings(config: MondoDataConfig) -> ServerSettings:
 async def bootstrap_data(config: MondoDataConfig, logger: Any) -> None:
     """Ensure the index exists, building it in a worker thread. Non-fatal."""
     from hpo_link.ingest.builder import ensure_database
-    from hpo_link.mcp.service_adapters import reset_hpo_service
+    from hpo_link.mcp.service_adapters import reset_services
 
     try:
         path = await asyncio.to_thread(ensure_database, _as_settings(config))
-        reset_hpo_service()
+        reset_services()
         logger.info("mondo_data_ready", db_path=str(path))
     except (MondoError, DownloadError, OSError) as exc:
         logger.warning("mondo_data_bootstrap_failed", error=str(exc))
@@ -55,7 +55,7 @@ async def bootstrap_data(config: MondoDataConfig, logger: Any) -> None:
 async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
     """Conditionally rebuild the index on an interval; reset the service on change."""
     from hpo_link.ingest.builder import rebuild
-    from hpo_link.mcp.service_adapters import reset_hpo_service
+    from hpo_link.mcp.service_adapters import reset_services
 
     settings = _as_settings(config)
     interval = config.refresh_interval_hours * 3600
@@ -65,7 +65,7 @@ async def _refresh_loop(config: MondoDataConfig, logger: Any) -> None:
         try:
             result = await asyncio.to_thread(rebuild, settings, force=False)
             if result.changed:
-                reset_hpo_service()
+                reset_services()
                 version = result.meta.mondo_version if result.meta else None
                 logger.info("mondo_data_refreshed", mondo_version=version)
             else:
