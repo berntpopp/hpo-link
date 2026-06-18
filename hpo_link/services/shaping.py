@@ -21,7 +21,10 @@ SEARCH_SNIPPET_CHARS = 140
 _PRESERVE_KEYS: frozenset[str] = frozenset({"_meta", "success"})
 
 #: Identity anchors kept in ``minimal`` mode.
-_MINIMAL_KEEP: frozenset[str] = frozenset({"hpo_id", "name", "_meta"})
+#: hpo_version and recommended_citation are always included per spec.
+_MINIMAL_KEEP: frozenset[str] = frozenset(
+    {"hpo_id", "name", "hpo_version", "recommended_citation", "_meta"}
+)
 
 #: Identity/grounding anchors a sparse fieldset always retains.
 _FIELD_ANCHORS: frozenset[str] = frozenset(
@@ -70,9 +73,6 @@ def shape_term(record: dict[str, Any], mode: str) -> dict[str, Any]:
         out[key] = value
     return out
 
-
-# Keep legacy alias for any remaining callers.
-shape_disease = shape_term
 
 
 def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:

@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import structlog
-
 from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
 from hpo_link.exceptions import InvalidInputError, NotFoundError
@@ -24,8 +22,6 @@ from hpo_link.services.shaping import (
     shape_search_hit,
     shape_term,
 )
-
-log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 _MAX_LIMIT = 1000
 
@@ -187,7 +183,7 @@ class HpoService:
             InvalidInputError: when ``term`` is empty.
             NotFoundError: when nothing matches.
         """
-        return self._neighbours(term, kind="parents")
+        return self._neighbours(term, kind="parents", response_mode=response_mode)
 
     def term_children(
         self,
@@ -200,9 +196,12 @@ class HpoService:
             InvalidInputError: when ``term`` is empty.
             NotFoundError: when nothing matches.
         """
-        return self._neighbours(term, kind="children")
+        return self._neighbours(term, kind="children", response_mode=response_mode)
 
-    def _neighbours(self, term: str, *, kind: str) -> dict[str, Any]:
+    def _neighbours(
+        self, term: str, *, kind: str, response_mode: str = DEFAULT_RESPONSE_MODE
+    ) -> dict[str, Any]:
+        # response_mode is reserved for future projection of inner term rows
         hpo_id = self._resolve_to_id(term)
         record = self._repo.get_term(hpo_id)
         rows = self._repo.parents(hpo_id) if kind == "parents" else self._repo.children(hpo_id)
@@ -229,7 +228,9 @@ class HpoService:
             InvalidInputError: when ``term`` is empty.
             NotFoundError: when nothing matches.
         """
-        return self._closure(term, kind="ancestors", limit=limit, offset=offset)
+        return self._closure(
+            term, kind="ancestors", limit=limit, offset=offset, response_mode=response_mode
+        )
 
     def term_descendants(
         self,
@@ -244,9 +245,20 @@ class HpoService:
             InvalidInputError: when ``term`` is empty.
             NotFoundError: when nothing matches.
         """
-        return self._closure(term, kind="descendants", limit=limit, offset=offset)
+        return self._closure(
+            term, kind="descendants", limit=limit, offset=offset, response_mode=response_mode
+        )
 
-    def _closure(self, term: str, *, kind: str, limit: int, offset: int = 0) -> dict[str, Any]:
+    def _closure(
+        self,
+        term: str,
+        *,
+        kind: str,
+        limit: int,
+        offset: int = 0,
+        response_mode: str = DEFAULT_RESPONSE_MODE,
+    ) -> dict[str, Any]:
+        # response_mode is reserved for future projection of inner term rows
         hpo_id = self._resolve_to_id(term)
         record = self._repo.get_term(hpo_id)
         limit = max(1, min(limit, _MAX_LIMIT))

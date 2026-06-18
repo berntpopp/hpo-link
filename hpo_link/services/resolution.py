@@ -111,13 +111,13 @@ class Resolver:
         ``NotFoundError`` is raised. Assumes ``raw`` is already stripped and
         non-empty (the public entry points validate).
         """
-        # Step 1: canonical HP id
+        # Step 1: canonical HP id (primary lookup)
         hpo_id = normalize_hpo_id(raw)
         if hpo_id:
             record = self._repo.get_term(hpo_id)
-            if record is None:
-                raise NotFoundError(f"No HPO term for {hpo_id}.")
-            return "hpo_id", hpo_id
+            if record is not None:
+                return "hpo_id", hpo_id
+            # Not a primary id — may be an alt_id; fall through to label lookup.
 
         # Step 2: exact label / synonym
         candidates = self._repo.resolve_label(raw.upper())

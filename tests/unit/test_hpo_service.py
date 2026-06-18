@@ -65,6 +65,20 @@ def test_resolve_term_obsolete_flag(hpo_service: HpoService) -> None:
     assert result["obsolete"] is False
 
 
+def test_resolve_term_by_related_synonym(hpo_service: HpoService) -> None:
+    """resolve_term('Retinal abnormality') -> HP:0000479, match_type=related_synonym."""
+    result = hpo_service.resolve_term("Retinal abnormality")
+    assert result["hpo_id"] == "HP:0000479"
+    assert result["match_type"] == "related_synonym"
+
+
+def test_resolve_term_by_alt_id(hpo_service: HpoService) -> None:
+    """resolve_term('HP:0001098') -> HP:0000479, match_type=alt_id (HP:0001098 is an alt_id)."""
+    result = hpo_service.resolve_term("HP:0001098")
+    assert result["hpo_id"] == "HP:0000479"
+    assert result["match_type"] == "alt_id"
+
+
 # ---------------------------------------------------------------------------
 # search_terms
 # ---------------------------------------------------------------------------
@@ -127,6 +141,8 @@ def test_get_term_minimal_mode_has_hpo_id_and_name(hpo_service: HpoService) -> N
     result = hpo_service.get_term("HP:0000118", response_mode="minimal")
     assert result["hpo_id"] == "HP:0000118"
     assert result["name"] == "Phenotypic abnormality"
+    assert "hpo_version" in result, "minimal mode must include hpo_version per spec"
+    assert "recommended_citation" in result, "minimal mode must include recommended_citation per spec"
 
 
 def test_get_term_compact_has_required_fields(hpo_service: HpoService) -> None:
