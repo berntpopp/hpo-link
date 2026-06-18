@@ -1,4 +1,4 @@
-"""Shared annotated argument types for the Mondo MCP tools."""
+"""Shared annotated argument types for the HPO MCP tools."""
 
 from __future__ import annotations
 
@@ -14,36 +14,44 @@ ResponseMode = Annotated[
 QueryStr = Annotated[
     str,
     Field(
-        description="A disease label, synonym, a MONDO id (MONDO:0008426 or 0008426), or a "
-        "cross-reference CURIE (OMIM:182212, Orphanet:2462, DOID:...).",
-        examples=["Shprintzen-Goldberg syndrome", "MONDO:0008426", "OMIM:182212"],
+        description=(
+            "A phenotype label, synonym, HP id (HP:0000118), or external xref CURIE "
+            "(UMLS:C0036572, SNOMEDCT_US:193046000, ...)."
+        ),
+        examples=["Phenotypic abnormality", "HP:0000118", "Seizure"],
     ),
 ]
 
 TermStr = Annotated[
     str,
     Field(
-        description="A MONDO id (MONDO:0008426 or 0008426), a disease label/synonym, or an "
-        "external xref CURIE that resolves to a single Mondo term.",
-        examples=["MONDO:0008426", "Marfan syndrome", "OMIM:182212"],
+        description=(
+            "An HP id (HP:0000118), a phenotype label/synonym, or an external xref CURIE "
+            "that resolves to a single HPO term."
+        ),
+        examples=["HP:0000118", "Seizure", "UMLS:C0036572"],
     ),
 ]
 
 XrefIdStr = Annotated[
     str,
     Field(
-        description="An external cross-reference CURIE (prefix:local), e.g. OMIM/Orphanet/DOID, "
-        "to resolve back to the Mondo term(s) that map to it.",
-        examples=["OMIM:182212", "Orphanet:2462", "DOID:0050776"],
+        description=(
+            "An external cross-reference CURIE (prefix:local), e.g. UMLS/SNOMED/NCIT/MEDDRA, "
+            "to resolve back to the HPO term(s) that cross-reference it."
+        ),
+        examples=["UMLS:C0036572", "SNOMEDCT_US:193046000", "NCIT:C4890"],
     ),
 ]
 
 FieldsArg = Annotated[
     list[str] | None,
     Field(
-        description="Sparse fieldset: return ONLY these top-level keys (dot into a grouped "
-        "object, e.g. 'xrefs.OMIM'). Identity anchors (mondo_id, name, mondo_version) are "
-        "always included. Omit for the full payload.",
-        examples=[["xrefs.OMIM"], ["definition", "parents"]],
+        description=(
+            "Sparse fieldset: return ONLY these top-level keys (dot into a grouped "
+            "object, e.g. 'xrefs.UMLS'). Identity anchors (hpo_id, name, hpo_version) are "
+            "always included. Omit for the full payload."
+        ),
+        examples=[["synonyms", "definition"], ["parents"]],
     ),
 ]

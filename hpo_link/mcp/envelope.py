@@ -140,7 +140,7 @@ def _error_envelope(exc: BaseException, context: McpErrorContext) -> dict[str, A
     if isinstance(exc, AmbiguousQueryError) and exc.candidates:
         envelope["candidates"] = exc.candidates
         envelope["_meta"]["next_commands"] = [
-            cmd("get_disease", term=c["mondo_id"]) for c in exc.candidates[:3] if c.get("mondo_id")
+            cmd("hpo_get_term", term=c["hpo_id"]) for c in exc.candidates[:3] if c.get("hpo_id")
         ] or [cmd("get_server_capabilities")]
         return envelope
     if isinstance(exc, WithdrawnEntryError):
@@ -152,11 +152,11 @@ def _error_envelope(exc: BaseException, context: McpErrorContext) -> dict[str, A
     if isinstance(exc, NotFoundError) and exc.suggestions:
         envelope["candidates"] = exc.suggestions
         steps = [
-            cmd("get_disease", term=s["mondo_id"]) for s in exc.suggestions[:3] if s.get("mondo_id")
+            cmd("hpo_get_term", term=s["hpo_id"]) for s in exc.suggestions[:3] if s.get("hpo_id")
         ]
         query = str(context.arguments.get("term", "") or context.arguments.get("query", ""))
         if query:
-            steps.append(cmd("search_diseases", query=query))
+            steps.append(cmd("hpo_search_terms", query=query))
         envelope["_meta"]["next_commands"] = steps or [cmd("get_server_capabilities")]
         return envelope
     if context.fallback is not None:

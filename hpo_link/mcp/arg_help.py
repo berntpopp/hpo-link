@@ -16,10 +16,10 @@ from typing import Any
 # alias only ever resolves to a canonical name that is a *real* parameter of the
 # tool being called (see ``normalize_alias_args``), so a shared map is safe.
 ARG_ALIASES: dict[str, str] = {
-    "disease": "query",
+    "phenotype": "query",
     "term": "query",
-    "mondo": "query",
-    "mondo_id": "query",
+    "hp": "query",
+    "hpo_id": "query",
     "label": "query",
     "id": "xref_id",
     "curie": "xref_id",

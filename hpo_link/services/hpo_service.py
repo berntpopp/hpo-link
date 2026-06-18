@@ -13,7 +13,7 @@ from typing import Any
 
 from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
-from hpo_link.exceptions import InvalidInputError, NotFoundError
+from hpo_link.exceptions import DataUnavailableError, InvalidInputError, NotFoundError
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.resolution import Resolver
 from hpo_link.services.shaping import (
@@ -29,8 +29,8 @@ _MAX_LIMIT = 1000
 class HpoService:
     """Service layer over the read-only HPO SQLite index."""
 
-    def __init__(self, repo: HpoRepository) -> None:
-        """Bind the service to a pre-opened HPO repository."""
+    def __init__(self, repo: HpoRepository | None) -> None:
+        """Bind the service to a pre-opened HPO repository (or None when unavailable)."""
         self._repo = repo
         self._hpo_version: str | None = None
 
@@ -39,15 +39,26 @@ class HpoService:
     @property
     def _version(self) -> str | None:
         """Return the built HPO release string (lazily cached)."""
+        if self._repo is None:
+            return None
         if self._hpo_version is None:
             meta = self._repo.read_meta()
             self._hpo_version = meta.get("hpo_version") if meta else None
         return self._hpo_version
 
     @property
+    def _db(self) -> HpoRepository:
+        """Return the repository, raising DataUnavailableError when not loaded."""
+        if self._repo is None:
+            raise DataUnavailableError(
+                "HPO index not built. Run the ingest pipeline to build the SQLite index."
+            )
+        return self._repo
+
+    @property
     def _resolution(self) -> Resolver:
         """Resolver bound to the repository."""
-        return Resolver(self._repo)
+        return Resolver(self._db)
 
     # -- internal helpers ------------------------------------------------------
 
@@ -87,7 +98,7 @@ class HpoService:
                 "query must be a non-empty HP id, label, or xref.", field="query"
             )
         match_type, hpo_id = self._resolution.classify_resolution(raw)
-        record = self._repo.get_term(hpo_id)
+        record = self._db.get_term(hpo_id)
         if record is None:  # pragma: no cover - defensive
             raise NotFoundError(f"No HPO term for {hpo_id}.")
         out: dict[str, Any] = {
@@ -122,7 +133,7 @@ class HpoService:
             raise InvalidInputError("query must be a non-empty search string.", field="query")
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
-        hits, total = self._repo.search(
+        hits, total = self._db.search(
             raw, limit=limit, offset=offset, include_obsolete=include_obsolete
         )
         results = [shape_search_hit(hit, response_mode) for hit in hits]
@@ -148,11 +159,11 @@ class HpoService:
             NotFoundError: when nothing matches.
         """
         hpo_id = self._resolve_to_id(term)
-        record = self._repo.get_term(hpo_id)
+        record = self._db.get_term(hpo_id)
         if record is None:  # pragma: no cover - defensive
             raise NotFoundError(f"No HPO term for {hpo_id}.")
-        parents = self._repo.parents(hpo_id)
-        children = self._repo.children(hpo_id)
+        parents = self._db.parents(hpo_id)
+        children = self._db.children(hpo_id)
         payload: dict[str, Any] = {
             "hpo_id": hpo_id,
             "name": record["name"],
@@ -203,8 +214,8 @@ class HpoService:
     ) -> dict[str, Any]:
         # response_mode is reserved for future projection of inner term rows
         hpo_id = self._resolve_to_id(term)
-        record = self._repo.get_term(hpo_id)
-        rows = self._repo.parents(hpo_id) if kind == "parents" else self._repo.children(hpo_id)
+        record = self._db.get_term(hpo_id)
+        rows = self._db.parents(hpo_id) if kind == "parents" else self._db.children(hpo_id)
         return {
             "hpo_id": hpo_id,
             "name": record["name"] if record else None,
@@ -260,15 +271,15 @@ class HpoService:
     ) -> dict[str, Any]:
         # response_mode is reserved for future projection of inner term rows
         hpo_id = self._resolve_to_id(term)
-        record = self._repo.get_term(hpo_id)
+        record = self._db.get_term(hpo_id)
         limit = max(1, min(limit, _MAX_LIMIT))
         offset = max(0, offset)
         if kind == "ancestors":
-            rows = self._repo.ancestors(hpo_id, limit=limit, offset=offset)
-            total = self._repo.count_ancestors(hpo_id)
+            rows = self._db.ancestors(hpo_id, limit=limit, offset=offset)
+            total = self._db.count_ancestors(hpo_id)
         else:
-            rows = self._repo.descendants(hpo_id, limit=limit, offset=offset)
-            total = self._repo.count_descendants(hpo_id)
+            rows = self._db.descendants(hpo_id, limit=limit, offset=offset)
+            total = self._db.count_descendants(hpo_id)
         return {
             "hpo_id": hpo_id,
             "name": record["name"] if record else None,
@@ -298,8 +309,8 @@ class HpoService:
             )
         limit = max(1, min(limit, _MAX_LIMIT))
         offset = max(0, offset)
-        total = self._repo.count_hpo_for_xref(raw)
-        matches = self._repo.hpo_for_xref(raw, limit=limit, offset=offset)
+        total = self._db.count_hpo_for_xref(raw)
+        matches = self._db.hpo_for_xref(raw, limit=limit, offset=offset)
         results = [{"hpo_id": m["hpo_id"], "name": m["name"]} for m in matches]
         return {
             "xref_id": raw,
@@ -323,9 +334,9 @@ class HpoService:
             NotFoundError: when nothing matches.
         """
         hpo_id = self._resolve_to_id(term)
-        record = self._repo.get_term(hpo_id)
+        record = self._db.get_term(hpo_id)
         normalized = [p.strip().upper() for p in prefixes if p.strip()] if prefixes else None
-        xrefs = self._repo.xrefs_for(hpo_id, normalized)
+        xrefs = self._db.xrefs_for(hpo_id, normalized)
         mappings: dict[str, list[dict[str, Any]]] = {}
         for xref in xrefs:
             bucket = mappings.setdefault(xref["prefix"], [])

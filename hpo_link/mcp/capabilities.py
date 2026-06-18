@@ -1,4 +1,4 @@
-"""Capabilities payload and mondo:// discovery resources."""
+"""Capabilities payload and hpo:// discovery resources."""
 
 from __future__ import annotations
 
@@ -8,18 +8,11 @@ from typing import TYPE_CHECKING, Any
 
 from hpo_link import __version__
 from hpo_link.buildinfo import build_info
-from hpo_link.constants import (
-    MATCH_TYPES,
-    MAX_BATCH_ITEMS,
-    MONDO_LICENSE,
-    PREDICATE_RANK,
-    RECOMMENDED_CITATION,
-    XREF_PREFIXES,
-)
+from hpo_link.constants import HPO_LICENSE, RECOMMENDED_CITATION, XREF_PREFIXES
 from hpo_link.mcp.arg_help import tool_signature
 from hpo_link.mcp.resources import (
-    MONDO_REFERENCE_NOTES,
-    MONDO_USAGE_NOTES,
+    HPO_REFERENCE_NOTES,
+    HPO_USAGE_NOTES,
     RESEARCH_USE_NOTICE,
 )
 from hpo_link.mcp.service_adapters import get_hpo_service
@@ -42,18 +35,15 @@ ERROR_CODES: list[str] = [
 #: Frozen tool surface. capabilities.TOOLS must equal the registered tool set.
 TOOLS: list[str] = [
     "get_server_capabilities",
-    "get_diagnostics",
-    "resolve_disease",
-    "search_diseases",
-    "get_disease",
-    "get_disease_ancestors",
-    "get_disease_descendants",
-    "get_disease_parents",
-    "get_disease_children",
-    "resolve_xref",
-    "map_cross_ontology",
-    "resolve_disease_batch",
-    "get_disease_batch",
+    "hpo_resolve_term",
+    "hpo_search_terms",
+    "hpo_get_term",
+    "hpo_get_term_parents",
+    "hpo_get_term_children",
+    "hpo_get_term_ancestors",
+    "hpo_get_term_descendants",
+    "hpo_resolve_xref",
+    "hpo_map_cross_ontology",
 ]
 
 _SUMMARY_KEYS: tuple[str, ...] = (
@@ -61,7 +51,7 @@ _SUMMARY_KEYS: tuple[str, ...] = (
     "server_version",
     "build",
     "capabilities_version",
-    "mondo_version",
+    "hpo_version",
     "data_source",
     "research_use_only",
     "research_use_notice",
@@ -72,7 +62,6 @@ _SUMMARY_KEYS: tuple[str, ...] = (
     "response_modes",
     "default_response_mode",
     "recommended_workflows",
-    "match_types",
     "search_semantics",
     "truncation_contract",
     "error_codes",
@@ -80,22 +69,22 @@ _SUMMARY_KEYS: tuple[str, ...] = (
     "read_only",
 )
 
-
 #: capabilities_version is a content hash of the discovery CONTRACT, cached per
-#: Mondo release so the per-call envelope echo never re-derives it. ``build`` (the
+#: HPO release so the per-call envelope echo never re-derives it. ``build`` (the
 #: per-deploy git sha / timestamp) and the self-hash are excluded so unrelated
 #: redeploys do not churn the value -- a warm client diffs it to skip re-fetching.
 _HASH_EXCLUDE: frozenset[str] = frozenset({"build", "capabilities_version"})
 _VERSION_CACHE: dict[str, str] = {}
 
 
-def _mondo_version() -> str | None:
-    """Best-effort loaded Mondo release (never raises, never forces a build)."""
+def _hpo_version() -> str | None:
+    """Best-effort loaded HPO release (never raises, never forces a build)."""
     try:
-        diag = get_hpo_service().get_diagnostics()
-    except Exception:  # pragma: no cover - discovery must never fail on data
+        svc = get_hpo_service()
+        # Access private _version property; safe since None repo is guarded there.
+        return svc._version
+    except Exception:  # pragma: no cover
         return None
-    return diag.get("mondo_version")
 
 
 def _hash_contract(payload: dict[str, Any]) -> str:
@@ -107,7 +96,7 @@ def _hash_contract(payload: dict[str, Any]) -> str:
 
 def capabilities_version() -> str:
     """Cached content hash of the discovery contract (echoed in every ``_meta``)."""
-    key = _mondo_version() or "unbuilt"
+    key = _hpo_version() or "unbuilt"
     cached = _VERSION_CACHE.get(key)
     if cached is None:
         cached = build_capabilities()["capabilities_version"]
@@ -121,24 +110,22 @@ def build_capabilities() -> dict[str, Any]:
         "server": "hpo-link",
         "server_version": __version__,
         "build": build_info(),
-        "mondo_version": _mondo_version(),
+        "hpo_version": _hpo_version(),
         "data_source": (
-            "Local SQLite index built from the Mondo Disease Ontology OBO + SSSOM "
-            "releases (Monarch PURLs, mondo.monarchinitiative.org), refreshed by cron."
+            "Local SQLite index built from the Human Phenotype Ontology (HPO) OBO "
+            "and HPOA annotation releases (https://hpo.jax.org/), refreshed by cron."
         ),
         "research_use_only": True,
         "research_use_notice": RESEARCH_USE_NOTICE,
         "recommended_citation": RECOMMENDED_CITATION,
-        "license": MONDO_LICENSE,
+        "license": HPO_LICENSE,
         "tools": TOOLS,
         "tool_count": len(TOOLS),
         "response_modes": list(RESPONSE_MODES),
         "default_response_mode": DEFAULT_RESPONSE_MODE,
-        "match_types": list(MATCH_TYPES),
         "xref_prefixes": list(XREF_PREFIXES),
-        "predicate_rank": dict(PREDICATE_RANK),
         "provenance_policy": (
-            "Static provenance (research-use restriction, citation, Mondo release) "
+            "Static provenance (research-use restriction, citation, HPO release) "
             "is declared here and applies to ALL tool outputs; it is not repeated "
             "per-call to conserve context tokens."
         ),
@@ -163,59 +150,45 @@ def build_capabilities() -> dict[str, Any]:
             "mode (the caller has opted out of all non-essential _meta)."
         ),
         "field_projection": (
-            "get_disease and map_cross_ontology accept fields=[...] for a sparse "
-            "projection: top-level keys, or dotted into a group (e.g. 'xrefs.OMIM'). "
-            "Identity anchors (mondo_id, name, mondo_version) are always returned."
+            "hpo_get_term and hpo_map_cross_ontology accept fields=[...] for a sparse "
+            "projection: top-level keys, or dotted into a group (e.g. 'xrefs.UMLS'). "
+            "Identity anchors (hpo_id, name, hpo_version) are always returned."
         ),
         "id_normalization": (
-            "MONDO ids accepted/returned as both 'MONDO:0008426' and '0008426'; "
-            "external xrefs as CURIEs (OMIM:182212, Orphanet:2462, DOID:...)."
+            "HP ids accepted/returned as 'HP:0000118' (7-digit zero-padded); "
+            "external xrefs as CURIEs (UMLS:C0036572, SNOMEDCT_US:193046000, ...)."
         ),
         "search_semantics": (
-            "search_diseases is full-text search over disease name, synonyms, and "
-            "definition (relevance-ranked). To normalise a single label/id/xref to "
-            "its canonical term use resolve_disease; an ambiguous label returns "
+            "hpo_search_terms is full-text search over HPO term names, synonyms, and "
+            "definitions (relevance-ranked). To normalise a single label/id/xref to "
+            "its canonical term use hpo_resolve_term; an ambiguous label returns "
             "ambiguous_query with candidates."
         ),
         "truncation_contract": (
-            "List tools (search_diseases, get_disease_ancestors, "
-            "get_disease_descendants, resolve_xref) return total (matches before the "
-            "cap), returned (rows in this payload), limit (cap applied), offset (rows "
-            "skipped), and truncated (rows remain beyond this page). When truncated is "
-            "true, next_offset carries the offset for the next page and "
-            "_meta.next_commands includes a ready-to-call forward-page step (advance "
-            "offset, no rows re-sent) plus a widen step. Never infer completeness from "
-            "list length."
+            "List tools (hpo_search_terms, hpo_get_term_ancestors, "
+            "hpo_get_term_descendants, hpo_resolve_xref) return total (matches before "
+            "the cap), returned (rows in this payload), limit (cap applied), offset "
+            "(rows skipped), and truncated (rows remain beyond this page). When "
+            "truncated is true, next_offset carries the offset for the next page and "
+            "_meta.next_commands includes a ready-to-call forward-page step."
         ),
         "response_mode_semantics": (
             "standard/full return the complete record (structured synonyms with "
-            "scope/type/sources, and the full definition on search hits); compact "
-            "(default) drops null/empty values, collapses synonyms to plain strings, "
-            "and returns search hits as mondo_id + name + score + a short "
-            "definition_snippet; minimal keeps only mondo_id + name."
-        ),
-        "match_type_semantics": (
-            "resolve_disease.match_type is one of mondo_id | primary | exact_synonym "
-            "| related_synonym | fuzzy | xref (strongest first). 'fuzzy' is a "
-            "conservative FTS fallback returned only for a near-miss/acronym label "
-            "with no exact match; a near-tie returns ambiguous_query instead."
-        ),
-        "predicate_ranking": (
-            "Cross-references are ranked by mapping predicate, strongest first: "
-            "exactMatch > equivalentTo > closeMatch > narrowMatch > broadMatch > xref."
+            "scope/type, and the full definition on search hits); compact (default) "
+            "drops null/empty values and returns search hits as hpo_id + name + score "
+            "+ a short definition_snippet; minimal keeps only hpo_id + name."
         ),
         "recommended_workflows": [
-            "label/id/xref -> resolve_disease -> get_disease",
-            "term -> get_disease_parents / get_disease_children (immediate neighbours)",
-            "term -> get_disease_ancestors / get_disease_descendants (transitive closure)",
-            "external CURIE -> resolve_xref (xref -> Mondo)",
-            "term -> map_cross_ontology (Mondo -> OMIM/Orphanet/DOID/...)",
-            "many labels/ids -> resolve_disease_batch / get_disease_batch (one round trip)",
+            "label/id/xref -> hpo_resolve_term -> hpo_get_term",
+            "term -> hpo_get_term_parents / hpo_get_term_children (immediate neighbours)",
+            "term -> hpo_get_term_ancestors / hpo_get_term_descendants (transitive closure)",
+            "external CURIE -> hpo_resolve_xref (xref -> HPO)",
+            "term -> hpo_map_cross_ontology (HPO -> UMLS/SNOMED/NCIT/...)",
         ],
         "not_found_contract": (
             "An id/label/xref with no term returns error_code 'not_found'. An "
             "ambiguous label returns 'ambiguous_query' with candidates and "
-            "next_commands to each candidate. An obsolete MONDO id returns "
+            "next_commands to each candidate. An obsolete HP id returns "
             "'not_found' with replaced_by successors and next_commands to them."
         ),
         "error_codes": ERROR_CODES,
@@ -223,13 +196,12 @@ def build_capabilities() -> dict[str, Any]:
             "max_search_limit": 200,
             "max_closure_limit": 1000,
             "max_xref_limit": 1000,
-            "max_batch_items": MAX_BATCH_ITEMS,
             "default_search_limit": 25,
-            "default_closure_limit": 200,
-            "default_xref_limit": 50,
+            "default_closure_limit": 50,
+            "default_xref_limit": 25,
         },
         "read_only": True,
-        "notes": MONDO_REFERENCE_NOTES,
+        "notes": HPO_REFERENCE_NOTES,
     }
     payload["capabilities_version"] = _hash_contract(payload)
     return payload
@@ -272,36 +244,35 @@ def project_capabilities(
         summary["tool_signatures"] = tool_signatures
     summary["detail"] = "summary"
     summary["more"] = (
-        "Call get_server_capabilities(detail='full') or read mondo://capabilities "
-        "for the predicate ranking, xref prefixes, and reference notes; mondo://tools "
-        "lists call signatures."
+        "Call get_server_capabilities(detail='full') or read hpo://capabilities "
+        "for reference notes; hpo://tools lists call signatures."
     )
     return summary
 
 
 def register_capability_resources(mcp: FastMCP) -> None:
-    """Register the mondo:// resource family on a FastMCP instance."""
+    """Register the hpo:// resource family on a FastMCP instance."""
 
-    @mcp.resource("mondo://capabilities", mime_type="application/json")
+    @mcp.resource("hpo://capabilities", mime_type="application/json")
     def capabilities() -> str:
         return json.dumps(build_capabilities(), indent=2)
 
-    @mcp.resource("mondo://tools", mime_type="application/json")
+    @mcp.resource("hpo://tools", mime_type="application/json")
     async def tools_overview() -> str:
         return json.dumps(await build_tools_overview(mcp), indent=2)
 
-    @mcp.resource("mondo://usage", mime_type="text/plain")
+    @mcp.resource("hpo://usage", mime_type="text/plain")
     def usage() -> str:
-        return MONDO_USAGE_NOTES
+        return HPO_USAGE_NOTES
 
-    @mcp.resource("mondo://reference", mime_type="text/plain")
+    @mcp.resource("hpo://reference", mime_type="text/plain")
     def reference() -> str:
-        return MONDO_REFERENCE_NOTES
+        return HPO_REFERENCE_NOTES
 
-    @mcp.resource("mondo://research-use", mime_type="text/plain")
+    @mcp.resource("hpo://research-use", mime_type="text/plain")
     def research_use() -> str:
         return RESEARCH_USE_NOTICE
 
-    @mcp.resource("mondo://citation", mime_type="text/plain")
+    @mcp.resource("hpo://citation", mime_type="text/plain")
     def citation() -> str:
         return RECOMMENDED_CITATION

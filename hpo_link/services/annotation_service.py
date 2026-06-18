@@ -11,7 +11,7 @@ from typing import Any
 
 from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
-from hpo_link.exceptions import InvalidInputError, NotFoundError
+from hpo_link.exceptions import DataUnavailableError, InvalidInputError, NotFoundError
 from hpo_link.identifiers import normalize_disease_id, normalize_gene
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.resolution import Resolver
@@ -27,8 +27,8 @@ class AnnotationService:
     uniformly shaped ``dict`` that includes pagination fields and build provenance.
     """
 
-    def __init__(self, repo: HpoRepository) -> None:
-        """Bind the service to a pre-opened HPO repository."""
+    def __init__(self, repo: HpoRepository | None) -> None:
+        """Bind the service to a pre-opened HPO repository (or None when unavailable)."""
         self._repo = repo
         self._hpo_version: str | None = None
 
@@ -37,6 +37,8 @@ class AnnotationService:
     @property
     def _version(self) -> str | None:
         """Return the built HPO release string (lazily cached from meta table)."""
+        if self._repo is None:
+            return None
         if self._hpo_version is None:
             meta = self._repo.read_meta()
             self._hpo_version = meta.get("hpo_version") if meta else None
@@ -44,19 +46,28 @@ class AnnotationService:
 
     # -- internal helpers ------------------------------------------------------
 
+    @property
+    def _db(self) -> HpoRepository:
+        """Return the repository, raising DataUnavailableError when not loaded."""
+        if self._repo is None:
+            raise DataUnavailableError(
+                "HPO index not built. Run the ingest pipeline to build the SQLite index."
+            )
+        return self._repo
+
     def _resolve_to_id(self, term: str) -> str:
         """Resolve any HPO id / label / xref to a canonical HP id.
 
         Delegates to :class:`~hpo_link.services.resolution.Resolver` which
         raises :class:`~hpo_link.exceptions.NotFoundError` on a miss.
         """
-        return Resolver(self._repo).resolve_term_id(term)
+        return Resolver(self._db).resolve_term_id(term)
 
     def _expand_hpo_ids(self, hpo_id: str, include_descendants: bool) -> list[str]:
         """Return a sorted list of HPO ids: ``{hpo_id}`` optionally unioned with descendants."""
         ids: set[str] = {hpo_id}
         if include_descendants:
-            for d in self._repo.descendants(hpo_id, limit=_DESCENDANT_LIMIT, offset=0):
+            for d in self._db.descendants(hpo_id, limit=_DESCENDANT_LIMIT, offset=0):
                 ids.add(d["hpo_id"])
         return sorted(ids)
 
@@ -97,8 +108,8 @@ class AnnotationService:
             raise InvalidInputError("gene must be a non-empty gene symbol or NCBI id.", field="gene")
 
         kind, value = normalize_gene(gene)
-        rows = self._repo.phenotypes_for_gene(kind, value, limit, offset)
-        total = self._repo.count_phenotypes_for_gene(kind, value)
+        rows = self._db.phenotypes_for_gene(kind, value, limit, offset)
+        total = self._db.count_phenotypes_for_gene(kind, value)
         if total == 0:
             raise NotFoundError(
                 f"No HPO phenotype annotations found for gene '{gene}'.",
@@ -146,8 +157,8 @@ class AnnotationService:
         hpo_id = self._resolve_to_id(term)
         hpo_ids = self._expand_hpo_ids(hpo_id, include_descendants)
 
-        rows = self._repo.genes_for_phenotype(hpo_ids, limit, offset)
-        total = self._repo.count_genes_for_phenotype(hpo_ids)
+        rows = self._db.genes_for_phenotype(hpo_ids, limit, offset)
+        total = self._db.count_genes_for_phenotype(hpo_ids)
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
@@ -190,8 +201,8 @@ class AnnotationService:
             )
 
         disease_id = normalize_disease_id(disease_id)
-        rows = self._repo.phenotypes_for_disease(disease_id, limit, offset)
-        total = self._repo.count_phenotypes_for_disease(disease_id)
+        rows = self._db.phenotypes_for_disease(disease_id, limit, offset)
+        total = self._db.count_phenotypes_for_disease(disease_id)
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
@@ -232,8 +243,8 @@ class AnnotationService:
         hpo_id = self._resolve_to_id(term)
         hpo_ids = self._expand_hpo_ids(hpo_id, include_descendants)
 
-        rows = self._repo.diseases_for_phenotype(hpo_ids, limit, offset)
-        total = self._repo.count_diseases_for_phenotype(hpo_ids)
+        rows = self._db.diseases_for_phenotype(hpo_ids, limit, offset)
+        total = self._db.count_diseases_for_phenotype(hpo_ids)
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
@@ -276,8 +287,8 @@ class AnnotationService:
             )
 
         disease_id = normalize_disease_id(disease_id)
-        rows = self._repo.genes_for_disease(disease_id, limit, offset)
-        total = self._repo.count_genes_for_disease(disease_id)
+        rows = self._db.genes_for_disease(disease_id, limit, offset)
+        total = self._db.count_genes_for_disease(disease_id)
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
@@ -318,8 +329,8 @@ class AnnotationService:
             )
 
         kind, value = normalize_gene(gene)
-        rows = self._repo.diseases_for_gene(kind, value, limit, offset)
-        total = self._repo.count_diseases_for_gene(kind, value)
+        rows = self._db.diseases_for_gene(kind, value, limit, offset)
+        total = self._db.count_diseases_for_gene(kind, value)
         pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
 
         return {
