@@ -1,0 +1,165 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hpo-link"
+version = "0.1.0"
+description = "MCP/API server that grounds disease work in the Mondo Disease Ontology"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "hpo-link contributors", email = "bernt.popp@charite.de" },
+]
+keywords = [
+    "mondo", "disease", "ontology", "mcp", "api", "bioinformatics",
+    "cross-reference", "omim", "orphanet",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Typing :: Typed",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.46.0,<1.0.0",
+    "pydantic>=2.11.0,<3.0.0",
+    "pydantic-settings>=2.6.0,<3.0.0",
+    "httpx>=0.28.0,<1.0.0",
+    "structlog>=24.4.0,<27.0.0",
+    "orjson>=3.10.0,<4.0.0",
+    "rich>=13.0.0,<16.0.0",
+    "typer>=0.12.0,<1.0.0",
+    "mcp[cli]>=1.27.0,<2.0.0",
+    "fastmcp>=3.2.0,<4.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0,<10.0.0",
+    "pytest-asyncio>=0.24.0,<2.0.0",
+    "pytest-cov>=5.0.0,<8.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-xdist>=3.6.0,<4.0.0",
+    "respx>=0.21.0,<1.0.0",
+    "ruff>=0.8.0,<1.0.0",
+    "mypy>=1.13.0,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/berntpopp/hpo-link"
+Repository = "https://github.com/berntpopp/hpo-link"
+"Bug Tracker" = "https://github.com/berntpopp/hpo-link/issues"
+
+[project.scripts]
+hpo-link = "server:main"
+hpo-link-mcp = "mcp_server:main"
+hpo-link-data = "hpo_link.ingest.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hpo_link"]
+include = ["server.py", "mcp_server.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = [
+    "E", "W", "F", "I", "N", "UP", "B", "C4", "S", "T20", "SIM", "RUF",
+]
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "B008",   # FastAPI Query/Depends pattern
+    "S101",   # asserts ok in tests (also per-file-ignores)
+    "N812",   # single-letter module aliases
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["S101", "S104", "S110", "T20", "B011", "SIM105", "SIM108"]
+"mcp_server.py" = ["T20"]
+"scripts/**/*" = ["T20"]
+"hpo_link/ingest/cli.py" = ["T20"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+exclude = [
+    ".*site-packages.*",
+    ".*/\\.venv/.*",
+    "htmlcov/.*",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "structlog.*",
+    "mcp.*",
+    "fastmcp.*",
+    "fastapi.*",
+    "pydantic.*",
+    "pydantic_settings.*",
+    "httpx.*",
+    "uvicorn.*",
+    "typer.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests that hit the live Mondo / Monarch PURLs / bulk downloads",
+    "unit: marks tests as unit tests",
+    "mcp: marks tests that test MCP functionality",
+]
+
+[tool.coverage.run]
+source = ["hpo_link"]
+omit = ["tests/*", "*/.venv/*"]
+
+[tool.coverage.report]
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+
+[tool.coverage.html]
+directory = "htmlcov"
