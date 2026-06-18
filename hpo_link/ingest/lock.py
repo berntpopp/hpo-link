@@ -56,7 +56,7 @@ def build_lock(data_dir: Path, *, timeout: int = 600, poll_interval: float = 0.5
             except BlockingIOError as exc:
                 if time.monotonic() >= deadline:
                     raise DataUnavailableError(
-                        f"Timed out after {timeout}s waiting for the Mondo build lock; "
+                        f"Timed out after {timeout}s waiting for the HPO build lock; "
                         "another build is in progress."
                     ) from exc
                 time.sleep(poll_interval)
