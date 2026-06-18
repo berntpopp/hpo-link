@@ -1,11 +1,11 @@
 """Configuration management for hpo-link.
 
-Settings load from environment variables with the ``MONDO_LINK_`` prefix (nested
-models use ``__``, e.g. ``MONDO_LINK_DATA__DB_FILENAME=mondo.sqlite``) and an
+Settings load from environment variables with the ``HPO_LINK_`` prefix (nested
+models use ``__``, e.g. ``HPO_LINK_DATA__DB_FILENAME=hpo.sqlite``) and an
 optional ``.env`` file.
 
-hpo-link has no live API: the local Mondo index, built from the OBO + SSSOM
-releases served on the Monarch PURLs, is the only data source.
+hpo-link has no live API: the local HPO index, built from the hp.json + HPOA
+releases served on the OBO PURLs, is the only data source.
 """
 
 from __future__ import annotations
@@ -22,56 +22,49 @@ from hpo_link import __version__
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_DATA_DIR = _PROJECT_ROOT / "data"
 
-#: Monarch publishes the Mondo OBO release at this PURL.
-DEFAULT_OBO_URL = "http://purl.obolibrary.org/obo/mondo.obo"
 
-#: Mondo publishes the consolidated SSSOM cross-ontology mappings in-repo. (The
-#: ``obo/mondo.sssom.tsv`` PURL 404s; the OBO already carries dbxrefs, so SSSOM
-#: is treated as a supplementary, optional source — see ``ingest.downloader``.)
-DEFAULT_SSSOM_URL = (
-    "https://raw.githubusercontent.com/monarch-initiative/mondo/master/"
-    "src/ontology/mappings/mondo.sssom.tsv"
-)
-
-
-class MondoDataConfig(BaseModel):
-    """Local data store: Mondo OBO + SSSOM releases -> built SQLite index."""
+class HPODataConfig(BaseModel):
+    """Local data store: HPO hp.json + HPOA releases -> built SQLite index."""
 
     data_dir: Path = Field(
         default=_DEFAULT_DATA_DIR,
         description="Directory holding the built SQLite database and download cache.",
     )
     db_filename: str = Field(
-        default="mondo.sqlite",
+        default="hpo.sqlite",
         description="SQLite database filename within data_dir.",
     )
-    obo_url: str = Field(
-        default=DEFAULT_OBO_URL,
-        description="URL of the Mondo OBO release (Monarch PURL).",
-    )
-    sssom_url: str = Field(
-        default=DEFAULT_SSSOM_URL,
-        description="URL of the Mondo SSSOM cross-ontology mapping release (Monarch PURL).",
+    ontology_edition: Literal["hp.json", "hp-base.json"] = Field(
+        default="hp.json",
+        description="HPO ontology edition filename to download.",
     )
     download_timeout: int = Field(
         default=300,
         ge=5,
         le=1800,
-        description="HTTP timeout (seconds) for downloading a Mondo release file.",
+        description="HTTP timeout (seconds) for downloading an HPO release file.",
     )
     user_agent: str = Field(
         default=f"hpo-link/{__version__} (+https://github.com/berntpopp/hpo-link)",
-        description="User-Agent sent to the Monarch PURLs.",
+        description="User-Agent sent to the OBO PURLs.",
     )
     auto_bootstrap: bool = Field(
         default=True,
-        description="Build the database on first use by downloading Mondo if absent.",
+        description="Build the database on first use by downloading HPO if absent.",
+    )
+    prefer_prebuilt: bool = Field(
+        default=True,
+        description="Prefer a prebuilt SQLite database over building from source.",
+    )
+    prebuilt_db_url: str | None = Field(
+        default=None,
+        description="URL of a prebuilt SQLite database to download (optional).",
     )
     refresh_enabled: bool = Field(
         default=False,
         description=(
             "Run an in-process scheduler (unified/http transports only) that "
-            "conditionally refreshes the database on an interval. Default OFF: Mondo "
+            "conditionally refreshes the database on an interval. Default OFF: HPO "
             "releases are best refreshed by an external cron job (see docs/deployment.md)."
         ),
     )
@@ -80,7 +73,7 @@ class MondoDataConfig(BaseModel):
         ge=1.0,
         le=720.0,
         description=(
-            "Hours between conditional refresh checks (when refresh_enabled). Mondo "
+            "Hours between conditional refresh checks (when refresh_enabled). HPO "
             "releases update roughly weekly; a weekly check is cheap because unchanged "
             "files 304."
         ),
@@ -129,7 +122,7 @@ class ServerSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
-        env_prefix="MONDO_LINK_",
+        env_prefix="HPO_LINK_",
         env_nested_delimiter="__",
     )
 
@@ -157,8 +150,8 @@ class ServerSettings(BaseSettings):
         description="Log format.",
     )
 
-    data: MondoDataConfig = Field(
-        default_factory=MondoDataConfig,
+    data: HPODataConfig = Field(
+        default_factory=HPODataConfig,
         description="Local data store configuration.",
     )
 
@@ -180,6 +173,6 @@ class ServerSettings(BaseSettings):
 settings = ServerSettings()
 
 
-def get_data_config() -> MondoDataConfig:
+def get_data_config() -> HPODataConfig:
     """Return the active data-store configuration (used by the ingest CLI)."""
     return settings.data
