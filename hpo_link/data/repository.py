@@ -1,8 +1,4 @@
-"""Read-only SQLite repository for the built Mondo index (CONTRACT BARRIER).
-
-Wave 0 freezes the constructor (read-only connection, ``DataUnavailableError`` on
-a missing file) and the method-signature surface downstream depends on. Wave 1B
-fills the query bodies against the frozen ``schema.sql``.
+"""Read-only SQLite repository for the built HPO index.
 
 All indexes are pre-computed by the builder, so this layer only reads rows and
 decodes the JSON list columns. FTS5 queries are sanitized so raw user text never
@@ -17,28 +13,21 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from hpo_link.constants import NON_HUMAN_ANIMAL_ROOT, PREDICATE_RANK
+from hpo_link.data.annotations_repository import AnnotationsMixin
 from hpo_link.exceptions import DataUnavailableError
 
 _FTS_TOKEN_RE = re.compile(r"[^\s\"]+")
 
-#: Stable ``CASE`` expression ranking predicates for ORDER BY (lower = stronger).
-_PREDICATE_CASE = (
-    "CASE x.predicate "
-    + " ".join(f"WHEN '{pred}' THEN {rank}" for pred, rank in PREDICATE_RANK.items())
-    + " ELSE 99 END"
-)
 
-
-class MondoRepository:
-    """Read-only access to the built Mondo SQLite index."""
+class HpoRepository(AnnotationsMixin):
+    """Read-only access to the built HPO SQLite index."""
 
     def __init__(self, db_path: Path | str) -> None:
-        """Open a read-only connection to the Mondo database."""
+        """Open a read-only connection to the HPO database."""
         self._path = Path(db_path)
         if not self._path.exists():
             raise DataUnavailableError(
-                f"Mondo database not found at {self._path}. Build it with `hpo-link-data build`."
+                f"HPO database not found at {self._path}. Build it with `hpo-link-data build`."
             )
         try:
             self._conn = sqlite3.connect(
@@ -48,10 +37,9 @@ class MondoRepository:
             )
         except sqlite3.Error as exc:  # pragma: no cover - rare OS-level failure
             raise DataUnavailableError(
-                f"Cannot open Mondo database at {self._path}: {exc}."
+                f"Cannot open HPO database at {self._path}: {exc}."
             ) from exc
         self._conn.row_factory = sqlite3.Row
-        self._xref_label_col: bool | None = None
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
@@ -80,17 +68,18 @@ class MondoRepository:
     @staticmethod
     def _term_from_row(row: sqlite3.Row) -> dict[str, Any]:
         """Decode a ``term`` row, parsing the JSON list/object columns."""
-        record: dict[str, Any] = {
-            "mondo_id": row["mondo_id"],
+        return {
+            "hpo_id": row["hpo_id"],
             "name": row["name"],
             "definition": row["definition"],
             "is_obsolete": bool(row["is_obsolete"]),
             "replaced_by": row["replaced_by"],
             "consider": _json_or(row["consider"], []),
+            "alt_ids": _json_or(row["alt_ids"], []),
             "synonyms": _json_or(row["synonyms"], []),
             "subsets": _json_or(row["subsets"], []),
+            "comments": _json_or(row["comments"], []),
         }
-        return record
 
     # -- provenance ------------------------------------------------------------
 
@@ -100,24 +89,26 @@ class MondoRepository:
             row = self._conn.execute("SELECT * FROM meta WHERE id = 1").fetchone()
         except sqlite3.Error as exc:
             raise DataUnavailableError(
-                f"Mondo database at {self._path} is unreadable: {exc}."
+                f"HPO database at {self._path} is unreadable: {exc}."
             ) from exc
         return dict(row) if row is not None else {}
 
     # -- term records ----------------------------------------------------------
 
-    def get_term(self, mondo_id: str) -> dict[str, Any] | None:
-        """Return the ``term`` row for a canonical MONDO id, or ``None``."""
-        row = self._conn.execute("SELECT * FROM term WHERE mondo_id = ?", (mondo_id,)).fetchone()
+    def get_term(self, hpo_id: str) -> dict[str, Any] | None:
+        """Return the ``term`` row for a canonical HP id, or ``None``."""
+        row = self._conn.execute(
+            "SELECT * FROM term WHERE hpo_id = ?", (hpo_id,)
+        ).fetchone()
         return self._term_from_row(row) if row is not None else None
 
     def resolve_label(self, label: str) -> list[dict[str, Any]]:
-        """Resolve a label/synonym to candidate ``(mondo_id, label_type)`` rows."""
+        """Resolve a label/synonym to candidate ``(hpo_id, label_type)`` rows."""
         rows = self._conn.execute(
-            "SELECT mondo_id, label_type FROM term_lookup WHERE lookup_label = ?",
+            "SELECT hpo_id, label_type FROM term_lookup WHERE lookup_label = ?",
             (label.upper(),),
         ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "label_type": r["label_type"]} for r in rows]
+        return [{"hpo_id": r["hpo_id"], "label_type": r["label_type"]} for r in rows]
 
     def search(
         self, query: str, *, limit: int, include_obsolete: bool, offset: int = 0
@@ -128,12 +119,13 @@ class MondoRepository:
         if not include_obsolete:
             where += " AND t.is_obsolete = 0"
         sql = (
-            "SELECT f.mondo_id, t.name, t.definition, bm25(term_fts) AS score "  # noqa: S608
-            "FROM term_fts f JOIN term t ON t.mondo_id = f.mondo_id "
+            "SELECT f.hpo_id, t.name, t.definition, bm25(term_fts) AS score "  # noqa: S608
+            "FROM term_fts f JOIN term t ON t.hpo_id = f.hpo_id "
             f"WHERE {where} ORDER BY score LIMIT ? OFFSET ?"
         )
         count_sql = (
-            "SELECT COUNT(*) AS n FROM term_fts f JOIN term t ON t.mondo_id = f.mondo_id "  # noqa: S608
+            "SELECT COUNT(*) AS n FROM term_fts f "  # noqa: S608
+            "JOIN term t ON t.hpo_id = f.hpo_id "
             f"WHERE {where}"
         )
         try:
@@ -145,7 +137,7 @@ class MondoRepository:
             )
         hits = [
             {
-                "mondo_id": r["mondo_id"],
+                "hpo_id": r["hpo_id"],
                 "name": r["name"],
                 "definition": r["definition"],
                 "score": round(-r["score"], 4) if r["score"] else 0.0,
@@ -163,7 +155,7 @@ class MondoRepository:
         if not include_obsolete:
             where += " AND is_obsolete = 0"
         rows = self._conn.execute(
-            f"SELECT mondo_id, name, definition FROM term WHERE {where} "  # noqa: S608
+            f"SELECT hpo_id, name, definition FROM term WHERE {where} "  # noqa: S608
             "ORDER BY name LIMIT ? OFFSET ?",
             (pattern, limit, offset),
         ).fetchall()
@@ -175,7 +167,7 @@ class MondoRepository:
         )
         hits = [
             {
-                "mondo_id": r["mondo_id"],
+                "hpo_id": r["hpo_id"],
                 "name": r["name"],
                 "definition": r["definition"],
                 "score": 0.0,
@@ -186,169 +178,110 @@ class MondoRepository:
 
     # -- hierarchy -------------------------------------------------------------
 
-    def parents(self, mondo_id: str) -> list[dict[str, Any]]:
-        """Immediate parent terms of ``mondo_id``."""
+    def parents(self, hpo_id: str) -> list[dict[str, Any]]:
+        """Immediate parent terms of ``hpo_id``."""
         rows = self._conn.execute(
-            "SELECT p.parent_id AS mondo_id, t.name FROM mondo_parent p "
-            "LEFT JOIN term t ON t.mondo_id = p.parent_id WHERE p.mondo_id = ? ORDER BY t.name",
-            (mondo_id,),
+            "SELECT p.parent_id AS hpo_id, t.name FROM hpo_parent p "
+            "LEFT JOIN term t ON t.hpo_id = p.parent_id WHERE p.hpo_id = ? ORDER BY t.name",
+            (hpo_id,),
         ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "name": r["name"]} for r in rows]
+        return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
-    def children(self, mondo_id: str) -> list[dict[str, Any]]:
-        """Immediate child terms of ``mondo_id``."""
+    def children(self, hpo_id: str) -> list[dict[str, Any]]:
+        """Immediate child terms of ``hpo_id``."""
         rows = self._conn.execute(
-            "SELECT p.mondo_id AS mondo_id, t.name FROM mondo_parent p "
-            "LEFT JOIN term t ON t.mondo_id = p.mondo_id WHERE p.parent_id = ? ORDER BY t.name",
-            (mondo_id,),
+            "SELECT p.hpo_id AS hpo_id, t.name FROM hpo_parent p "
+            "LEFT JOIN term t ON t.hpo_id = p.hpo_id WHERE p.parent_id = ? ORDER BY t.name",
+            (hpo_id,),
         ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "name": r["name"]} for r in rows]
+        return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
-    def ancestors(self, mondo_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
-        """Transitive ancestors of ``mondo_id`` (via the closure table)."""
+    def ancestors(self, hpo_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
+        """Transitive ancestors of ``hpo_id`` (via the closure table)."""
         rows = self._conn.execute(
-            "SELECT t.mondo_id, t.name FROM mondo_closure c JOIN term t ON t.mondo_id = c.ancestor_id "
-            "WHERE c.mondo_id = ? AND c.ancestor_id != ? ORDER BY t.name LIMIT ? OFFSET ?",
-            (mondo_id, mondo_id, limit, offset),
+            "SELECT t.hpo_id, t.name FROM hpo_closure c "
+            "JOIN term t ON t.hpo_id = c.ancestor_id "
+            "WHERE c.hpo_id = ? AND c.ancestor_id != ? ORDER BY t.name LIMIT ? OFFSET ?",
+            (hpo_id, hpo_id, limit, offset),
         ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "name": r["name"]} for r in rows]
+        return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
-    def descendants(self, mondo_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
-        """Transitive descendants of ``mondo_id`` (via the closure table)."""
+    def descendants(self, hpo_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
+        """Transitive descendants of ``hpo_id`` (via the closure table)."""
         rows = self._conn.execute(
-            "SELECT t.mondo_id, t.name FROM mondo_closure c JOIN term t ON t.mondo_id = c.mondo_id "
-            "WHERE c.ancestor_id = ? AND c.mondo_id != ? ORDER BY t.name LIMIT ? OFFSET ?",
-            (mondo_id, mondo_id, limit, offset),
+            "SELECT t.hpo_id, t.name FROM hpo_closure c "
+            "JOIN term t ON t.hpo_id = c.hpo_id "
+            "WHERE c.ancestor_id = ? AND c.hpo_id != ? ORDER BY t.name LIMIT ? OFFSET ?",
+            (hpo_id, hpo_id, limit, offset),
         ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "name": r["name"]} for r in rows]
+        return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
-    def count_ancestors(self, mondo_id: str) -> int:
-        """Total transitive ancestors of ``mondo_id`` (excluding self)."""
+    def count_ancestors(self, hpo_id: str) -> int:
+        """Total transitive ancestors of ``hpo_id`` (excluding self)."""
         return int(
             self._conn.execute(
-                "SELECT COUNT(*) AS n FROM mondo_closure WHERE mondo_id = ? AND ancestor_id != ?",
-                (mondo_id, mondo_id),
+                "SELECT COUNT(*) AS n FROM hpo_closure WHERE hpo_id = ? AND ancestor_id != ?",
+                (hpo_id, hpo_id),
             ).fetchone()["n"]
         )
 
-    def count_descendants(self, mondo_id: str) -> int:
-        """Total transitive descendants of ``mondo_id`` (excluding self)."""
+    def count_descendants(self, hpo_id: str) -> int:
+        """Total transitive descendants of ``hpo_id`` (excluding self)."""
         return int(
             self._conn.execute(
-                "SELECT COUNT(*) AS n FROM mondo_closure WHERE ancestor_id = ? AND mondo_id != ?",
-                (mondo_id, mondo_id),
+                "SELECT COUNT(*) AS n FROM hpo_closure WHERE ancestor_id = ? AND hpo_id != ?",
+                (hpo_id, hpo_id),
             ).fetchone()["n"]
         )
-
-    def top_groupings(self, mondo_id: str) -> list[dict[str, Any]]:
-        """Top-level disease groupings that are ancestors of ``mondo_id``."""
-        rows = self._conn.execute(
-            "SELECT g.mondo_id, g.name FROM mondo_top_grouping g "
-            "JOIN mondo_closure c ON c.ancestor_id = g.mondo_id "
-            "WHERE c.mondo_id = ? ORDER BY g.name",
-            (mondo_id,),
-        ).fetchall()
-        return [{"mondo_id": r["mondo_id"], "name": r["name"]} for r in rows]
-
-    def non_human_animal_ids(self, mondo_ids: list[str]) -> set[str]:
-        """Subset of ``mondo_ids`` that are the non-human-animal disease root or descend
-        from it (Mondo's veterinary branch). One closure query for the whole batch.
-
-        Relies on the closure carrying self-pairs (so the root itself is caught). Used
-        by the resolver's human-disease prior to demote livestock terms in fuzzy resolve.
-        """
-        ids = [m for m in mondo_ids if m]
-        if not ids:
-            return set()
-        placeholders = ", ".join("?" for _ in ids)
-        rows = self._conn.execute(
-            "SELECT DISTINCT c.mondo_id FROM mondo_closure c "  # noqa: S608
-            f"WHERE c.ancestor_id = ? AND c.mondo_id IN ({placeholders})",
-            (NON_HUMAN_ANIMAL_ROOT, *ids),
-        ).fetchall()
-        return {r["mondo_id"] for r in rows}
 
     # -- cross-references ------------------------------------------------------
 
-    def _has_xref_label(self) -> bool:
-        """Whether the xref table carries ``object_label`` (absent on a pre-v2 index).
-
-        Cached so an old volume (built before the column existed) keeps working --
-        the query substitutes ``NULL`` rather than raising ``no such column``.
-        """
-        if self._xref_label_col is None:
-            cols = {row["name"] for row in self._conn.execute("PRAGMA table_info(xref)")}
-            self._xref_label_col = "object_label" in cols
-        return self._xref_label_col
-
-    def xrefs_for(self, mondo_id: str, prefixes: list[str] | None = None) -> list[dict[str, Any]]:
-        """Cross-references for ``mondo_id``, optionally filtered by prefix.
-
-        ``object_label`` is the target term's human-readable name (SSSOM only); it is
-        ``None`` for OBO xrefs and for any index built before the column existed.
-        """
-        label_expr = "x.object_label" if self._has_xref_label() else "NULL"
+    def xrefs_for(
+        self, hpo_id: str, prefixes: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Cross-references for ``hpo_id``, optionally filtered by prefix."""
         sql = (
-            f"SELECT x.prefix, x.object_id, x.object_id_upper, x.predicate, x.origin, "  # noqa: S608
-            f"x.source, {label_expr} AS object_label FROM xref x WHERE x.mondo_id = ?"
+            "SELECT x.prefix, x.object_id, x.origin FROM xref x "
+            "WHERE x.hpo_id = ?"
         )
-        params: list[Any] = [mondo_id]
+        params: list[Any] = [hpo_id]
         if prefixes:
             placeholders = ", ".join("?" for _ in prefixes)
             sql += f" AND x.prefix IN ({placeholders})"
             params.extend(p.upper() for p in prefixes)
-        sql += f" ORDER BY {_PREDICATE_CASE}, x.prefix, x.object_id"
+        sql += " ORDER BY x.prefix, x.object_id"
         rows = self._conn.execute(sql, tuple(params)).fetchall()
         return [
-            {
-                "prefix": r["prefix"],
-                "object_id": r["object_id"],
-                "predicate": r["predicate"],
-                "origin": r["origin"],
-                "source": r["source"],
-                "object_label": r["object_label"],
-            }
+            {"prefix": r["prefix"], "object_id": r["object_id"], "origin": r["origin"]}
             for r in rows
         ]
 
-    def mondo_for_xref(self, xref_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
-        """MONDO terms cross-referencing ``xref_id`` -- ONE row per term (strongest predicate).
+    def hpo_for_xref(
+        self, xref_id: str, *, limit: int, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        """HPO terms cross-referencing ``xref_id`` (one row per distinct HP id).
 
-        A term can map to the same external id via several rows (e.g. an OBO xref plus
-        an SSSOM mapping, or two predicates). ``GROUP BY mondo_id`` with a single
-        ``MIN(predicate_rank)`` keeps each term once, and -- per SQLite's bare-column
-        rule -- the predicate/origin/object_id come from that strongest-predicate row.
-        Collapsing here keeps the row count equal to :meth:`count_mondo_for_xref`, so the
-        truncation contract holds (``returned <= total``) and offset-paging advances by
-        whole terms rather than by mapping rows.
+        ``xref_id`` may be a bare object id (``C0151888``) or a CURIE
+        (``UMLS:C0151888``); the prefix is stripped before matching because
+        the ``xref`` table stores only the id part in ``object_id_upper``.
         """
+        obj_upper = _xref_object_upper(xref_id)
         rows = self._conn.execute(
-            "SELECT x.mondo_id, t.name, x.prefix, x.object_id, x.predicate, x.origin, "  # noqa: S608
-            f"MIN({_PREDICATE_CASE}) AS prank "
-            "FROM xref x JOIN term t ON t.mondo_id = x.mondo_id "
-            "WHERE x.object_id_upper = ? "
-            "GROUP BY x.mondo_id ORDER BY prank, t.name LIMIT ? OFFSET ?",
-            (xref_id.upper(), limit, offset),
+            "SELECT DISTINCT x.hpo_id, t.name FROM xref x "
+            "JOIN term t ON t.hpo_id = x.hpo_id "
+            "WHERE x.object_id_upper = ? ORDER BY t.name LIMIT ? OFFSET ?",
+            (obj_upper, limit, offset),
         ).fetchall()
-        return [
-            {
-                "mondo_id": r["mondo_id"],
-                "name": r["name"],
-                "prefix": r["prefix"],
-                "object_id": r["object_id"],
-                "predicate": r["predicate"],
-                "origin": r["origin"],
-            }
-            for r in rows
-        ]
+        return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
-    def count_mondo_for_xref(self, xref_id: str) -> int:
-        """Total distinct MONDO terms mapping to ``xref_id`` (for pagination totals)."""
+    def count_hpo_for_xref(self, xref_id: str) -> int:
+        """Total distinct HPO terms mapping to ``xref_id`` (for pagination totals)."""
+        obj_upper = _xref_object_upper(xref_id)
         return int(
             self._conn.execute(
                 "SELECT COUNT(*) AS n FROM "
-                "(SELECT DISTINCT x.mondo_id FROM xref x WHERE x.object_id_upper = ?)",
-                (xref_id.upper(),),
+                "(SELECT DISTINCT x.hpo_id FROM xref x WHERE x.object_id_upper = ?)",
+                (obj_upper,),
             ).fetchone()["n"]
         )
 
@@ -362,12 +295,13 @@ class MondoRepository:
                 ).fetchone()["n"]
             ),
             "xrefs": self._count("xref"),
-            "closure": self._count("mondo_closure"),
-            "top_groupings": self._count("mondo_top_grouping"),
+            "closure": self._count("hpo_closure"),
         }
 
     def _count(self, table: str) -> int:
-        return int(self._conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"])  # noqa: S608
+        return int(
+            self._conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]  # noqa: S608
+        )
 
 
 def _json_or(value: Any, default: Any) -> Any:
@@ -378,3 +312,17 @@ def _json_or(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):  # pragma: no cover - defensive
         return default
+
+
+def _xref_object_upper(xref_id: str) -> str:
+    """Return the uppercased object-id portion of a CURIE or bare id.
+
+    The ``xref`` table stores only the object id part in ``object_id_upper``
+    (e.g. ``"C0151888"`` for ``UMLS:C0151888``).  This helper strips any
+    ``PREFIX:`` from the input before uppercasing so callers can pass either
+    a bare id or a full CURIE.
+    """
+    if ":" in xref_id:
+        _, obj = xref_id.split(":", 1)
+        return obj.upper()
+    return xref_id.upper()

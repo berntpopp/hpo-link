@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from hpo_link.data.repository import HpoRepository
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -42,3 +46,13 @@ def built_test_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     config = ServerSettings.model_construct(data=data_cfg)
     build_database(config, paths=paths, validators={})
     return data_dir / "hpo.sqlite"
+
+
+@pytest.fixture(scope="session")
+def repo(built_test_db: Path) -> HpoRepository:  # type: ignore[return]
+    """Open a read-only HpoRepository over the fixture DB."""
+    from hpo_link.data.repository import HpoRepository
+
+    r = HpoRepository(built_test_db)
+    yield r  # type: ignore[misc]
+    r.close()
