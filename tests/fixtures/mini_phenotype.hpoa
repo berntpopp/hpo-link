@@ -1,0 +1,8 @@
+#description: HPO Annotation File
+#date: 2026-06-06
+#tracker: https://github.com/obophenotype/human-phenotype-ontology/issues
+#version: 2026-06-06
+database_id	disease_name	qualifier	hpo_id	reference	evidence	onset	frequency	sex	modifier	aspect	biocuration
+OMIM:106210	Aniridia		HP:0000479	PMID:1234567	PCS		3/5		HP:0000005	P	HPO:probinson[2021-02-15]
+OMIM:106210	Aniridia	NOT	HP:0000118	PMID:9876543	TAS		HP:0040283		HP:0000005	P	HPO:probinson[2021-02-15]
+OMIM:146510	Acrocallosal syndrome		HP:0000478	PMID:5555555	TAS		25%		HP:0000005	P	HPO:probinson[2021-02-15]
