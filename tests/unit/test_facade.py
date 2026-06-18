@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
-
 EXPECTED_TOOLS = {
     "get_server_capabilities",
     "hpo_resolve_term",
