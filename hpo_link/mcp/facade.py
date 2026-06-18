@@ -10,6 +10,7 @@ from hpo_link.mcp.resources import HPO_SERVER_INSTRUCTIONS
 from hpo_link.mcp.tools import (
     register_discovery_tools,
     register_hierarchy_tools,
+    register_ontology_tools,
     register_xref_tools,
 )
 
@@ -23,7 +24,7 @@ def create_hpo_mcp() -> FastMCP:
     )
 
     register_discovery_tools(mcp)
-    # NOTE: register_ontology_tools(mcp) is added in Task 5
+    register_ontology_tools(mcp)
     register_hierarchy_tools(mcp)
     register_xref_tools(mcp)
     # NOTE: Annotation tools (Part 2) are registered here after this comment.
