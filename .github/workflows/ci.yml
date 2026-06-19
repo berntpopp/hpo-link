@@ -15,4 +15,4 @@ jobs:
       - run: uv run ruff check hpo_link tests server.py mcp_server.py scripts
       - run: uv run python scripts/check_file_size.py
       - run: uv run mypy hpo_link server.py mcp_server.py
-      - run: uv run pytest tests -q -m "not integration"
+      - run: uv run python -m pytest tests -q -m "not integration"

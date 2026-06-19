@@ -46,19 +46,19 @@ typecheck: ## Type check package
 	uv run mypy hpo_link server.py mcp_server.py
 
 test: ## Run unit tests quickly
-	uv run pytest tests -q -m "not integration"
+	uv run python -m pytest tests -q -m "not integration"
 
 test-fast: ## Run unit tests in parallel
-	uv run pytest tests -q -m "not integration" -n auto
+	uv run python -m pytest tests -q -m "not integration" -n auto
 
 test-unit: ## Run unit tests
-	uv run pytest tests -q -m "not integration"
+	uv run python -m pytest tests -q -m "not integration"
 
 test-integration: ## Run live-endpoint integration tests
-	uv run pytest tests -q -m "integration"
+	uv run python -m pytest tests -q -m "integration"
 
 test-cov: ## Run tests with coverage
-	uv run pytest tests -m "not integration" --cov=hpo_link --cov-report=term-missing --cov-report=html
+	uv run python -m pytest tests -m "not integration" --cov=hpo_link --cov-report=term-missing --cov-report=html
 
 check: format lint ## Format and lint
 
