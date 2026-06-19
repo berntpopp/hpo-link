@@ -35,6 +35,11 @@ def _is_empty(value: Any) -> bool:
     return value is None or value == [] or value == "" or value == {}
 
 
+#: HPOA "no value" placeholders that annotation-row compact shaping drops as noise
+#: (the source TSV uses ``-`` where a value is absent, e.g. an unparseable frequency).
+_DROP_SENTINELS: frozenset[str] = frozenset({"-"})
+
+
 def _plain_synonyms(synonyms: Any) -> list[str]:
     """Collapse a structured-synonym list to de-duplicated plain strings."""
     out: list[str] = []
@@ -95,6 +100,37 @@ def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str
         elif top in payload:
             out[top] = payload[top]
     return out
+
+
+def shape_annotation_rows(rows: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
+    """Project annotation rows (phenotype/gene/disease) to the requested verbosity.
+
+    - ``standard`` / ``full``: rows are returned unchanged (all columns preserved).
+    - ``compact`` / ``minimal``: drop keys whose value is null/empty
+      (``None``, ``""``, ``[]``, ``{}``) using the ``_is_empty`` predicate.
+      ``hpo_id`` and ``name`` are always retained when present.
+
+    Args:
+        rows: List of annotation row dicts from the repository.
+        mode: One of ``minimal``, ``compact``, ``standard``, ``full``.
+
+    Returns:
+        New list of dicts shaped to the requested mode.
+    """
+    if mode in ("standard", "full"):
+        return [dict(r) for r in rows]
+    # compact / minimal — drop null/empty values and the HPOA "-" no-data sentinel
+    # (e.g. an undecodable raw ``frequency``), which is semantically empty but would
+    # otherwise survive as token noise in the token-efficient modes.
+    _always_keep: frozenset[str] = frozenset({"hpo_id", "name"})
+    shaped: list[dict[str, Any]] = []
+    for row in rows:
+        out: dict[str, Any] = {}
+        for key, value in row.items():
+            if key in _always_keep or (not _is_empty(value) and value not in _DROP_SENTINELS):
+                out[key] = value
+        shaped.append(out)
+    return shaped
 
 
 def _snippet(text: str, limit: int) -> str:

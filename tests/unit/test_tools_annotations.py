@@ -83,21 +83,29 @@ async def test_get_phenotypes_for_gene_pax6(live_annotation_service) -> None:
     assert "HP:0000479" in hpo_ids
 
 
-async def test_get_phenotypes_for_gene_bad_gene(live_annotation_service) -> None:
-    """get_phenotypes_for_gene with unknown gene -> error_code='not_found'."""
+async def test_get_phenotypes_for_gene_absent_gene_returns_empty(
+    live_annotation_service,
+) -> None:
+    """get_phenotypes_for_gene with unknown gene -> success=True, empty phenotypes. (T1.2)"""
     from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
+    from hpo_link.mcp.next_commands import cmd
     from hpo_link.mcp.service_adapters import get_annotation_service
 
     async def call():
-        return get_annotation_service().get_phenotypes_for_gene("NOTAREALGENE99999")
+        payload = get_annotation_service().get_phenotypes_for_gene("NOTAREALGENE99999")
+        payload.setdefault("_meta", {})["next_commands"] = [
+            cmd("get_diseases_for_gene", gene="NOTAREALGENE99999")
+        ]
+        return payload
 
     result = await run_mcp_tool(
         "get_phenotypes_for_gene",
         call,
         context=McpErrorContext("get_phenotypes_for_gene", arguments={"gene": "NOTAREALGENE99999"}),
     )
-    assert result["success"] is False
-    assert result["error_code"] == "not_found"
+    assert result["success"] is True
+    assert result["total"] == 0
+    assert result["phenotypes"] == []
     assert "_meta" in result
 
 
