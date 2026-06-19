@@ -10,6 +10,8 @@ PHENOTYPIC_ABNORMALITY = "HP:0000118"
 GITHUB_OWNER_REPO = "obophenotype/human-phenotype-ontology"
 GITHUB_RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_OWNER_REPO}/releases/latest"
 
+GITHUB_DB_OWNER_REPO = "berntpopp/hpo-link"
+
 
 def obo_purl(date: str, filename: str) -> str:
     """Version-pinned OBO PURL, e.g. obo_purl('2026-06-06','hp.json')."""

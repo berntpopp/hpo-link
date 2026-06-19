@@ -392,17 +392,53 @@ def read_meta(db_path: Path) -> BuildMeta | None:
     )
 
 
+def _try_prebuilt(config: ServerSettings) -> Path | None:
+    """Try to fetch the prebuilt database artifact.  Returns the db path or ``None``."""
+    import httpx
+
+    from hpo_link.ingest.release import fetch_prebuilt_db, find_prebuilt_asset
+
+    db_path = config.data.db_path
+    try:
+        with httpx.Client(follow_redirects=True, timeout=config.data.download_timeout) as client:
+            asset = find_prebuilt_asset(client)
+            if asset is None:
+                logger.info("no_prebuilt_asset_available")
+                return None
+            fetch_prebuilt_db(client, asset, db_path)
+            logger.info(
+                "prebuilt_db_installed",
+                hpo_version=asset.hpo_version,
+                dest=str(db_path),
+            )
+            return db_path
+    except Exception as exc:
+        logger.warning("prebuilt_fetch_failed", error=str(exc))
+        return None
+
+
 def ensure_database(config: ServerSettings) -> Path:
     """Return the database path, building it on first use if configured."""
     db_path = config.data.db_path
+
+    # (1) Already present — return immediately.
     if db_path.exists():
         return db_path
+
     if not config.data.auto_bootstrap:
         from hpo_link.exceptions import DataUnavailableError
 
         raise DataUnavailableError(
             "HPO database not built. Run `hpo-link-data build` (or `make data`)."
         )
+
+    # (2) Try prebuilt artifact if preferred.
+    if config.data.prefer_prebuilt:
+        result = _try_prebuilt(config)
+        if result is not None:
+            return result
+
+    # (3) Fall back to local download + build.
     if db_path.exists():  # re-check before the (lock-holding) build
         return db_path
     results = download_bulk(config, force=False)
