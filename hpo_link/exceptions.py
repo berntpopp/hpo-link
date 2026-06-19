@@ -2,7 +2,7 @@
 
 These errors flow into the MCP envelope from the local SQLite repository /
 services (``NotFoundError``, ``WithdrawnEntryError``, ``AmbiguousQueryError``,
-``DataUnavailableError``). hpo-link has no live API: the local Mondo index is
+``DataUnavailableError``). hpo-link has no live API: the local HPO index is
 the only source.
 
 ``run_mcp_tool`` classifies each into a stable ``error_code`` (see
@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 
-class MondoError(Exception):
+class HpoLinkError(Exception):
     """Base exception for all hpo-link data/client errors."""
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
@@ -30,7 +30,7 @@ class MondoError(Exception):
         return self.message
 
 
-class InvalidInputError(MondoError):
+class InvalidInputError(HpoLinkError):
     """A tool/service argument failed validation before any lookup ran."""
 
     def __init__(
@@ -53,7 +53,7 @@ class InvalidInputError(MondoError):
         self.hint = hint
 
 
-class NotFoundError(MondoError):
+class NotFoundError(HpoLinkError):
     """A lookup returned no rows for an otherwise valid identifier.
 
     For a free-text label miss the service may attach ``suggestions`` (the closest
@@ -63,7 +63,7 @@ class NotFoundError(MondoError):
 
     def __init__(
         self,
-        message: str = "No matching Mondo record found.",
+        message: str = "No matching HPO term found.",
         *,
         suggestions: list[dict[str, Any]] | None = None,
     ) -> None:
@@ -73,7 +73,7 @@ class NotFoundError(MondoError):
 
 
 class WithdrawnEntryError(NotFoundError):
-    """The term exists in Mondo but is obsolete (deprecated / merged).
+    """The term exists in HPO but is obsolete (deprecated / merged).
 
     Subclasses :class:`NotFoundError` so it classifies as ``not_found`` in the
     error envelope, but carries the withdrawn term, the withdrawal status, and
@@ -96,15 +96,15 @@ class WithdrawnEntryError(NotFoundError):
         if message is None:
             if self.replaced_by:
                 targets = ", ".join(
-                    f"{r.get('name', '?')} ({r.get('mondo_id', '?')})" for r in self.replaced_by
+                    f"{r.get('name', '?')} ({r.get('hpo_id', '?')})" for r in self.replaced_by
                 )
-                message = f"{withdrawn} is obsolete in Mondo ({status}). See: {targets}."
+                message = f"{withdrawn} is obsolete in HPO ({status}). See: {targets}."
             else:
-                message = f"{withdrawn} is obsolete in Mondo ({status}) and has no replacement."
+                message = f"{withdrawn} is obsolete in HPO ({status}) and has no replacement."
         super().__init__(message)
 
 
-class AmbiguousQueryError(MondoError):
+class AmbiguousQueryError(HpoLinkError):
     """A query matched several records and cannot be resolved unambiguously."""
 
     def __init__(self, message: str, *, candidates: list[dict[str, str]] | None = None) -> None:
@@ -113,15 +113,15 @@ class AmbiguousQueryError(MondoError):
         self.candidates = candidates or []
 
 
-class DataUnavailableError(MondoError):
-    """The local Mondo SQLite index is missing, unbuilt, or unreadable."""
+class DataUnavailableError(HpoLinkError):
+    """The local HPO SQLite index is missing, unbuilt, or unreadable."""
 
-    def __init__(self, message: str = "The local Mondo database is not available.") -> None:
+    def __init__(self, message: str = "The local HPO database is not available.") -> None:
         """Initialise with a 503 status code."""
         super().__init__(message, status_code=503)
 
 
-class RateLimitError(MondoError):
+class RateLimitError(HpoLinkError):
     """An upstream endpoint signalled rate limiting (HTTP 429)."""
 
     def __init__(self, message: str = "Upstream rate limit hit.") -> None:
@@ -129,7 +129,7 @@ class RateLimitError(MondoError):
         super().__init__(message, status_code=429)
 
 
-class ServiceUnavailableError(MondoError):
+class ServiceUnavailableError(HpoLinkError):
     """An upstream endpoint is temporarily unavailable (5xx / network error)."""
 
     def __init__(self, message: str = "Upstream service is temporarily unavailable.") -> None:
@@ -137,5 +137,5 @@ class ServiceUnavailableError(MondoError):
         super().__init__(message, status_code=503)
 
 
-class DownloadError(MondoError):
+class DownloadError(HpoLinkError):
     """A bulk-download attempt failed (network/HTTP error)."""

@@ -35,7 +35,10 @@ def parse_frequency(raw: str | None) -> tuple[str | None, str | None, float | No
     if m_ratio:
         numerator = float(m_ratio.group(1))
         denominator = float(m_ratio.group(2))
-        pct = round(100.0 * numerator / denominator, 10) if denominator else None
+        if not denominator:
+            # n/0 is a malformed ratio: drop it rather than emit an unrankable row.
+            return (None, None, None)
+        pct = round(100.0 * numerator / denominator, 10)
         return (None, s, pct)
     m_pct = _PERCENT_RE.match(s)
     if m_pct:

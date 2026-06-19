@@ -13,6 +13,7 @@ def test_parse_frequency_variants():
     assert parse_frequency("3/5") == (None, "3/5", 60.0)
     assert parse_frequency("25%") == (None, None, 25.0)
     assert parse_frequency("-") == (None, None, None)
+    assert parse_frequency("5/0") == (None, None, None)
 
 
 def test_phenotype_hpoa():

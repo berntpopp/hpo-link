@@ -19,7 +19,7 @@ import contextlib
 import random
 from typing import TYPE_CHECKING, Any
 
-from hpo_link.exceptions import DownloadError, MondoError
+from hpo_link.exceptions import DownloadError, HpoLinkError
 
 if TYPE_CHECKING:
     from hpo_link.config import HPODataConfig, ServerSettings
@@ -48,7 +48,7 @@ async def bootstrap_data(config: HPODataConfig, logger: Any) -> None:
         path = await asyncio.to_thread(ensure_database, _as_settings(config))
         reset_services()
         logger.info("hpo_data_ready", db_path=str(path))
-    except (MondoError, DownloadError, OSError) as exc:
+    except (HpoLinkError, DownloadError, OSError) as exc:
         logger.warning("hpo_data_bootstrap_failed", error=str(exc))
 
 
@@ -70,7 +70,7 @@ async def _refresh_loop(config: HPODataConfig, logger: Any) -> None:
                 logger.info("hpo_data_refreshed", hpo_version=version)
             else:
                 logger.debug("hpo_data_unchanged")
-        except (MondoError, DownloadError, OSError) as exc:
+        except (HpoLinkError, DownloadError, OSError) as exc:
             logger.warning("hpo_data_refresh_failed", error=str(exc))
 
 
