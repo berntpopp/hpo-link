@@ -26,36 +26,36 @@ release version**. Research use only; **not** clinical decision support.
 
 | Tool | Signature |
 |------|-----------|
-| `hpo_resolve_term` | `hpo_resolve_term(query, response_mode=)` — label/synonym/HP id/xref → canonical term + `match_type`. |
-| `hpo_search_terms` | `hpo_search_terms(query, limit=, include_obsolete=, response_mode=)` — FTS over name/synonyms/definition. |
-| `hpo_get_term` | `hpo_get_term(term, response_mode=)` — definition, synonyms, grouped xrefs, parents/children, obsolescence. |
+| `resolve_term` | `resolve_term(query, response_mode=)` — label/synonym/HP id/xref → canonical term + `match_type`. |
+| `search_terms` | `search_terms(query, limit=, include_obsolete=, response_mode=)` — FTS over name/synonyms/definition. |
+| `get_term` | `get_term(term, response_mode=)` — definition, synonyms, grouped xrefs, parents/children, obsolescence. |
 
 ### Hierarchy
 
 | Tool | Signature |
 |------|-----------|
-| `hpo_get_term_ancestors` | `hpo_get_term_ancestors(term, limit=, response_mode=)` — transitive `is_a` ancestors. |
-| `hpo_get_term_descendants` | `hpo_get_term_descendants(term, limit=, response_mode=)` — transitive `is_a` descendants. |
-| `hpo_get_term_parents` | `hpo_get_term_parents(term, response_mode=)` — direct `is_a` parents. |
-| `hpo_get_term_children` | `hpo_get_term_children(term, response_mode=)` — direct `is_a` children. |
+| `get_term_ancestors` | `get_term_ancestors(term, limit=, response_mode=)` — transitive `is_a` ancestors. |
+| `get_term_descendants` | `get_term_descendants(term, limit=, response_mode=)` — transitive `is_a` descendants. |
+| `get_term_parents` | `get_term_parents(term, response_mode=)` — direct `is_a` parents. |
+| `get_term_children` | `get_term_children(term, response_mode=)` — direct `is_a` children. |
 
 ### Cross-ontology mapping
 
 | Tool | Signature |
 |------|-----------|
-| `hpo_resolve_xref` | `hpo_resolve_xref(xref_id, limit=, response_mode=)` — external CURIE → HP ids, ranked by predicate. |
-| `hpo_map_cross_ontology` | `hpo_map_cross_ontology(term, prefixes=, response_mode=)` — an HP term → mappings grouped by prefix. |
+| `resolve_xref` | `resolve_xref(xref_id, limit=, response_mode=)` — external CURIE → HP ids, ranked by predicate. |
+| `map_cross_ontology` | `map_cross_ontology(term, prefixes=, response_mode=)` — an HP term → mappings grouped by prefix. |
 
 ### Gene ↔ Phenotype ↔ Disease associations (HPOA)
 
 | Tool | Signature |
 |------|-----------|
-| `hpo_get_phenotypes_for_gene` | `hpo_get_phenotypes_for_gene(gene, response_mode=)` — HPO terms annotated to a gene. |
-| `hpo_get_genes_for_phenotype` | `hpo_get_genes_for_phenotype(term, response_mode=)` — genes annotated to an HPO term. |
-| `hpo_get_phenotypes_for_disease` | `hpo_get_phenotypes_for_disease(disease_id, response_mode=)` — HPO terms annotated to a disease. |
-| `hpo_get_diseases_for_phenotype` | `hpo_get_diseases_for_phenotype(term, response_mode=)` — diseases annotated to an HPO term. |
-| `hpo_get_genes_for_disease` | `hpo_get_genes_for_disease(disease_id, response_mode=)` — genes associated with a disease. |
-| `hpo_get_diseases_for_gene` | `hpo_get_diseases_for_gene(gene, response_mode=)` — diseases associated with a gene. |
+| `get_phenotypes_for_gene` | `get_phenotypes_for_gene(gene, response_mode=)` — HPO terms annotated to a gene. |
+| `get_genes_for_phenotype` | `get_genes_for_phenotype(term, response_mode=)` — genes annotated to an HPO term. |
+| `get_phenotypes_for_disease` | `get_phenotypes_for_disease(disease_id, response_mode=)` — HPO terms annotated to a disease. |
+| `get_diseases_for_phenotype` | `get_diseases_for_phenotype(term, response_mode=)` — diseases annotated to an HPO term. |
+| `get_genes_for_disease` | `get_genes_for_disease(disease_id, response_mode=)` — genes associated with a disease. |
+| `get_diseases_for_gene` | `get_diseases_for_gene(gene, response_mode=)` — diseases associated with a gene. |
 
 Every response carries `_meta.next_commands` (ready-to-call follow-ups). Ids are
 normalised to `HP:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard |

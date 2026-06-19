@@ -51,24 +51,24 @@ def default_error_next_commands(
 ) -> list[dict[str, Any]]:
     """A sensible recovery step for any error lacking an explicit fallback."""
     if tool in (
-        "hpo_resolve_term",
-        "hpo_get_term",
-        "hpo_get_term_ancestors",
-        "hpo_get_term_descendants",
-        "hpo_get_term_parents",
-        "hpo_get_term_children",
-        "hpo_map_cross_ontology",
+        "resolve_term",
+        "get_term",
+        "get_term_ancestors",
+        "get_term_descendants",
+        "get_term_parents",
+        "get_term_children",
+        "map_cross_ontology",
     ):
         value = str(arguments.get("term", "") or arguments.get("query", ""))
         if value and _looks_like_xref_curie(value):
-            return [cmd("hpo_resolve_xref", xref_id=value), cmd("hpo_search_terms", query=value)]
+            return [cmd("resolve_xref", xref_id=value), cmd("search_terms", query=value)]
         if value and not is_hpo_id(value):
-            return [cmd("hpo_search_terms", query=value), cmd("get_server_capabilities")]
+            return [cmd("search_terms", query=value), cmd("get_server_capabilities")]
         if is_hpo_id(value):
-            return [cmd("hpo_resolve_term", query=value), cmd("get_server_capabilities")]
-    if tool == "hpo_resolve_xref":
+            return [cmd("resolve_term", query=value), cmd("get_server_capabilities")]
+    if tool == "resolve_xref":
         value = str(arguments.get("xref_id", ""))
-        return [cmd("hpo_search_terms", query=value)] if value else [cmd("get_server_capabilities")]
+        return [cmd("search_terms", query=value)] if value else [cmd("get_server_capabilities")]
     if error_code == "data_unavailable":
         return [cmd("get_server_capabilities")]
     return [cmd("get_server_capabilities")]
@@ -79,124 +79,124 @@ def withdrawn_recovery(replaced_by: list[dict[str, str]]) -> list[dict[str, Any]
     targets = [r.get("hpo_id") for r in replaced_by if r.get("hpo_id")]
     if not targets:
         return [cmd("get_server_capabilities")]
-    return [cmd("hpo_get_term", term=t) for t in targets[:2]]
+    return [cmd("get_term", term=t) for t in targets[:2]]
 
 
 def after_capabilities() -> list[dict[str, Any]]:
     """After get_server_capabilities: start the canonical resolve->record workflow."""
     return [
-        cmd("hpo_resolve_term", query="Phenotypic abnormality"),
-        cmd("hpo_search_terms", query="seizure"),
+        cmd("resolve_term", query="Phenotypic abnormality"),
+        cmd("search_terms", query="seizure"),
     ]
 
 
 def after_resolve_term(resolution: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_resolve_term: open the canonical record, else fall back to search."""
+    """After resolve_term: open the canonical record, else fall back to search."""
     hpo_id = resolution.get("hpo_id")
     if not hpo_id:
         return [
-            cmd("hpo_search_terms", query=str(resolution.get("query", ""))),
+            cmd("search_terms", query=str(resolution.get("query", ""))),
             cmd("get_server_capabilities"),
         ]
-    return [cmd("hpo_get_term", term=hpo_id)]
+    return [cmd("get_term", term=hpo_id)]
 
 
 def after_search(query: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_search_terms: open the top hit; widen if truncated."""
+    """After search_terms: open the top hit; widen if truncated."""
     hits = payload.get("results", [])
     if not hits:
-        return [cmd("hpo_resolve_term", query=query), cmd("get_server_capabilities")]
+        return [cmd("resolve_term", query=query), cmd("get_server_capabilities")]
     steps: list[dict[str, Any]] = []
     top = hits[0].get("hpo_id")
     if top:
-        steps.append(cmd("hpo_get_term", term=top))
-    steps += _more_steps("hpo_search_terms", {"query": query}, payload, 200)
+        steps.append(cmd("get_term", term=top))
+    steps += _more_steps("search_terms", {"query": query}, payload, 200)
     return steps or [cmd("get_server_capabilities")]
 
 
 def after_get_term(term: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_get_term: walk up the DAG and map across ontologies."""
+    """After get_term: walk up the DAG and map across ontologies."""
     hpo_id = term.get("hpo_id")
     if not hpo_id:
         return [cmd("get_server_capabilities")]
     return [
-        cmd("hpo_get_term_ancestors", term=hpo_id),
-        cmd("hpo_map_cross_ontology", term=hpo_id),
+        cmd("get_term_ancestors", term=hpo_id),
+        cmd("map_cross_ontology", term=hpo_id),
     ]
 
 
 def after_ancestors(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_get_term_ancestors: offer parents/descendants; widen if truncated."""
+    """After get_term_ancestors: offer parents/descendants; widen if truncated."""
     hpo_id = payload.get("hpo_id")
     if not hpo_id:
         return [cmd("get_server_capabilities")]
-    steps = _more_steps("hpo_get_term_ancestors", {"term": hpo_id}, payload, 1000)
+    steps = _more_steps("get_term_ancestors", {"term": hpo_id}, payload, 1000)
     steps += [
-        cmd("hpo_get_term_parents", term=hpo_id),
-        cmd("hpo_get_term_descendants", term=hpo_id),
+        cmd("get_term_parents", term=hpo_id),
+        cmd("get_term_descendants", term=hpo_id),
     ]
     return steps
 
 
 def after_descendants(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_get_term_descendants: offer children/ancestors; widen if truncated."""
+    """After get_term_descendants: offer children/ancestors; widen if truncated."""
     hpo_id = payload.get("hpo_id")
     if not hpo_id:
         return [cmd("get_server_capabilities")]
-    steps = _more_steps("hpo_get_term_descendants", {"term": hpo_id}, payload, 1000)
+    steps = _more_steps("get_term_descendants", {"term": hpo_id}, payload, 1000)
     steps += [
-        cmd("hpo_get_term_children", term=hpo_id),
-        cmd("hpo_get_term_ancestors", term=hpo_id),
+        cmd("get_term_children", term=hpo_id),
+        cmd("get_term_ancestors", term=hpo_id),
     ]
     return steps
 
 
 def after_parents(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_get_term_parents: open the first parent, then the full ancestor set."""
+    """After get_term_parents: open the first parent, then the full ancestor set."""
     hpo_id = payload.get("hpo_id")
     parents = payload.get("parents", [])
     if not hpo_id:
         return [cmd("get_server_capabilities")]
     steps: list[dict[str, Any]] = []
     if parents and parents[0].get("hpo_id"):
-        steps.append(cmd("hpo_get_term", term=parents[0]["hpo_id"]))
-    steps.append(cmd("hpo_get_term_ancestors", term=hpo_id))
+        steps.append(cmd("get_term", term=parents[0]["hpo_id"]))
+    steps.append(cmd("get_term_ancestors", term=hpo_id))
     return steps
 
 
 def after_children(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_get_term_children: open the first child, then the full descendant set."""
+    """After get_term_children: open the first child, then the full descendant set."""
     hpo_id = payload.get("hpo_id")
     children = payload.get("children", [])
     if not hpo_id:
         return [cmd("get_server_capabilities")]
     steps: list[dict[str, Any]] = []
     if children and children[0].get("hpo_id"):
-        steps.append(cmd("hpo_get_term", term=children[0]["hpo_id"]))
-    steps.append(cmd("hpo_get_term_descendants", term=hpo_id))
+        steps.append(cmd("get_term", term=children[0]["hpo_id"]))
+    steps.append(cmd("get_term_descendants", term=hpo_id))
     return steps
 
 
 def after_resolve_xref(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_resolve_xref: open the top matching HPO term; widen if truncated."""
+    """After resolve_xref: open the top matching HPO term; widen if truncated."""
     matches = payload.get("matches", [])
     if not matches:
         return [
-            cmd("hpo_search_terms", query=str(payload.get("xref_id", ""))),
+            cmd("search_terms", query=str(payload.get("xref_id", ""))),
             cmd("get_server_capabilities"),
         ]
     steps: list[dict[str, Any]] = []
     top = matches[0].get("hpo_id")
     if top:
-        steps.append(cmd("hpo_get_term", term=top))
+        steps.append(cmd("get_term", term=top))
     if payload.get("xref_id"):
-        steps += _more_steps("hpo_resolve_xref", {"xref_id": payload["xref_id"]}, payload, 200)
+        steps += _more_steps("resolve_xref", {"xref_id": payload["xref_id"]}, payload, 200)
     return steps or [cmd("get_server_capabilities")]
 
 
 def after_cross_ontology(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """After hpo_map_cross_ontology: walk up the DAG, or open the record itself."""
+    """After map_cross_ontology: walk up the DAG, or open the record itself."""
     hpo_id = payload.get("hpo_id")
     if not hpo_id:
         return [cmd("get_server_capabilities")]
-    return [cmd("hpo_get_term_ancestors", term=hpo_id), cmd("hpo_get_term", term=hpo_id)]
+    return [cmd("get_term_ancestors", term=hpo_id), cmd("get_term", term=hpo_id)]

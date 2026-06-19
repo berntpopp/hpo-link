@@ -21,17 +21,17 @@ def register_annotation_tools(mcp: FastMCP) -> None:
     """Register the HPO annotation cross-query tools on a FastMCP instance."""
 
     @mcp.tool(
-        name="hpo_get_phenotypes_for_gene",
+        name="get_phenotypes_for_gene",
         title="Get HPO Phenotypes for Gene",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
         tags={"hpo", "annotation", "gene"},
         description=(
             "Return the HPO phenotype terms annotated to a gene (symbol or NCBI id). "
-            "Signature: hpo_get_phenotypes_for_gene(gene, limit=, offset=, response_mode=)."
+            "Signature: get_phenotypes_for_gene(gene, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_get_phenotypes_for_gene(
+    async def get_phenotypes_for_gene(
         gene: GeneStr,
         limit: Annotated[
             int, Field(ge=1, le=200, description="Max phenotypes to return (default 25).")
@@ -46,24 +46,24 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 gene, limit=limit, offset=offset, response_mode=response_mode
             )
             phenotypes = payload.get("phenotypes", [])
-            steps: list[dict[str, Any]] = [cmd("hpo_get_diseases_for_gene", gene=gene)]
+            steps: list[dict[str, Any]] = [cmd("get_diseases_for_gene", gene=gene)]
             if phenotypes and phenotypes[0].get("hpo_id"):
-                steps.append(cmd("hpo_get_term", term=phenotypes[0]["hpo_id"]))
+                steps.append(cmd("get_term", term=phenotypes[0]["hpo_id"]))
             payload.setdefault("_meta", {})["next_commands"] = steps
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_phenotypes_for_gene",
+            "get_phenotypes_for_gene",
             call,
             context=McpErrorContext(
-                "hpo_get_phenotypes_for_gene",
+                "get_phenotypes_for_gene",
                 arguments={"gene": gene},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_genes_for_phenotype",
+        name="get_genes_for_phenotype",
         title="Get Genes for HPO Phenotype",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
@@ -71,11 +71,11 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         description=(
             "Return the genes annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
-            "Signature: hpo_get_genes_for_phenotype(term, include_descendants=, limit=, "
+            "Signature: get_genes_for_phenotype(term, include_descendants=, limit=, "
             "offset=, response_mode=)."
         ),
     )
-    async def hpo_get_genes_for_phenotype(
+    async def get_genes_for_phenotype(
         term: TermStr,
         include_descendants: Annotated[
             bool,
@@ -103,23 +103,23 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("hpo_get_diseases_for_phenotype", term=term),
-                cmd("hpo_get_term", term=term),
+                cmd("get_diseases_for_phenotype", term=term),
+                cmd("get_term", term=term),
             ]
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_genes_for_phenotype",
+            "get_genes_for_phenotype",
             call,
             context=McpErrorContext(
-                "hpo_get_genes_for_phenotype",
+                "get_genes_for_phenotype",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_phenotypes_for_disease",
+        name="get_phenotypes_for_disease",
         title="Get HPO Phenotypes for Disease",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
@@ -127,11 +127,11 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         description=(
             "Return the HPO phenotype terms annotated to a disease CURIE "
             "(e.g. OMIM:106210, ORPHA:550). "
-            "Signature: hpo_get_phenotypes_for_disease(disease_id, limit=, offset=, "
+            "Signature: get_phenotypes_for_disease(disease_id, limit=, offset=, "
             "response_mode=)."
         ),
     )
-    async def hpo_get_phenotypes_for_disease(
+    async def get_phenotypes_for_disease(
         disease_id: DiseaseIdStr,
         limit: Annotated[
             int, Field(ge=1, le=200, description="Max phenotypes to return (default 25).")
@@ -146,22 +146,22 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("hpo_get_genes_for_disease", disease_id=disease_id),
+                cmd("get_genes_for_disease", disease_id=disease_id),
             ]
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_phenotypes_for_disease",
+            "get_phenotypes_for_disease",
             call,
             context=McpErrorContext(
-                "hpo_get_phenotypes_for_disease",
+                "get_phenotypes_for_disease",
                 arguments={"disease_id": disease_id},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_diseases_for_phenotype",
+        name="get_diseases_for_phenotype",
         title="Get Diseases for HPO Phenotype",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
@@ -169,11 +169,11 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         description=(
             "Return diseases annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
-            "Signature: hpo_get_diseases_for_phenotype(term, include_descendants=, limit=, "
+            "Signature: get_diseases_for_phenotype(term, include_descendants=, limit=, "
             "offset=, response_mode=)."
         ),
     )
-    async def hpo_get_diseases_for_phenotype(
+    async def get_diseases_for_phenotype(
         term: TermStr,
         include_descendants: Annotated[
             bool,
@@ -201,33 +201,33 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("hpo_get_genes_for_phenotype", term=term),
-                cmd("hpo_get_term", term=term),
+                cmd("get_genes_for_phenotype", term=term),
+                cmd("get_term", term=term),
             ]
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_diseases_for_phenotype",
+            "get_diseases_for_phenotype",
             call,
             context=McpErrorContext(
-                "hpo_get_diseases_for_phenotype",
+                "get_diseases_for_phenotype",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_genes_for_disease",
+        name="get_genes_for_disease",
         title="Get Genes for Disease",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
         tags={"hpo", "annotation", "gene", "disease"},
         description=(
             "Return genes associated with a disease CURIE (e.g. OMIM:106210, ORPHA:550). "
-            "Signature: hpo_get_genes_for_disease(disease_id, limit=, offset=, response_mode=)."
+            "Signature: get_genes_for_disease(disease_id, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_get_genes_for_disease(
+    async def get_genes_for_disease(
         disease_id: DiseaseIdStr,
         limit: Annotated[
             int, Field(ge=1, le=200, description="Max genes to return (default 25).")
@@ -242,32 +242,32 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("hpo_get_phenotypes_for_disease", disease_id=disease_id),
+                cmd("get_phenotypes_for_disease", disease_id=disease_id),
             ]
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_genes_for_disease",
+            "get_genes_for_disease",
             call,
             context=McpErrorContext(
-                "hpo_get_genes_for_disease",
+                "get_genes_for_disease",
                 arguments={"disease_id": disease_id},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_diseases_for_gene",
+        name="get_diseases_for_gene",
         title="Get Diseases for Gene",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANNOTATION_SCHEMA,
         tags={"hpo", "annotation", "gene", "disease"},
         description=(
             "Return diseases associated with a gene (symbol or NCBI id). "
-            "Signature: hpo_get_diseases_for_gene(gene, limit=, offset=, response_mode=)."
+            "Signature: get_diseases_for_gene(gene, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_get_diseases_for_gene(
+    async def get_diseases_for_gene(
         gene: GeneStr,
         limit: Annotated[
             int, Field(ge=1, le=200, description="Max diseases to return (default 25).")
@@ -282,15 +282,15 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 gene, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("hpo_get_phenotypes_for_gene", gene=gene),
+                cmd("get_phenotypes_for_gene", gene=gene),
             ]
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_diseases_for_gene",
+            "get_diseases_for_gene",
             call,
             context=McpErrorContext(
-                "hpo_get_diseases_for_gene",
+                "get_diseases_for_gene",
                 arguments={"gene": gene},
                 response_mode=response_mode,
             ),

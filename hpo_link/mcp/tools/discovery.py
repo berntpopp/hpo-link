@@ -103,7 +103,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
                 "runtime_metrics": metrics.snapshot(),
             }
             payload.setdefault("_meta", {})["next_commands"] = (
-                [cmd("hpo_resolve_term", query="HP:0000118")]
+                [cmd("resolve_term", query="HP:0000118")]
                 if index_built
                 else [cmd("get_server_capabilities")]
             )

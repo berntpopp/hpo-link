@@ -240,7 +240,7 @@ Closure precomputation: iterative BFS over `child→parents` for every term (sel
 
 ## 6. MCP tool surface
 
-All tools: `hpo_`-prefixed, `READ_ONLY_OPEN_WORLD` annotations, `response_mode` (default `compact`), return `_meta.next_commands`, `recommended_citation`, and `hpo_version`. Errors returned as typed dicts (never raised across the MCP boundary).
+All tools: registered with **un-namespaced leaf names** (`resolve_term`, `get_term`, `get_phenotypes_for_gene`, …) to match the fleet convention — the `genefoundry-router` mounts each backend with `server.mount(proxy, namespace="hpo")`, which surfaces them federated as `hpo_resolve_term`, `hpo_get_term`, etc. (Correction: an earlier draft said tools were `hpo_`-prefixed at the server; that conflated the federated name with the leaf name — mondo-link/hgnc-link register unprefixed leaves.) All carry `READ_ONLY_OPEN_WORLD` annotations, `response_mode` (default `compact`), return `_meta.next_commands`, `recommended_citation`, and `hpo_version`. Errors returned as typed dicts (never raised across the MCP boundary).
 
 ### Ontology / graph
 | Tool | Signature | Returns (compact) |

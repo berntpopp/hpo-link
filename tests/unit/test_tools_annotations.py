@@ -51,7 +51,7 @@ def live_hpo_service(built_test_db: Path):  # type: ignore[return]
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_phenotypes_for_gene
+# get_phenotypes_for_gene
 # ---------------------------------------------------------------------------
 
 
@@ -64,16 +64,16 @@ async def test_get_phenotypes_for_gene_pax6(live_annotation_service) -> None:
     async def call():
         payload = get_annotation_service().get_phenotypes_for_gene("PAX6")
         phenotypes = payload.get("phenotypes", [])
-        steps = [cmd("hpo_get_diseases_for_gene", gene="PAX6")]
+        steps = [cmd("get_diseases_for_gene", gene="PAX6")]
         if phenotypes and phenotypes[0].get("hpo_id"):
-            steps.append(cmd("hpo_get_term", term=phenotypes[0]["hpo_id"]))
+            steps.append(cmd("get_term", term=phenotypes[0]["hpo_id"]))
         payload.setdefault("_meta", {})["next_commands"] = steps
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_phenotypes_for_gene",
+        "get_phenotypes_for_gene",
         call,
-        context=McpErrorContext("hpo_get_phenotypes_for_gene", arguments={"gene": "PAX6"}),
+        context=McpErrorContext("get_phenotypes_for_gene", arguments={"gene": "PAX6"}),
     )
     assert result["success"] is True
     assert "_meta" in result
@@ -92,11 +92,9 @@ async def test_get_phenotypes_for_gene_bad_gene(live_annotation_service) -> None
         return get_annotation_service().get_phenotypes_for_gene("NOTAREALGENE99999")
 
     result = await run_mcp_tool(
-        "hpo_get_phenotypes_for_gene",
+        "get_phenotypes_for_gene",
         call,
-        context=McpErrorContext(
-            "hpo_get_phenotypes_for_gene", arguments={"gene": "NOTAREALGENE99999"}
-        ),
+        context=McpErrorContext("get_phenotypes_for_gene", arguments={"gene": "NOTAREALGENE99999"}),
     )
     assert result["success"] is False
     assert result["error_code"] == "not_found"
@@ -104,7 +102,7 @@ async def test_get_phenotypes_for_gene_bad_gene(live_annotation_service) -> None
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_genes_for_phenotype
+# get_genes_for_phenotype
 # ---------------------------------------------------------------------------
 
 
@@ -121,9 +119,9 @@ async def test_get_genes_for_phenotype_with_descendants(live_annotation_service)
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_genes_for_phenotype",
+        "get_genes_for_phenotype",
         call,
-        context=McpErrorContext("hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
+        context=McpErrorContext("get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     assert result["success"] is True
     gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
@@ -143,9 +141,9 @@ async def test_get_genes_for_phenotype_no_descendants(live_annotation_service) -
         )
 
     result = await run_mcp_tool(
-        "hpo_get_genes_for_phenotype",
+        "get_genes_for_phenotype",
         call,
-        context=McpErrorContext("hpo_get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
+        context=McpErrorContext("get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     # Either not_found (no direct annotations) or success with PAX6 absent
     if result["success"]:
@@ -156,7 +154,7 @@ async def test_get_genes_for_phenotype_no_descendants(live_annotation_service) -
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_phenotypes_for_disease
+# get_phenotypes_for_disease
 # ---------------------------------------------------------------------------
 
 
@@ -171,10 +169,10 @@ async def test_get_phenotypes_for_disease(live_annotation_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_phenotypes_for_disease",
+        "get_phenotypes_for_disease",
         call,
         context=McpErrorContext(
-            "hpo_get_phenotypes_for_disease", arguments={"disease_id": "OMIM:106210"}
+            "get_phenotypes_for_disease", arguments={"disease_id": "OMIM:106210"}
         ),
     )
     assert result["success"] is True
@@ -183,7 +181,7 @@ async def test_get_phenotypes_for_disease(live_annotation_service) -> None:
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_diseases_for_phenotype
+# get_diseases_for_phenotype
 # ---------------------------------------------------------------------------
 
 
@@ -198,9 +196,9 @@ async def test_get_diseases_for_phenotype(live_annotation_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_diseases_for_phenotype",
+        "get_diseases_for_phenotype",
         call,
-        context=McpErrorContext("hpo_get_diseases_for_phenotype", arguments={"term": "HP:0000479"}),
+        context=McpErrorContext("get_diseases_for_phenotype", arguments={"term": "HP:0000479"}),
     )
     assert result["success"] is True
     # The repository returns database_id (HPOA column name)
@@ -209,7 +207,7 @@ async def test_get_diseases_for_phenotype(live_annotation_service) -> None:
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_genes_for_disease
+# get_genes_for_disease
 # ---------------------------------------------------------------------------
 
 
@@ -224,11 +222,9 @@ async def test_get_genes_for_disease(live_annotation_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_genes_for_disease",
+        "get_genes_for_disease",
         call,
-        context=McpErrorContext(
-            "hpo_get_genes_for_disease", arguments={"disease_id": "OMIM:106210"}
-        ),
+        context=McpErrorContext("get_genes_for_disease", arguments={"disease_id": "OMIM:106210"}),
     )
     assert result["success"] is True
     gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
@@ -236,7 +232,7 @@ async def test_get_genes_for_disease(live_annotation_service) -> None:
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_diseases_for_gene
+# get_diseases_for_gene
 # ---------------------------------------------------------------------------
 
 
@@ -251,9 +247,9 @@ async def test_get_diseases_for_gene(live_annotation_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_diseases_for_gene",
+        "get_diseases_for_gene",
         call,
-        context=McpErrorContext("hpo_get_diseases_for_gene", arguments={"gene": "PAX6"}),
+        context=McpErrorContext("get_diseases_for_gene", arguments={"gene": "PAX6"}),
     )
     assert result["success"] is True
     disease_ids = [d["disease_id"] for d in result.get("diseases", []) if "disease_id" in d]

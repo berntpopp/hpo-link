@@ -42,12 +42,12 @@ def live_hpo_service(built_test_db: Path):  # type: ignore[return]
 
 
 # ---------------------------------------------------------------------------
-# hpo_resolve_term
+# resolve_term
 # ---------------------------------------------------------------------------
 
 
 async def test_resolve_term_success(live_hpo_service) -> None:
-    """hpo_resolve_term('Phenotypic abnormality') -> payload with hpo_id HP:0000118."""
+    """resolve_term('Phenotypic abnormality') -> payload with hpo_id HP:0000118."""
     from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
     from hpo_link.mcp.next_commands import after_resolve_term
     from hpo_link.mcp.service_adapters import get_hpo_service
@@ -59,9 +59,9 @@ async def test_resolve_term_success(live_hpo_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_resolve_term",
+        "resolve_term",
         call,
-        context=McpErrorContext("hpo_resolve_term", arguments={"query": "Phenotypic abnormality"}),
+        context=McpErrorContext("resolve_term", arguments={"query": "Phenotypic abnormality"}),
     )
     assert result["success"] is True
     assert result["hpo_id"] == "HP:0000118"
@@ -72,7 +72,7 @@ async def test_resolve_term_success(live_hpo_service) -> None:
 
 
 async def test_resolve_term_not_found(live_hpo_service) -> None:
-    """hpo_resolve_term with a bad id returns error envelope with error_code='not_found'."""
+    """resolve_term with a bad id returns error envelope with error_code='not_found'."""
     from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
     from hpo_link.mcp.service_adapters import get_hpo_service
 
@@ -81,9 +81,9 @@ async def test_resolve_term_not_found(live_hpo_service) -> None:
         return svc.resolve_term("HP:9999999")  # does not exist
 
     result = await run_mcp_tool(
-        "hpo_resolve_term",
+        "resolve_term",
         call,
-        context=McpErrorContext("hpo_resolve_term", arguments={"query": "HP:9999999"}),
+        context=McpErrorContext("resolve_term", arguments={"query": "HP:9999999"}),
     )
     assert result["success"] is False
     assert result["error_code"] == "not_found"
@@ -99,9 +99,9 @@ async def test_resolve_term_empty_query(live_hpo_service) -> None:
         return get_hpo_service().resolve_term("")
 
     result = await run_mcp_tool(
-        "hpo_resolve_term",
+        "resolve_term",
         call,
-        context=McpErrorContext("hpo_resolve_term", arguments={"query": ""}),
+        context=McpErrorContext("resolve_term", arguments={"query": ""}),
     )
     assert result["success"] is False
     assert result["error_code"] == "invalid_input"
@@ -118,18 +118,18 @@ def test_get_server_capabilities_server_name() -> None:
 
     caps = build_capabilities()
     assert caps["server"] == "hpo-link"
-    assert "hpo_resolve_term" in caps["tools"]
+    assert "resolve_term" in caps["tools"]
     assert "get_server_capabilities" in caps["tools"]
     assert "_meta" not in caps  # not a tool call — no envelope
 
 
 # ---------------------------------------------------------------------------
-# hpo_get_term
+# get_term
 # ---------------------------------------------------------------------------
 
 
 async def test_get_term_success(live_hpo_service) -> None:
-    """hpo_get_term returns hpo_id, name, definition."""
+    """get_term returns hpo_id, name, definition."""
     from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
     from hpo_link.mcp.next_commands import after_get_term
     from hpo_link.mcp.service_adapters import get_hpo_service
@@ -140,9 +140,9 @@ async def test_get_term_success(live_hpo_service) -> None:
         return payload
 
     result = await run_mcp_tool(
-        "hpo_get_term",
+        "get_term",
         call,
-        context=McpErrorContext("hpo_get_term", arguments={"term": "HP:0000118"}),
+        context=McpErrorContext("get_term", arguments={"term": "HP:0000118"}),
     )
     assert result["success"] is True
     assert result["hpo_id"] == "HP:0000118"

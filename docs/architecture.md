@@ -39,8 +39,8 @@ services/ hpo_service, annotation_service, shaping, pagination, refresh
 | table | purpose |
 |-------|---------|
 | `term` | one row per HPO class (name, definition, obsolete, replaced_by, consider, synonyms JSON, subsets JSON). |
-| `term_lookup` | uppercased label/synonym → hp_id (+ `label_type`) for `hpo_resolve_term`. |
-| `term_fts` | FTS5 over name/synonyms/definition for `hpo_search_terms`. |
+| `term_lookup` | uppercased label/synonym → hp_id (+ `label_type`) for `resolve_term`. |
+| `term_fts` | FTS5 over name/synonyms/definition for `search_terms`. |
 | `hpo_parent` | direct `is_a` edges. |
 | `hpo_closure` | transitive `is_a` (`hp_id`, `ancestor_id`), incl. self-pair. |
 | `hpo_top_grouping` | direct children of `HP:0000001` (orientation/roll-up). |
@@ -54,8 +54,8 @@ services/ hpo_service, annotation_service, shaping, pagination, refresh
 OBO `xref:` lines are indexed per row carrying a mapping **predicate** and
 ranked for resolution:
 `exactMatch > equivalentTo > closeMatch > narrowMatch > broadMatch > xref`.
-`hpo_resolve_xref` walks external → HP using this ranking;
-`hpo_map_cross_ontology` groups a term's mappings by target prefix.
+`resolve_xref` walks external → HP using this ranking;
+`map_cross_ontology` groups a term's mappings by target prefix.
 
 ### Services
 
@@ -74,9 +74,9 @@ Domain-agnostic scaffolding shared with sibling `-link` servers.
 ```
 facade.create_hpo_mcp()    →  FastMCP
   register_discovery_tools   (get_server_capabilities, get_diagnostics)
-  register_ontology_tools    (hpo_resolve_term, hpo_search_terms, hpo_get_term)
+  register_ontology_tools    (resolve_term, search_terms, get_term)
   register_hierarchy_tools   (ancestors, descendants, parents, children)
-  register_xref_tools        (hpo_resolve_xref, hpo_map_cross_ontology)
+  register_xref_tools        (resolve_xref, map_cross_ontology)
   register_annotation_tools  (gene↔phenotype↔disease association tools)
   register_capability_resources  (hpo://capabilities|tools|usage|reference|…)
   ArgValidationMiddleware

@@ -36,21 +36,21 @@ ERROR_CODES: list[str] = [
 TOOLS: list[str] = [
     "get_server_capabilities",
     "get_diagnostics",
-    "hpo_resolve_term",
-    "hpo_search_terms",
-    "hpo_get_term",
-    "hpo_get_term_parents",
-    "hpo_get_term_children",
-    "hpo_get_term_ancestors",
-    "hpo_get_term_descendants",
-    "hpo_resolve_xref",
-    "hpo_map_cross_ontology",
-    "hpo_get_phenotypes_for_gene",
-    "hpo_get_genes_for_phenotype",
-    "hpo_get_phenotypes_for_disease",
-    "hpo_get_diseases_for_phenotype",
-    "hpo_get_genes_for_disease",
-    "hpo_get_diseases_for_gene",
+    "resolve_term",
+    "search_terms",
+    "get_term",
+    "get_term_parents",
+    "get_term_children",
+    "get_term_ancestors",
+    "get_term_descendants",
+    "resolve_xref",
+    "map_cross_ontology",
+    "get_phenotypes_for_gene",
+    "get_genes_for_phenotype",
+    "get_phenotypes_for_disease",
+    "get_diseases_for_phenotype",
+    "get_genes_for_disease",
+    "get_diseases_for_gene",
 ]
 
 _SUMMARY_KEYS: tuple[str, ...] = (
@@ -157,7 +157,7 @@ def build_capabilities() -> dict[str, Any]:
             "mode (the caller has opted out of all non-essential _meta)."
         ),
         "field_projection": (
-            "hpo_get_term and hpo_map_cross_ontology accept fields=[...] for a sparse "
+            "get_term and map_cross_ontology accept fields=[...] for a sparse "
             "projection: top-level keys, or dotted into a group (e.g. 'xrefs.UMLS'). "
             "Identity anchors (hpo_id, name, hpo_version) are always returned."
         ),
@@ -166,14 +166,14 @@ def build_capabilities() -> dict[str, Any]:
             "external xrefs as CURIEs (UMLS:C0036572, SNOMEDCT_US:193046000, ...)."
         ),
         "search_semantics": (
-            "hpo_search_terms is full-text search over HPO term names, synonyms, and "
+            "search_terms is full-text search over HPO term names, synonyms, and "
             "definitions (relevance-ranked). To normalise a single label/id/xref to "
-            "its canonical term use hpo_resolve_term; an ambiguous label returns "
+            "its canonical term use resolve_term; an ambiguous label returns "
             "ambiguous_query with candidates."
         ),
         "truncation_contract": (
-            "List tools (hpo_search_terms, hpo_get_term_ancestors, "
-            "hpo_get_term_descendants, hpo_resolve_xref) return total (matches before "
+            "List tools (search_terms, get_term_ancestors, "
+            "get_term_descendants, resolve_xref) return total (matches before "
             "the cap), returned (rows in this payload), limit (cap applied), offset "
             "(rows skipped), and truncated (rows remain beyond this page). When "
             "truncated is true, next_offset carries the offset for the next page and "
@@ -186,11 +186,11 @@ def build_capabilities() -> dict[str, Any]:
             "+ a short definition_snippet; minimal keeps only hpo_id + name."
         ),
         "recommended_workflows": [
-            "label/id/xref -> hpo_resolve_term -> hpo_get_term",
-            "term -> hpo_get_term_parents / hpo_get_term_children (immediate neighbours)",
-            "term -> hpo_get_term_ancestors / hpo_get_term_descendants (transitive closure)",
-            "external CURIE -> hpo_resolve_xref (xref -> HPO)",
-            "term -> hpo_map_cross_ontology (HPO -> UMLS/SNOMED/NCIT/...)",
+            "label/id/xref -> resolve_term -> get_term",
+            "term -> get_term_parents / get_term_children (immediate neighbours)",
+            "term -> get_term_ancestors / get_term_descendants (transitive closure)",
+            "external CURIE -> resolve_xref (xref -> HPO)",
+            "term -> map_cross_ontology (HPO -> UMLS/SNOMED/NCIT/...)",
         ],
         "not_found_contract": (
             "An id/label/xref with no term returns error_code 'not_found'. An "

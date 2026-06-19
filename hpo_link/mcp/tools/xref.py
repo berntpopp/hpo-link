@@ -1,4 +1,4 @@
-"""Cross-reference tools: hpo_resolve_xref (external -> HPO), hpo_map_cross_ontology."""
+"""Cross-reference tools: resolve_xref (external -> HPO), map_cross_ontology."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
     """Register the cross-reference tools on a FastMCP instance."""
 
     @mcp.tool(
-        name="hpo_resolve_xref",
+        name="resolve_xref",
         title="Resolve HPO Cross-Reference",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=RESOLVE_XREF_SCHEMA,
@@ -32,10 +32,10 @@ def register_xref_tools(mcp: FastMCP) -> None:
             "it. Returns matches[] plus a pagination block {total, returned, limit, "
             "offset, truncated, next_offset}; when truncated, next_commands carries a "
             "forward-page step (offset). "
-            "Signature: hpo_resolve_xref(xref_id, limit=, offset=, response_mode=)."
+            "Signature: resolve_xref(xref_id, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_resolve_xref(
+    async def resolve_xref(
         xref_id: XrefIdStr,
         limit: Annotated[int, Field(ge=1, le=1000, description="Max matches (default 25).")] = 25,
         offset: Annotated[
@@ -51,17 +51,17 @@ def register_xref_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_resolve_xref",
+            "resolve_xref",
             call,
             context=McpErrorContext(
-                "hpo_resolve_xref",
+                "resolve_xref",
                 arguments={"xref_id": xref_id},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_map_cross_ontology",
+        name="map_cross_ontology",
         title="Map HPO Cross-Ontology",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=CROSS_ONTOLOGY_SCHEMA,
@@ -71,10 +71,10 @@ def register_xref_tools(mcp: FastMCP) -> None:
             "grouped by target prefix (UMLS/SNOMEDCT_US/NCIT/MEDDRA/ICD-10/ICD-9/"
             "MONDO/DOID/ORPHA/EFO/MSH/MESH). Optionally restrict to a subset of "
             "prefixes. "
-            "Signature: hpo_map_cross_ontology(term, prefixes=, response_mode=)."
+            "Signature: map_cross_ontology(term, prefixes=, response_mode=)."
         ),
     )
-    async def hpo_map_cross_ontology(
+    async def map_cross_ontology(
         term: TermStr,
         prefixes: Annotated[
             list[str] | None,
@@ -93,10 +93,10 @@ def register_xref_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_map_cross_ontology",
+            "map_cross_ontology",
             call,
             context=McpErrorContext(
-                "hpo_map_cross_ontology",
+                "map_cross_ontology",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),

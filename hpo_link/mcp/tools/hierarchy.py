@@ -36,7 +36,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
     """Register the is_a hierarchy tools on a FastMCP instance."""
 
     @mcp.tool(
-        name="hpo_get_term_ancestors",
+        name="get_term_ancestors",
         title="Get HPO Term Ancestors",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=ANCESTORS_SCHEMA,
@@ -46,12 +46,12 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             "term via the precomputed closure, with a pagination block {total, returned, "
             "limit, offset, truncated, next_offset}. When truncated, next_commands "
             "carries a forward-page step (offset) so you can walk a >limit closure "
-            "without re-sending rows. Use hpo_get_term_parents for only the immediate "
+            "without re-sending rows. Use get_term_parents for only the immediate "
             "parents. "
-            "Signature: hpo_get_term_ancestors(term, limit=, offset=, response_mode=)."
+            "Signature: get_term_ancestors(term, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_get_term_ancestors(
+    async def get_term_ancestors(
         term: TermStr,
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
@@ -65,17 +65,17 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_term_ancestors",
+            "get_term_ancestors",
             call,
             context=McpErrorContext(
-                "hpo_get_term_ancestors",
+                "get_term_ancestors",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_term_descendants",
+        name="get_term_descendants",
         title="Get HPO Term Descendants",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=DESCENDANTS_SCHEMA,
@@ -85,12 +85,12 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             "HPO term via the precomputed closure, with a pagination block {total, "
             "returned, limit, offset, truncated, next_offset}. When truncated, "
             "next_commands carries a forward-page step (offset) so you can walk a "
-            ">limit closure without re-sending rows. Use hpo_get_term_children for only "
+            ">limit closure without re-sending rows. Use get_term_children for only "
             "the immediate children. "
-            "Signature: hpo_get_term_descendants(term, limit=, offset=, response_mode=)."
+            "Signature: get_term_descendants(term, limit=, offset=, response_mode=)."
         ),
     )
-    async def hpo_get_term_descendants(
+    async def get_term_descendants(
         term: TermStr,
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
@@ -104,28 +104,28 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_term_descendants",
+            "get_term_descendants",
             call,
             context=McpErrorContext(
-                "hpo_get_term_descendants",
+                "get_term_descendants",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_term_parents",
+        name="get_term_parents",
         title="Get HPO Term Parents",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=PARENTS_SCHEMA,
         tags={"hpo", "hierarchy"},
         description=(
             "Return the direct is_a parents (immediate broader phenotype terms) of an HPO "
-            "term. Use hpo_get_term_ancestors for the full transitive set. "
-            "Signature: hpo_get_term_parents(term, response_mode=)."
+            "term. Use get_term_ancestors for the full transitive set. "
+            "Signature: get_term_parents(term, response_mode=)."
         ),
     )
-    async def hpo_get_term_parents(
+    async def get_term_parents(
         term: TermStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
@@ -134,28 +134,28 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_term_parents",
+            "get_term_parents",
             call,
             context=McpErrorContext(
-                "hpo_get_term_parents",
+                "get_term_parents",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_term_children",
+        name="get_term_children",
         title="Get HPO Term Children",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=CHILDREN_SCHEMA,
         tags={"hpo", "hierarchy"},
         description=(
             "Return the direct is_a children (immediate more-specific phenotype terms) of "
-            "an HPO term. Use hpo_get_term_descendants for the full transitive set. "
-            "Signature: hpo_get_term_children(term, response_mode=)."
+            "an HPO term. Use get_term_descendants for the full transitive set. "
+            "Signature: get_term_children(term, response_mode=)."
         ),
     )
-    async def hpo_get_term_children(
+    async def get_term_children(
         term: TermStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
@@ -164,10 +164,10 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_term_children",
+            "get_term_children",
             call,
             context=McpErrorContext(
-                "hpo_get_term_children",
+                "get_term_children",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),

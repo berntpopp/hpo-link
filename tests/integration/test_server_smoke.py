@@ -34,21 +34,21 @@ async def test_all_tools_registered(built_test_db) -> None:
         [
             "get_server_capabilities",
             "get_diagnostics",
-            "hpo_resolve_term",
-            "hpo_search_terms",
-            "hpo_get_term",
-            "hpo_get_term_parents",
-            "hpo_get_term_children",
-            "hpo_get_term_ancestors",
-            "hpo_get_term_descendants",
-            "hpo_resolve_xref",
-            "hpo_map_cross_ontology",
-            "hpo_get_phenotypes_for_gene",
-            "hpo_get_genes_for_phenotype",
-            "hpo_get_phenotypes_for_disease",
-            "hpo_get_diseases_for_phenotype",
-            "hpo_get_genes_for_disease",
-            "hpo_get_diseases_for_gene",
+            "resolve_term",
+            "search_terms",
+            "get_term",
+            "get_term_parents",
+            "get_term_children",
+            "get_term_ancestors",
+            "get_term_descendants",
+            "resolve_xref",
+            "map_cross_ontology",
+            "get_phenotypes_for_gene",
+            "get_genes_for_phenotype",
+            "get_phenotypes_for_disease",
+            "get_diseases_for_phenotype",
+            "get_genes_for_disease",
+            "get_diseases_for_gene",
         ]
     )
 
@@ -94,26 +94,26 @@ async def test_smoke_tool_calls(built_test_db) -> None:
     assert caps_result["success"] is True
     assert caps_result["server"] == "hpo-link"
 
-    # -- hpo_resolve_term --
+    # -- resolve_term --
     async def call_resolve():
         return get_hpo_service().resolve_term("HP:0000118")
 
     resolve_result = await run_mcp_tool(
-        "hpo_resolve_term",
+        "resolve_term",
         call_resolve,
-        context=McpErrorContext("hpo_resolve_term", arguments={"query": "HP:0000118"}),
+        context=McpErrorContext("resolve_term", arguments={"query": "HP:0000118"}),
     )
     assert resolve_result["success"] is True
     assert resolve_result["hpo_id"] == "HP:0000118"
 
-    # -- hpo_get_phenotypes_for_gene --
+    # -- get_phenotypes_for_gene --
     async def call_gene_pheno():
         return get_annotation_service().get_phenotypes_for_gene("PAX6")
 
     gene_pheno_result = await run_mcp_tool(
-        "hpo_get_phenotypes_for_gene",
+        "get_phenotypes_for_gene",
         call_gene_pheno,
-        context=McpErrorContext("hpo_get_phenotypes_for_gene", arguments={"gene": "PAX6"}),
+        context=McpErrorContext("get_phenotypes_for_gene", arguments={"gene": "PAX6"}),
     )
     assert gene_pheno_result["success"] is True
     hpo_ids = [p["hpo_id"] for p in gene_pheno_result.get("phenotypes", [])]

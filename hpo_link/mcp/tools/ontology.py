@@ -1,4 +1,4 @@
-"""Ontology lookup tools: hpo_resolve_term, hpo_search_terms, hpo_get_term."""
+"""Ontology lookup tools: resolve_term, search_terms, get_term."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
     """Register the HPO ontology lookup/search tools on a FastMCP instance."""
 
     @mcp.tool(
-        name="hpo_resolve_term",
+        name="resolve_term",
         title="Resolve HPO Term",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=RESOLVE_TERM_SCHEMA,
@@ -32,11 +32,11 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "canonical HPO term {hpo_id, name, match_type}. An ambiguous label returns "
             "ambiguous_query with candidates; an obsolete HP id returns not_found with "
             "its successor in replaced_by. This is the recommended first step — "
-            "resolve any query to a canonical HP id before calling hpo_get_term. "
-            "Signature: hpo_resolve_term(query, response_mode=)."
+            "resolve any query to a canonical HP id before calling get_term. "
+            "Signature: resolve_term(query, response_mode=)."
         ),
     )
-    async def hpo_resolve_term(
+    async def resolve_term(
         query: QueryStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
@@ -45,17 +45,17 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_resolve_term",
+            "resolve_term",
             call,
             context=McpErrorContext(
-                "hpo_resolve_term",
+                "resolve_term",
                 arguments={"query": query},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_search_terms",
+        name="search_terms",
         title="Search HPO Terms",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=SEARCH_SCHEMA,
@@ -68,10 +68,10 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "next_offset}. When truncated, next_commands carries a forward-page step "
             "(offset advanced) and a widen step. Obsolete terms are excluded unless "
             "include_obsolete=true. "
-            "Signature: hpo_search_terms(query, limit=, offset=, include_obsolete=, response_mode=)."
+            "Signature: search_terms(query, limit=, offset=, include_obsolete=, response_mode=)."
         ),
     )
-    async def hpo_search_terms(
+    async def search_terms(
         query: QueryStr,
         limit: Annotated[int, Field(ge=1, le=200, description="Max hits (default 25).")] = 25,
         offset: Annotated[
@@ -94,17 +94,17 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_search_terms",
+            "search_terms",
             call,
             context=McpErrorContext(
-                "hpo_search_terms",
+                "search_terms",
                 arguments={"query": query},
                 response_mode=response_mode,
             ),
         )
 
     @mcp.tool(
-        name="hpo_get_term",
+        name="get_term",
         title="Get HPO Term",
         annotations=READ_ONLY_OPEN_WORLD,
         output_schema=TERM_SCHEMA,
@@ -115,10 +115,10 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "parents and children, and obsolescence (replaced_by). The term accepts an "
             "HP id, a label/synonym, or an external xref CURIE (resolved first). "
             "Pass fields=['synonyms', 'definition'] for a sparse projection. "
-            "Signature: hpo_get_term(term, response_mode=, fields=)."
+            "Signature: get_term(term, response_mode=, fields=)."
         ),
     )
-    async def hpo_get_term(
+    async def get_term(
         term: TermStr,
         response_mode: ResponseMode = "compact",
         fields: FieldsArg = None,
@@ -129,10 +129,10 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             return payload
 
         return await run_mcp_tool(
-            "hpo_get_term",
+            "get_term",
             call,
             context=McpErrorContext(
-                "hpo_get_term",
+                "get_term",
                 arguments={"term": term},
                 response_mode=response_mode,
             ),
