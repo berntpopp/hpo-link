@@ -15,7 +15,7 @@ HPO_SERVER_INSTRUCTIONS = (
     "release and HPOA annotation files, so lookups are fast and offline.\n"
     "- Resolve first: resolve_term(query=) maps a phenotype label, synonym, "
     "HP id (HP:0000118), or external xref CURIE (UMLS:C0036572, "
-    "SNOMEDCT_US:193046000, ...) to the canonical {hpo_id, name, match_type}. "
+    "SNOMEDCT_US:263681008, ...) to the canonical {hpo_id, name, match_type}. "
     "An ambiguous label returns ambiguous_query with candidates.\n"
     "- Record: get_term(term=) returns the term with definition, synonyms, "
     "alt_ids, xrefs, and obsolescence status. search_terms(query=) is FTS "

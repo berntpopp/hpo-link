@@ -11,10 +11,12 @@ from typing import Any
 
 from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
-from hpo_link.exceptions import DataUnavailableError, InvalidInputError, NotFoundError
-from hpo_link.identifiers import normalize_disease_id, normalize_gene
+from hpo_link.exceptions import DataUnavailableError
+from hpo_link.identifiers import validate_disease_id, validate_gene
+from hpo_link.ingest.parser_hpoa import parse_frequency
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.resolution import Resolver
+from hpo_link.services.shaping import shape_annotation_rows
 
 _DESCENDANT_LIMIT = 10_000
 
@@ -71,12 +73,17 @@ class AnnotationService:
                 ids.add(d["hpo_id"])
         return sorted(ids)
 
-    def _provenance(self) -> dict[str, str | None]:
-        """Return the standard provenance block appended to every response."""
-        return {
-            "hpo_version": self._version,
-            "recommended_citation": RECOMMENDED_CITATION,
-        }
+    def _provenance(self, mode: str = "compact") -> dict[str, str | None]:
+        """Return the standard provenance block appended to every response.
+
+        ``recommended_citation`` (~250 chars) is included only at
+        ``standard``/``full`` to conserve tokens at ``compact``/``minimal``.
+        ``hpo_version`` is always included (it is the citation anchor).
+        """
+        prov: dict[str, str | None] = {"hpo_version": self._version}
+        if mode in ("standard", "full"):
+            prov["recommended_citation"] = RECOMMENDED_CITATION
+        return prov
 
     # -- gene -> phenotype -----------------------------------------------------
 
@@ -94,37 +101,37 @@ class AnnotationService:
                 NCBI CURIE (``"NCBIGene:5080"``).
             limit: Maximum phenotypes to return per page.
             offset: Pagination offset.
-            response_mode: Shaping hint (passed through; shaping done upstream).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``gene``, ``gene_kind``, ``gene_value``,
             ``phenotypes``, plus pagination fields and provenance.
 
         Raises:
-            InvalidInputError: When ``gene`` is empty.
-            NotFoundError: When the gene has no HPO annotations.
+            InvalidInputError: When ``gene`` is empty or malformed.
         """
-        if not gene or not gene.strip():
-            raise InvalidInputError(
-                "gene must be a non-empty gene symbol or NCBI id.", field="gene"
-            )
-
-        kind, value = normalize_gene(gene)
+        kind, value = validate_gene(gene)
         rows = self._db.phenotypes_for_gene(kind, value, limit, offset)
         total = self._db.count_phenotypes_for_gene(kind, value)
-        if total == 0:
-            raise NotFoundError(
-                f"No HPO phenotype annotations found for gene '{gene}'.",
-            )
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        # Decode raw frequency for each row (T3.2)
+        decoded_rows: list[dict[str, Any]] = []
+        for row in rows:
+            r = dict(row)
+            fhpo, fratio, fpct = parse_frequency(r.get("frequency"))
+            r["frequency_hpo"] = fhpo
+            r["frequency_ratio"] = fratio
+            r["frequency_percent"] = fpct
+            decoded_rows.append(r)
+        shaped = shape_annotation_rows(decoded_rows, mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "gene": gene,
             "gene_kind": kind,
             "gene_value": value,
-            "phenotypes": rows,
+            "phenotypes": shaped,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }
 
     # -- phenotype -> gene -----------------------------------------------------
@@ -146,7 +153,7 @@ class AnnotationService:
             include_descendants: When ``True``, unions the term's transitive
                 descendants before querying so genes annotated to any child term
                 are included.
-            response_mode: Shaping hint (passed through).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``term``, ``hpo_id``, ``genes``, ``include_descendants``,
@@ -161,15 +168,16 @@ class AnnotationService:
 
         rows = self._db.genes_for_phenotype(hpo_ids, limit, offset)
         total = self._db.count_genes_for_phenotype(hpo_ids)
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        shaped = shape_annotation_rows(list(rows), mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "term": term,
             "hpo_id": hpo_id,
-            "genes": rows,
+            "genes": shaped,
             "include_descendants": include_descendants,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }
 
     # -- disease -> phenotype --------------------------------------------------
@@ -187,31 +195,26 @@ class AnnotationService:
             disease_id: Disease CURIE, e.g. ``"OMIM:106210"`` or ``"ORPHA:123"``.
             limit: Maximum phenotypes to return per page.
             offset: Pagination offset.
-            response_mode: Shaping hint (passed through).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``disease_id``, ``phenotypes``, plus pagination
             fields and provenance.
 
         Raises:
-            InvalidInputError: When ``disease_id`` is empty.
+            InvalidInputError: When ``disease_id`` is empty or malformed.
         """
-        if not disease_id or not disease_id.strip():
-            raise InvalidInputError(
-                "disease_id must be a non-empty disease CURIE (e.g. OMIM:106210).",
-                field="disease_id",
-            )
-
-        disease_id = normalize_disease_id(disease_id)
+        disease_id = validate_disease_id(disease_id)
         rows = self._db.phenotypes_for_disease(disease_id, limit, offset)
         total = self._db.count_phenotypes_for_disease(disease_id)
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        shaped = shape_annotation_rows(list(rows), mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "disease_id": disease_id,
-            "phenotypes": rows,
+            "phenotypes": shaped,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }
 
     # -- phenotype -> disease --------------------------------------------------
@@ -232,7 +235,7 @@ class AnnotationService:
             offset: Pagination offset.
             include_descendants: When ``True``, unions the term's transitive
                 descendants before querying.
-            response_mode: Shaping hint (passed through).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``term``, ``hpo_id``, ``diseases``, ``include_descendants``,
@@ -247,15 +250,16 @@ class AnnotationService:
 
         rows = self._db.diseases_for_phenotype(hpo_ids, limit, offset)
         total = self._db.count_diseases_for_phenotype(hpo_ids)
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        shaped = shape_annotation_rows(list(rows), mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "term": term,
             "hpo_id": hpo_id,
-            "diseases": rows,
+            "diseases": shaped,
             "include_descendants": include_descendants,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }
 
     # -- disease -> gene -------------------------------------------------------
@@ -273,31 +277,26 @@ class AnnotationService:
             disease_id: Disease CURIE, e.g. ``"OMIM:106210"``.
             limit: Maximum genes to return per page.
             offset: Pagination offset.
-            response_mode: Shaping hint (passed through).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``disease_id``, ``genes``, plus pagination fields
             and provenance.
 
         Raises:
-            InvalidInputError: When ``disease_id`` is empty.
+            InvalidInputError: When ``disease_id`` is empty or malformed.
         """
-        if not disease_id or not disease_id.strip():
-            raise InvalidInputError(
-                "disease_id must be a non-empty disease CURIE (e.g. OMIM:106210).",
-                field="disease_id",
-            )
-
-        disease_id = normalize_disease_id(disease_id)
+        disease_id = validate_disease_id(disease_id)
         rows = self._db.genes_for_disease(disease_id, limit, offset)
         total = self._db.count_genes_for_disease(disease_id)
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        shaped = shape_annotation_rows(list(rows), mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "disease_id": disease_id,
-            "genes": rows,
+            "genes": shaped,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }
 
     # -- gene -> disease -------------------------------------------------------
@@ -316,30 +315,26 @@ class AnnotationService:
                 NCBI CURIE (``"NCBIGene:5080"``).
             limit: Maximum diseases to return per page.
             offset: Pagination offset.
-            response_mode: Shaping hint (passed through).
+            response_mode: Controls verbosity and which provenance fields appear.
 
         Returns:
             Dict with keys ``gene``, ``gene_kind``, ``gene_value``, ``diseases``,
             plus pagination fields and provenance.
 
         Raises:
-            InvalidInputError: When ``gene`` is empty.
+            InvalidInputError: When ``gene`` is empty or malformed.
         """
-        if not gene or not gene.strip():
-            raise InvalidInputError(
-                "gene must be a non-empty gene symbol or NCBI id.", field="gene"
-            )
-
-        kind, value = normalize_gene(gene)
+        kind, value = validate_gene(gene)
         rows = self._db.diseases_for_gene(kind, value, limit, offset)
         total = self._db.count_diseases_for_gene(kind, value)
-        pag = page_fields(total=total, returned=len(rows), limit=limit, offset=offset)
+        shaped = shape_annotation_rows(list(rows), mode=response_mode)
+        pag = page_fields(total=total, returned=len(shaped), limit=limit, offset=offset)
 
         return {
             "gene": gene,
             "gene_kind": kind,
             "gene_value": value,
-            "diseases": rows,
+            "diseases": shaped,
             **pag,
-            **self._provenance(),
+            **self._provenance(response_mode),
         }

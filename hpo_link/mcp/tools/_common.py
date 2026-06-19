@@ -16,7 +16,7 @@ QueryStr = Annotated[
     Field(
         description=(
             "A phenotype label, synonym, HP id (HP:0000118), or external xref CURIE "
-            "(UMLS:C0036572, SNOMEDCT_US:193046000, ...)."
+            "(UMLS:C0036572, SNOMEDCT_US:263681008, ...)."
         ),
         examples=["Phenotypic abnormality", "HP:0000118", "Seizure"],
     ),
@@ -40,7 +40,7 @@ XrefIdStr = Annotated[
             "An external cross-reference CURIE (prefix:local), e.g. UMLS/SNOMED/NCIT/MEDDRA, "
             "to resolve back to the HPO term(s) that cross-reference it."
         ),
-        examples=["UMLS:C0036572", "SNOMEDCT_US:193046000", "NCIT:C4890"],
+        examples=["UMLS:C0036572", "SNOMEDCT_US:263681008", "NCIT:C4890"],
     ),
 ]
 

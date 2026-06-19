@@ -19,6 +19,44 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 
+def _resolve_counts(meta: dict[str, Any], repo: Any) -> dict[str, int]:
+    """Resolve diagnostics counts from the meta dict, falling back to repo.counts().
+
+    Prefers the pre-computed values stored in the ``meta`` table (keyed as
+    ``term_count``, ``obsolete_count``, etc.).  When a value is missing or ``None``
+    (e.g. an older DB built before a column existed), falls back to a live
+    ``SELECT COUNT(*)`` via ``repo.counts()`` for that specific key.
+
+    Args:
+        meta: Column-keyed dict from ``HpoRepository.read_meta()``.
+        repo:  ``HpoRepository`` instance (used only if a fallback is needed).
+
+    Returns:
+        Dict with exactly the seven keys expected by the diagnostics payload:
+        ``terms``, ``obsolete``, ``closure``, ``xref``,
+        ``disease_phenotype``, ``gene_phenotype``, ``gene_disease``.
+    """
+    # Mapping: (meta_column, result_key)
+    meta_key_map: list[tuple[str, str]] = [
+        ("term_count", "terms"),
+        ("obsolete_count", "obsolete"),
+        ("closure_count", "closure"),
+        ("xref_count", "xref"),
+        ("disease_phenotype_count", "disease_phenotype"),
+        ("gene_phenotype_count", "gene_phenotype"),
+        ("gene_disease_count", "gene_disease"),
+    ]
+
+    # Determine which keys need a live count (lazy — only call repo.counts() once)
+    needs_fallback = any(meta.get(meta_col) is None for meta_col, _ in meta_key_map)
+    fallback: dict[str, int] = repo.counts() if needs_fallback else {}
+
+    return {
+        result_key: (meta[meta_col] if meta.get(meta_col) is not None else fallback[result_key])
+        for meta_col, result_key in meta_key_map
+    }
+
+
 def register_discovery_tools(mcp: FastMCP) -> None:
     """Register the discovery tools on a FastMCP instance."""
 
@@ -83,21 +121,27 @@ def register_discovery_tools(mcp: FastMCP) -> None:
                 index_status = "unavailable"
                 index_built = False
 
+            counts: dict[str, Any]
+            if repo is not None:
+                counts = _resolve_counts(meta, repo)
+            else:
+                counts = {
+                    "terms": None,
+                    "obsolete": None,
+                    "closure": None,
+                    "xref": None,
+                    "disease_phenotype": None,
+                    "gene_phenotype": None,
+                    "gene_disease": None,
+                }
+
             payload: dict[str, Any] = {
                 "success": True,
                 "server": "hpo-link",
                 "index_status": index_status,
                 "hpo_version": meta.get("hpo_version"),
                 "hpoa_version": meta.get("hpoa_version"),
-                "counts": {
-                    "terms": meta.get("num_terms"),
-                    "obsolete": meta.get("num_obsolete"),
-                    "closure": meta.get("num_closure"),
-                    "xref": meta.get("num_xref"),
-                    "disease_phenotype": meta.get("num_disease_phenotype"),
-                    "gene_phenotype": meta.get("num_gene_phenotype"),
-                    "gene_disease": meta.get("num_gene_disease"),
-                },
+                "counts": counts,
                 "build_utc": meta.get("build_utc"),
                 "build": build_info(),
                 "runtime_metrics": metrics.snapshot(),

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from hpo_link.exceptions import InvalidInputError, NotFoundError
+from hpo_link.exceptions import InvalidInputError
 from hpo_link.services.annotation_service import AnnotationService
 
 # ---------------------------------------------------------------------------
@@ -49,8 +49,9 @@ def test_phenotypes_for_gene_ncbi_curie(annotation_service: AnnotationService) -
 
 
 def test_phenotypes_for_gene_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required pagination fields."""
+    """Response must include all required pagination fields (compact mode)."""
     result = annotation_service.get_phenotypes_for_gene("PAX6")
+    # recommended_citation is gated to standard/full (T2.2)
     for field in (
         "gene",
         "gene_kind",
@@ -62,7 +63,6 @@ def test_phenotypes_for_gene_fields(annotation_service: AnnotationService) -> No
         "offset",
         "truncated",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 
@@ -73,11 +73,13 @@ def test_phenotypes_for_gene_hpo_version(annotation_service: AnnotationService) 
     assert result["hpo_version"]
 
 
-def test_phenotypes_for_gene_recommended_citation(annotation_service: AnnotationService) -> None:
-    """Response must carry recommended_citation."""
+def test_phenotypes_for_gene_recommended_citation_at_standard(
+    annotation_service: AnnotationService,
+) -> None:
+    """Response carries recommended_citation at standard mode (T2.2)."""
     from hpo_link.constants import RECOMMENDED_CITATION
 
-    result = annotation_service.get_phenotypes_for_gene("PAX6")
+    result = annotation_service.get_phenotypes_for_gene("PAX6", response_mode="standard")
     assert result["recommended_citation"] == RECOMMENDED_CITATION
 
 
@@ -87,10 +89,13 @@ def test_phenotypes_for_gene_invalid_empty(annotation_service: AnnotationService
         annotation_service.get_phenotypes_for_gene("")
 
 
-def test_phenotypes_for_gene_not_found(annotation_service: AnnotationService) -> None:
-    """Unknown gene should raise NotFoundError."""
-    with pytest.raises(NotFoundError):
-        annotation_service.get_phenotypes_for_gene("NOTAREALGENE99999")
+def test_phenotypes_for_gene_absent_returns_empty_page(
+    annotation_service: AnnotationService,
+) -> None:
+    """Unknown gene should return empty 200 page (NOT NotFoundError). (T1.2)"""
+    result = annotation_service.get_phenotypes_for_gene("NOTAREALGENE99999")
+    assert result["total"] == 0
+    assert result["phenotypes"] == []
 
 
 def test_phenotypes_for_gene_pagination(annotation_service: AnnotationService) -> None:
@@ -140,7 +145,7 @@ def test_genes_for_phenotype_with_descendants(annotation_service: AnnotationServ
 
 
 def test_genes_for_phenotype_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required fields."""
+    """Response must include all required fields (compact mode; recommended_citation gated)."""
     result = annotation_service.get_genes_for_phenotype("HP:0000479")
     for field in (
         "term",
@@ -153,7 +158,6 @@ def test_genes_for_phenotype_fields(annotation_service: AnnotationService) -> No
         "truncated",
         "include_descendants",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 
@@ -174,11 +178,13 @@ def test_genes_for_phenotype_hpo_version(annotation_service: AnnotationService) 
     assert result["hpo_version"]
 
 
-def test_genes_for_phenotype_recommended_citation(annotation_service: AnnotationService) -> None:
-    """Response must carry recommended_citation."""
+def test_genes_for_phenotype_recommended_citation_at_standard(
+    annotation_service: AnnotationService,
+) -> None:
+    """Response carries recommended_citation at standard mode (T2.2)."""
     from hpo_link.constants import RECOMMENDED_CITATION
 
-    result = annotation_service.get_genes_for_phenotype("HP:0000479")
+    result = annotation_service.get_genes_for_phenotype("HP:0000479", response_mode="standard")
     assert result["recommended_citation"] == RECOMMENDED_CITATION
 
 
@@ -195,7 +201,7 @@ def test_phenotypes_for_disease_omim_106210(annotation_service: AnnotationServic
 
 
 def test_phenotypes_for_disease_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required fields."""
+    """Response must include all required fields (compact; recommended_citation gated)."""
     result = annotation_service.get_phenotypes_for_disease("OMIM:106210")
     for field in (
         "disease_id",
@@ -206,7 +212,6 @@ def test_phenotypes_for_disease_fields(annotation_service: AnnotationService) ->
         "offset",
         "truncated",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 
@@ -217,11 +222,13 @@ def test_phenotypes_for_disease_hpo_version(annotation_service: AnnotationServic
     assert result["hpo_version"]
 
 
-def test_phenotypes_for_disease_recommended_citation(annotation_service: AnnotationService) -> None:
-    """Response must carry recommended_citation."""
+def test_phenotypes_for_disease_recommended_citation_at_standard(
+    annotation_service: AnnotationService,
+) -> None:
+    """Response carries recommended_citation at standard mode (T2.2)."""
     from hpo_link.constants import RECOMMENDED_CITATION
 
-    result = annotation_service.get_phenotypes_for_disease("OMIM:106210")
+    result = annotation_service.get_phenotypes_for_disease("OMIM:106210", response_mode="standard")
     assert result["recommended_citation"] == RECOMMENDED_CITATION
 
 
@@ -267,7 +274,7 @@ def test_diseases_for_phenotype_with_descendants(annotation_service: AnnotationS
 
 
 def test_diseases_for_phenotype_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required fields."""
+    """Response must include all required fields (compact; recommended_citation gated)."""
     result = annotation_service.get_diseases_for_phenotype("HP:0000479")
     for field in (
         "term",
@@ -280,7 +287,6 @@ def test_diseases_for_phenotype_fields(annotation_service: AnnotationService) ->
         "truncated",
         "include_descendants",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 
@@ -313,7 +319,7 @@ def test_genes_for_disease_omim_106210(annotation_service: AnnotationService) ->
 
 
 def test_genes_for_disease_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required fields."""
+    """Response must include all required fields (compact; recommended_citation gated)."""
     result = annotation_service.get_genes_for_disease("OMIM:106210")
     for field in (
         "disease_id",
@@ -324,7 +330,6 @@ def test_genes_for_disease_fields(annotation_service: AnnotationService) -> None
         "offset",
         "truncated",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 
@@ -368,7 +373,7 @@ def test_diseases_for_gene_ncbi_id(annotation_service: AnnotationService) -> Non
 
 
 def test_diseases_for_gene_fields(annotation_service: AnnotationService) -> None:
-    """Response must include all required fields."""
+    """Response must include all required fields (compact; recommended_citation gated)."""
     result = annotation_service.get_diseases_for_gene("PAX6")
     for field in (
         "gene",
@@ -381,7 +386,6 @@ def test_diseases_for_gene_fields(annotation_service: AnnotationService) -> None
         "offset",
         "truncated",
         "hpo_version",
-        "recommended_citation",
     ):
         assert field in result, f"Missing field: {field}"
 

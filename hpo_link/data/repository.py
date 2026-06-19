@@ -275,7 +275,11 @@ class HpoRepository(AnnotationsMixin):
         )
 
     def counts(self) -> dict[str, int]:
-        """Return row counts for the principal tables (for diagnostics)."""
+        """Return row counts for all principal tables (for diagnostics fallback).
+
+        Keys exactly match the diagnostics counts dict:
+        ``terms, obsolete, closure, xref, disease_phenotype, gene_phenotype, gene_disease``.
+        """
         return {
             "terms": self._count("term"),
             "obsolete": int(
@@ -283,8 +287,11 @@ class HpoRepository(AnnotationsMixin):
                     "SELECT COUNT(*) AS n FROM term WHERE is_obsolete = 1"
                 ).fetchone()["n"]
             ),
-            "xrefs": self._count("xref"),
             "closure": self._count("hpo_closure"),
+            "xref": self._count("xref"),
+            "disease_phenotype": self._count("disease_phenotype"),
+            "gene_phenotype": self._count("gene_phenotype"),
+            "gene_disease": self._count("gene_disease"),
         }
 
     def _count(self, table: str) -> int:

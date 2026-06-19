@@ -1,4 +1,4 @@
-"""Tests for hpo_link.ingest.builder."""
+"""Tests for hpo_link.ingest.builder — includes WS-A T0.1 regression."""
 
 from __future__ import annotations
 
@@ -40,3 +40,36 @@ def test_build_database_meta_counts(tmp_path: Path, mini_paths: dict[str, Path |
     assert meta.disease_phenotype_count >= 1
     assert meta.gene_phenotype_count >= 1
     assert meta.gene_disease_count >= 1
+
+
+def test_build_database_db_meta_row_has_all_seven_counts(
+    tmp_path: Path, mini_paths: dict[str, Path | None]
+) -> None:
+    """T0.1 — the meta table row must have positive integers for all 7 *_count columns."""
+    build_database(_settings(tmp_path), paths=mini_paths, validators={})  # type: ignore[arg-type]
+    db = tmp_path / "hpo.sqlite"
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM meta WHERE id = 1").fetchone()
+    assert row is not None, "meta table must have exactly one row"
+    count_columns = [
+        "term_count",
+        "obsolete_count",
+        "closure_count",
+        "xref_count",
+        "disease_phenotype_count",
+        "gene_phenotype_count",
+        "gene_disease_count",
+    ]
+    for col in count_columns:
+        val = row[col]
+        assert val is not None, f"meta.{col} must not be NULL"
+        assert isinstance(val, int), f"meta.{col} must be an integer, got {type(val)}"
+        assert val >= 0, f"meta.{col} must be non-negative, got {val}"
+    # Internal consistency: obsolete <= total terms
+    assert row["obsolete_count"] <= row["term_count"]
+    # Sanity: at least some real data
+    assert row["term_count"] >= 4
+    assert row["disease_phenotype_count"] >= 1
+    assert row["gene_phenotype_count"] >= 1
+    assert row["gene_disease_count"] >= 1

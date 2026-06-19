@@ -61,19 +61,22 @@ class _Metrics:
             samples = sorted(self._latencies)
             per_tool = {k: dict(v) for k, v in sorted(self._per_tool.items())}
         report_rate = requests >= _ERROR_RATE_MIN_SAMPLE
-        return {
+        snap: dict[str, Any] = {
             "requests": requests,
             "errors": errors,
             "error_rate": round(errors / requests, 4) if report_rate else None,
-            "latency_ms": {
-                "p50": _percentile(samples, 50),
-                "p95": _percentile(samples, 95),
-                "p99": _percentile(samples, 99),
-                "max": samples[-1] if samples else 0,
-                "sampled": len(samples),
-            },
-            "per_tool": per_tool,
         }
+        if not report_rate:
+            snap["error_rate_withheld_below"] = _ERROR_RATE_MIN_SAMPLE
+        snap["latency_ms"] = {
+            "p50": _percentile(samples, 50),
+            "p95": _percentile(samples, 95),
+            "p99": _percentile(samples, 99),
+            "max": samples[-1] if samples else 0,
+            "sampled": len(samples),
+        }
+        snap["per_tool"] = per_tool
+        return snap
 
     def reset(self) -> None:
         """Clear all counters and the latency window (test/process boundary)."""
