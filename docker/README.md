@@ -7,9 +7,9 @@ make docker-logs        # follow logs
 make docker-down        # stop
 ```
 
-The entrypoint downloads Mondo and builds the local SQLite index before the
-server starts. The index is persisted in the `mondo-data` named volume across
-restarts.
+The entrypoint downloads the HPO ontology and builds the local SQLite database
+before the server starts. The database is persisted in the `hpo-data` named
+volume across restarts.
 
 ## Refresh
 
@@ -26,6 +26,6 @@ options on bare-metal installs.
 
 ## Ports
 
-The host port defaults to `8000`; override with `MONDO_LINK_HOST_PORT` (e.g. in
+The host port defaults to `8000`; override with `HPO_LINK_HOST_PORT` (e.g. in
 `docker/.env`). MCP endpoint: `http://127.0.0.1:<port>/mcp`. Health:
 `http://127.0.0.1:<port>/health`.

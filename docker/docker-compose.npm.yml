@@ -4,8 +4,8 @@
 # unified container serves the FastAPI REST API on / and the MCP streamable-HTTP
 # transport on /mcp via a single port (8000). NPM reverse-proxies to the fixed
 # container_name on the shared external npm_default network. Mirrors the
-# gtex-link / mgi-link fleet pattern. First boot builds the local Mondo SQLite
-# index from the OBO + SSSOM release into the persisted data volume.
+# gtex-link / mgi-link fleet pattern. First boot builds the local HPO SQLite
+# database from the OBO release into the persisted data volume.
 #
 #   docker compose -f docker/docker-compose.npm.yml --env-file .env.docker up -d --build
 name: hpo-link-npm
@@ -21,27 +21,27 @@ services:
     expose:
       - "8000"
     environment:
-      - MONDO_LINK_HOST=0.0.0.0
-      - MONDO_LINK_PORT=8000
-      - MONDO_LINK_TRANSPORT=unified
-      - MONDO_LINK_MCP_PATH=/mcp
-      - MONDO_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
-      - MONDO_LINK_LOG_FORMAT=json
-      - MONDO_LINK_DATA__DATA_DIR=/app/data
+      - HPO_LINK_HOST=0.0.0.0
+      - HPO_LINK_PORT=8000
+      - HPO_LINK_TRANSPORT=unified
+      - HPO_LINK_MCP_PATH=/mcp
+      - HPO_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
+      - HPO_LINK_LOG_FORMAT=json
+      - HPO_LINK_DATA__DATA_DIR=/app/data
       # Build the local SQLite index on first boot (persisted in the volume).
-      - MONDO_LINK_DATA__AUTO_BOOTSTRAP=true
-      # No cron sidecar in the NPM deploy; Mondo is a slowly-changing ontology,
+      - HPO_LINK_DATA__AUTO_BOOTSTRAP=true
+      # No cron sidecar in the NPM deploy; HPO is a slowly-changing ontology,
       # so refresh stays manual (host: docker compose ... exec hpo-link
       # hpo-link-data refresh). The persisted index serves until then.
-      - MONDO_LINK_DATA__REFRESH_ENABLED=false
+      - HPO_LINK_DATA__REFRESH_ENABLED=false
     # The image ENTRYPOINT builds the index then exec's the unified server,
-    # reading MONDO_LINK_TRANSPORT/HOST/PORT above; no command override needed.
+    # reading HPO_LINK_TRANSPORT/HOST/PORT above; no command override needed.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      # First boot downloads + builds the local Mondo SQLite index.
+      # First boot downloads + builds the local HPO SQLite database.
       start_period: 150s
     restart: unless-stopped
     read_only: true
@@ -49,16 +49,16 @@ services:
       # TMPDIR=/tmp/hpo-link (set in the image) - download/build scratch space.
       - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
     volumes:
-      # Persist the built Mondo SQLite index across container restarts.
-      - mondo-data:/app/data
+      # Persist the built HPO SQLite database across container restarts.
+      - hpo-data:/app/data
     networks:
       - hpo_link_internal_net
       - npm_proxy_network
     deploy:
       resources:
         limits:
-          memory: ${MONDO_API_MEMORY_LIMIT:-1g}
-          cpus: ${MONDO_API_CPU_LIMIT:-1.0}
+          memory: ${HPO_API_MEMORY_LIMIT:-1g}
+          cpus: ${HPO_API_CPU_LIMIT:-1.0}
           pids: 256
         reservations:
           memory: 256m
@@ -77,7 +77,7 @@ services:
     init: true
 
 volumes:
-  mondo-data:
+  hpo-data:
     driver: local
 
 networks:

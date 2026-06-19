@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Multi-stage Dockerfile for mondo-link.
+# Multi-stage Dockerfile for hpo-link.
 
 FROM python:3.12-slim AS builder
 
@@ -33,16 +33,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH="/home/app/web" \
-    MONDO_LINK_HOST=0.0.0.0 \
-    MONDO_LINK_PORT=8000 \
-    MONDO_LINK_TRANSPORT=unified \
-    MONDO_LINK_MCP_PATH=/mcp \
-    MONDO_LINK_DATA__DATA_DIR=/app/data \
+    HPO_LINK_HOST=0.0.0.0 \
+    HPO_LINK_PORT=8000 \
+    HPO_LINK_TRANSPORT=unified \
+    HPO_LINK_MCP_PATH=/mcp \
+    HPO_LINK_DATA__DATA_DIR=/app/data \
     # The entrypoint builds the index before the server starts. Refresh is owned
     # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
-    MONDO_LINK_DATA__AUTO_BOOTSTRAP=true \
-    MONDO_LINK_DATA__REFRESH_ENABLED=false \
-    TMPDIR=/tmp/mondo-link
+    HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
+    HPO_LINK_DATA__REFRESH_ENABLED=false \
+    TMPDIR=/tmp/hpo-link
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -52,14 +52,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN groupadd --system app && \
     useradd --system --gid app --home /home/app --create-home app && \
-    mkdir -p /tmp/mondo-link /app/data && \
-    chown -R app:app /tmp/mondo-link /app/data /home/app
+    mkdir -p /tmp/hpo-link /app/data && \
+    chown -R app:app /tmp/hpo-link /app/data /home/app
 
 COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /home/app/web
 
-COPY --chown=app:app ./mondo_link ./mondo_link
+COPY --chown=app:app ./hpo_link ./hpo_link
 COPY --chown=app:app ./server.py ./mcp_server.py ./pyproject.toml ./README.md ./
 COPY --chown=app:app ./docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
@@ -67,18 +67,18 @@ RUN /opt/venv/bin/pip install . --no-deps && chmod +x /usr/local/bin/entrypoint.
 
 # Stamp build provenance so get_server_capabilities/_meta can report which build
 # answered. Pass at build time, e.g.:
-#   docker build --build-arg MONDO_LINK_GIT_SHA=$(git rev-parse --short HEAD) \
-#                --build-arg MONDO_LINK_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
-ARG MONDO_LINK_GIT_SHA=unknown
-ARG MONDO_LINK_BUILT_AT
-ENV MONDO_LINK_GIT_SHA=${MONDO_LINK_GIT_SHA} \
-    MONDO_LINK_BUILT_AT=${MONDO_LINK_BUILT_AT}
+#   docker build --build-arg HPO_LINK_GIT_SHA=$(git rev-parse --short HEAD) \
+#                --build-arg HPO_LINK_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
+ARG HPO_LINK_GIT_SHA=unknown
+ARG HPO_LINK_BUILT_AT
+ENV HPO_LINK_GIT_SHA=${HPO_LINK_GIT_SHA} \
+    HPO_LINK_BUILT_AT=${HPO_LINK_BUILT_AT}
 
 USER app
 
 EXPOSE 8000
 
-# The built SQLite index lives under MONDO_LINK_DATA__DATA_DIR (/app/data).
+# The built SQLite index lives under HPO_LINK_DATA__DATA_DIR (/app/data).
 # Mount a volume there so the index persists across container restarts.
 VOLUME ["/app/data"]
 

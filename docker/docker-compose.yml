@@ -9,32 +9,32 @@ services:
       args:
         # Stamp build provenance into the image so get_server_capabilities/_meta
         # can report which build answered. Defaults keep an unset env harmless.
-        MONDO_LINK_GIT_SHA: ${MONDO_LINK_GIT_SHA:-unknown}
-        MONDO_LINK_BUILT_AT: ${MONDO_LINK_BUILT_AT:-}
+        HPO_LINK_GIT_SHA: ${HPO_LINK_GIT_SHA:-unknown}
+        HPO_LINK_BUILT_AT: ${HPO_LINK_BUILT_AT:-}
     container_name: hpo-link
     ports:
-      - "${MONDO_LINK_HOST_PORT:-8000}:8000"
+      - "${HPO_LINK_HOST_PORT:-8000}:8000"
     env_file:
       - path: ../.env
         required: false
       - path: ../.env.docker
         required: false
     environment:
-      MONDO_LINK_HOST: 0.0.0.0
-      MONDO_LINK_PORT: 8000
-      MONDO_LINK_TRANSPORT: unified
-      MONDO_LINK_MCP_PATH: /mcp
-      MONDO_LINK_LOG_LEVEL: INFO
-      MONDO_LINK_LOG_FORMAT: json
-      MONDO_LINK_DATA__DATA_DIR: /app/data
-      MONDO_LINK_DATA__AUTO_BOOTSTRAP: "true"
+      HPO_LINK_HOST: 0.0.0.0
+      HPO_LINK_PORT: 8000
+      HPO_LINK_TRANSPORT: unified
+      HPO_LINK_MCP_PATH: /mcp
+      HPO_LINK_LOG_LEVEL: INFO
+      HPO_LINK_LOG_FORMAT: json
+      HPO_LINK_DATA__DATA_DIR: /app/data
+      HPO_LINK_DATA__AUTO_BOOTSTRAP: "true"
       # Refresh is owned by cron (see docs/deployment.md). To refresh the running
       # container, run a host cron job:
       #   docker compose -f docker/docker-compose.yml exec hpo-link hpo-link-data refresh
-      MONDO_LINK_DATA__REFRESH_ENABLED: "false"
+      HPO_LINK_DATA__REFRESH_ENABLED: "false"
     volumes:
       # Persist the built SQLite index across container restarts.
-      - mondo-data:/app/data
+      - hpo-data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -48,7 +48,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - mondo-network
+      - hpo-network
 
   # Optional: a one-shot refresh runner you can invoke from host cron, e.g.
   #   17 3 * * *  docker compose -f /path/docker/docker-compose.yml run --rm refresh
@@ -60,16 +60,16 @@ services:
       target: production
     entrypoint: ["hpo-link-data", "refresh"]
     environment:
-      MONDO_LINK_DATA__DATA_DIR: /app/data
+      HPO_LINK_DATA__DATA_DIR: /app/data
     volumes:
-      - mondo-data:/app/data
+      - hpo-data:/app/data
     networks:
-      - mondo-network
+      - hpo-network
 
 volumes:
-  mondo-data:
+  hpo-data:
     driver: local
 
 networks:
-  mondo-network:
+  hpo-network:
     driver: bridge
