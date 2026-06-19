@@ -1,0 +1,89 @@
+# Nginx Proxy Manager deployment overlay for hpo-link.
+#
+# Self-contained (used standalone, not layered on docker-compose.yml): one
+# unified container serves the FastAPI REST API on / and the MCP streamable-HTTP
+# transport on /mcp via a single port (8000). NPM reverse-proxies to the fixed
+# container_name on the shared external npm_default network. Mirrors the
+# gtex-link / mgi-link fleet pattern. First boot builds the local HPO SQLite
+# database from the OBO release into the persisted data volume.
+#
+#   docker compose -f docker/docker-compose.npm.yml --env-file .env.docker up -d --build
+name: hpo-link-npm
+
+services:
+  hpo_link:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: production
+    container_name: hpo-link-npm
+    # NO published host ports - NPM handles all routing via the container name.
+    expose:
+      - "8000"
+    environment:
+      - HPO_LINK_HOST=0.0.0.0
+      - HPO_LINK_PORT=8000
+      - HPO_LINK_TRANSPORT=unified
+      - HPO_LINK_MCP_PATH=/mcp
+      - HPO_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
+      - HPO_LINK_LOG_FORMAT=json
+      - HPO_LINK_DATA__DATA_DIR=/app/data
+      # Build the local SQLite index on first boot (persisted in the volume).
+      - HPO_LINK_DATA__AUTO_BOOTSTRAP=true
+      # No cron sidecar in the NPM deploy; HPO is a slowly-changing ontology,
+      # so refresh stays manual (host: docker compose ... exec hpo-link
+      # hpo-link-data refresh). The persisted index serves until then.
+      - HPO_LINK_DATA__REFRESH_ENABLED=false
+    # The image ENTRYPOINT builds the index then exec's the unified server,
+    # reading HPO_LINK_TRANSPORT/HOST/PORT above; no command override needed.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # First boot downloads + builds the local HPO SQLite database.
+      start_period: 150s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      # TMPDIR=/tmp/hpo-link (set in the image) - download/build scratch space.
+      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+    volumes:
+      # Persist the built HPO SQLite database across container restarts.
+      - hpo-data:/app/data
+    networks:
+      - hpo_link_internal_net
+      - npm_proxy_network
+    deploy:
+      resources:
+        limits:
+          memory: ${HPO_API_MEMORY_LIMIT:-1g}
+          cpus: ${HPO_API_CPU_LIMIT:-1.0}
+          pids: 256
+        reservations:
+          memory: 256m
+          cpus: 0.25
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=hpo-link,environment=production,proxy=npm"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    init: true
+
+volumes:
+  hpo-data:
+    driver: local
+
+networks:
+  hpo_link_internal_net:
+    driver: bridge
+    name: hpo_link_internal_net
+  npm_proxy_network:
+    external: true
+    name: ${NPM_SHARED_NETWORK_NAME:-npm_default}

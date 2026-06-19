@@ -12,12 +12,9 @@ coverage.xml
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-# Data (built/downloaded artifacts)
-data/*.sqlite
-data/*.sqlite-*
-data/*.zst
-data/download_cache.json
-data/raw/
 # Env
 .env
 .env.local
+# Data (built/downloaded + raw source artifacts — never commit)
+data/*
+!data/.gitkeep
