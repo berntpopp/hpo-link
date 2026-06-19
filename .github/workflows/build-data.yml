@@ -1,0 +1,43 @@
+name: build-data
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y zstd
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - id: ver
+        run: |
+          echo "date=$(uv run python -c 'import httpx; from hpo_link.ingest.downloader import resolve_latest_version; print(resolve_latest_version(httpx.Client()))')" >> "$GITHUB_OUTPUT"
+      - name: Skip if already published
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "db-v${{ steps.ver.outputs.date }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.check.outputs.exists == 'false'
+        run: uv run hpo-link-data build
+      - if: steps.check.outputs.exists == 'false'
+        name: package
+        run: |
+          DATE=${{ steps.ver.outputs.date }}
+          zstd -19 -f data/hpo.sqlite -o "hpo-$DATE.sqlite.zst"
+          sha256sum "hpo-$DATE.sqlite.zst" | awk '{print $1}' > "hpo-$DATE.sqlite.zst.sha256"
+          uv run python scripts/make_manifest.py "$DATE"
+      - if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "db-v${{ steps.ver.outputs.date }}" \
+            hpo-*.sqlite.zst* manifest.json \
+            --title "HPO DB ${{ steps.ver.outputs.date }}" \
+            --notes "Prebuilt hpo-link SQLite DB for HPO ${{ steps.ver.outputs.date }}."
