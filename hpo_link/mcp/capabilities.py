@@ -71,6 +71,7 @@ _SUMMARY_KEYS: tuple[str, ...] = (
     "recommended_workflows",
     "search_semantics",
     "truncation_contract",
+    "absent_entity_contract",
     "error_codes",
     "limits",
     "read_only",
@@ -163,7 +164,7 @@ def build_capabilities() -> dict[str, Any]:
         ),
         "id_normalization": (
             "HP ids accepted/returned as 'HP:0000118' (7-digit zero-padded); "
-            "external xrefs as CURIEs (UMLS:C0036572, SNOMEDCT_US:193046000, ...)."
+            "external xrefs as CURIEs (UMLS:C0036572, SNOMEDCT_US:263681008, ...)."
         ),
         "search_semantics": (
             "search_terms is full-text search over HPO term names, synonyms, and "
@@ -197,6 +198,16 @@ def build_capabilities() -> dict[str, Any]:
             "ambiguous label returns 'ambiguous_query' with candidates and "
             "next_commands to each candidate. An obsolete HP id returns "
             "'not_found' with replaced_by successors and next_commands to them."
+        ),
+        "absent_entity_contract": (
+            "Malformed identifier → invalid_input (with field). A well-formed but "
+            "unknown id (valid shape, no annotations) → an empty 200 page with "
+            "total:0 — NOT not_found. not_found is reserved for genuine "
+            "identity-resolution failure: the resolve_* tools and phenotype→term "
+            "lookups where a free-text term cannot be resolved to any HPO id. "
+            "This rule is uniform across the six association tools "
+            "(get_phenotypes_for_gene/disease, get_genes_for_phenotype/disease, "
+            "get_diseases_for_phenotype/gene) and resolve_xref."
         ),
         "error_codes": ERROR_CODES,
         "limits": {

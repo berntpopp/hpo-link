@@ -38,6 +38,23 @@ _ARR = {"type": "array"}
 _ARR_NULL = {"type": ["array", "null"]}
 _OBJ = {"type": "object", "additionalProperties": True}
 
+# Synonyms are polymorphic: compact/sparse -> ["plain string", ...]
+# standard/full -> [{text, scope, type, ...}, ...]
+_SYNONYM_ITEM = {
+    "oneOf": [
+        {"type": "string"},
+        {
+            "type": "object",
+            "additionalProperties": True,
+            "properties": {
+                "text": {"type": "string"},
+                "scope": {"type": "string"},
+            },
+        },
+    ]
+}
+_SYNONYMS_ARR = {"type": "array", "items": _SYNONYM_ITEM}
+
 CAPABILITIES_SCHEMA = _envelope(
     server=_STR,
     server_version=_STR,
@@ -87,7 +104,7 @@ TERM_SCHEMA = _envelope(
     hpo_id=_STR,
     name=_STR,
     definition=_STR_NULL,
-    synonyms=_ARR,
+    synonyms=_SYNONYMS_ARR,
     alt_ids=_ARR,
     subsets=_ARR,
     parents=_ARR,

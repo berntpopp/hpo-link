@@ -28,7 +28,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         tags={"hpo", "resolve"},
         description=(
             "Resolve a phenotype label, synonym, HP id (HP:0000118), or external "
-            "cross-reference CURIE (UMLS:C0036572, SNOMEDCT_US:193046000, ...) to the "
+            "cross-reference CURIE (UMLS:C0000737, SNOMEDCT_US:263681008, ...) to the "
             "canonical HPO term {hpo_id, name, match_type}. An ambiguous label returns "
             "ambiguous_query with candidates; an obsolete HP id returns not_found with "
             "its successor in replaced_by. This is the recommended first step — "
@@ -115,6 +115,8 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "parents and children, and obsolescence (replaced_by). The term accepts an "
             "HP id, a label/synonym, or an external xref CURIE (resolved first). "
             "Pass fields=['synonyms', 'definition'] for a sparse projection. "
+            "Note on synonyms shape: compact (default) returns synonyms as plain "
+            "strings; standard/full return {text, scope} objects. "
             "Signature: get_term(term, response_mode=, fields=)."
         ),
     )
