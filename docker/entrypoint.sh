@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# Build the local HPO database before serving so the request path never triggers
-# a lazy build, then start the server. Refresh is handled by cron (see
-# docs/deployment.md), not the in-app scheduler.
+# Bootstrap the local HPO database before serving so the request path never
+# triggers a lazy build. Prefers the prebuilt DB artifact published to GitHub
+# Releases (fast, sha256-verified — see hpo_link/ingest/release.py); falls back
+# to a local build from the OBO PURLs when offline or no asset matches.
+# Day-to-day refresh is owned by host cron (see docs/deployment.md), not the
+# in-app scheduler.
 set -euo pipefail
 
-echo "[entrypoint] Ensuring the local HPO database is built/refreshed..."
-if hpo-link-data refresh; then
-    echo "[entrypoint] HPO database ready."
+echo "[entrypoint] Bootstrapping HPO database (prefers prebuilt GitHub Release artifact)..."
+if python -c "from hpo_link.config import settings; from hpo_link.ingest.builder import ensure_database; print('[entrypoint] HPO database ready at', ensure_database(settings))"; then
+    :
 else
-    echo "[entrypoint] WARN: build/refresh failed; the server will lazy-bootstrap on first use."
+    echo "[entrypoint] WARN: bootstrap failed; the server will lazy-bootstrap on first use."
 fi
 
 exec python server.py \
