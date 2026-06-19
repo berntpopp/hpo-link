@@ -6,33 +6,57 @@ This file orients Claude Code (and other agents) in this repository.
 agent guide (architecture, invariants, conventions, definition of done). This
 file only highlights the essentials.
 
-## Essentials
+## Role
 
-- `hpo-link` is an MCP + REST server over the Human Phenotype Ontology (HPO),
-  backed by a locally-built SQLite index. It mirrors the sibling `mgi-link` stack.
-- **Two planes:** the data plane (`config`/`constants`/`identifiers`/`ingest`/
-  `data`/`services`) builds & reads the index and returns plain dicts; the MCP
-  plane (`mcp/`) is domain-agnostic scaffolding where `run_mcp_tool` owns
-  `success`/`_meta` and returns structured errors (never raised).
-- **Invariants:** every `compact`+ (default) response carries
-  `_meta.next_commands` (`minimal` opts out → `_meta` = `{tool, request_id}`);
-  7-code error
-  taxonomy; each tool has `output_schema` + `READ_ONLY_OPEN_WORLD` and a first
-  sentence ending `Signature: tool(args...)`; keep `capabilities.TOOLS` in sync;
-  normalise ids in `identifiers.py`; cite the HPO id + HPO release version.
-- **Definition of done:** `make ci-local` green (format-check, lint-ci, lint-loc
-  ≤500 lines/file, mypy strict, tests ≥80% coverage).
-- `structlog` → stderr only; stdout is reserved for the stdio MCP protocol.
+`hpo-link` is an MCP + REST server over the Human Phenotype Ontology (HPO),
+backed by a locally-built SQLite database. It serves phenotype term lookup,
+`is_a` hierarchy traversal, cross-ontology mapping, and gene↔phenotype↔disease
+association queries (HPOA). It mirrors the sibling `mgi-link` stack.
 
-## Common commands
+## Directory layout
+
+```
+hpo_link/          # core package (config, ingest, data, services, mcp)
+server.py          # unified REST + MCP server entry point
+mcp_server.py      # stdio MCP entry point (Claude Desktop)
+scripts/           # CI helpers (check_file_size.py, check_deployed_freshness.py)
+tests/             # unit + integration tests
+docker/            # Dockerfile, docker-compose.yml, entrypoint.sh
+docs/              # architecture.md, deployment.md, usage.md
+```
+
+See [AGENTS.md](AGENTS.md) for the full layout and architecture.
+
+## Key `make` commands
 
 ```bash
 make install        # uv sync --group dev
-make data           # build the local Mondo index
-make data-status    # print loaded release + counts
-make dev            # unified REST + MCP server
+make data           # build the local HPO database
+make data-status    # print loaded HPO release + counts
+make dev            # unified REST + MCP server on http://127.0.0.1:8000
 make mcp-serve      # stdio MCP server
-make ci-local       # the full gate
+make ci-local       # the full gate (format-check, lint, lint-loc, mypy, test)
+make format         # auto-format with ruff
+make typecheck      # mypy strict
+make test           # unit tests (not integration)
 ```
 
-Research use only; not for clinical decision support. HPO data is CC BY 4.0.
+## TL;DR lint / test / build
+
+```bash
+make ci-local        # must be green before any commit
+make format          # fix formatting issues flagged by ci-local
+uv run pytest tests -q -m "not integration"  # fast unit tests
+```
+
+## Invariants (summary)
+
+- **Two planes:** data plane returns plain dicts; MCP plane owns `success`/`_meta`.
+- Every `compact`+ response carries `_meta.next_commands`; `minimal` opts out.
+- 7-code error taxonomy; every tool has `output_schema` + `READ_ONLY_OPEN_WORLD`.
+- `structlog` → stderr only; stdout is reserved for the stdio MCP protocol.
+- Files ≤ 500 lines; coverage ≥ 80%; `make ci-local` is the definition of done.
+- Cite HPO id + HPO release version (`hpo_version`) in every payload.
+
+Research use only; not for clinical decision support. HPO data: see
+[https://hpo.jax.org/app/license](https://hpo.jax.org/app/license).

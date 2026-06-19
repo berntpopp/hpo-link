@@ -69,7 +69,9 @@ def find_prebuilt_asset(
 
     # Filter to db-v* tags only
     db_releases = [
-        r for r in releases if isinstance(r.get("tag_name"), str) and str(r["tag_name"]).startswith("db-v")
+        r
+        for r in releases
+        if isinstance(r.get("tag_name"), str) and str(r["tag_name"]).startswith("db-v")
     ]
     if not db_releases:
         logger.info("no_db_releases_found", owner_repo=owner_repo)

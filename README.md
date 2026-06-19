@@ -1,50 +1,87 @@
 # hpo-link
 
-MCP/API server that grounds disease work in the [Mondo Disease Ontology](https://mondo.monarchinitiative.org/).
+MCP/API server that grounds phenotype work in the [Human Phenotype Ontology (HPO)](https://hpo.jax.org/).
 
-`hpo-link` builds a local SQLite index from the Mondo OBO + SSSOM releases
-(Monarch PURLs) and serves a **read-only** MCP + REST surface for disease term
+`hpo-link` builds a local SQLite database from the HPO OBO release and HPOA
+gene/disease annotation files (served via OBO PURLs and the HPO GitHub
+releases) and serves a **read-only** MCP + REST surface for phenotype term
 lookup, the `is_a` hierarchy (ancestors/descendants via a transitive closure),
-and cross-ontology mapping (OMIM ↔ Orphanet ↔ DOID ↔ NCIT ↔ UMLS ↔ MeSH ↔
-MONDO …). There is no live API — the local index is the only source, so lookups
-are fast and offline. It mirrors the architecture of the sibling `mgi-link`
-server.
+cross-ontology mapping, and gene↔phenotype↔disease association queries. There
+is no live API — the local database is the only source, so lookups are fast
+and offline.
 
-Every response is grounded in the local index and cites the **MONDO id + Mondo
+Every response is grounded in the local database and cites the **HPO id + HPO
 release version**. Research use only; **not** clinical decision support.
 
 ## Tools
 
+### Discovery
+
 | Tool | Signature |
 |------|-----------|
 | `get_server_capabilities` | `get_server_capabilities(detail=)` — discovery surface (tools, workflows, error taxonomy, limits). |
-| `get_diagnostics` | `get_diagnostics()` — index status, loaded Mondo release, counts. |
-| `resolve_disease` | `resolve_disease(query, response_mode=)` — label/synonym/MONDO id/xref → canonical term + `match_type`. |
-| `search_diseases` | `search_diseases(query, limit=, include_obsolete=, response_mode=)` — FTS over name/synonyms/definition. |
-| `get_disease` | `get_disease(term, response_mode=)` — definition, synonyms, grouped xrefs, parents/children, obsolescence. |
-| `get_disease_ancestors` | `get_disease_ancestors(term, limit=, response_mode=)` — transitive `is_a` ancestors. |
-| `get_disease_descendants` | `get_disease_descendants(term, limit=, response_mode=)` — transitive `is_a` descendants. |
-| `get_disease_parents` | `get_disease_parents(term, response_mode=)` — direct `is_a` parents. |
-| `get_disease_children` | `get_disease_children(term, response_mode=)` — direct `is_a` children. |
-| `resolve_xref` | `resolve_xref(xref_id, limit=, response_mode=)` — external CURIE → MONDO ids, ranked by predicate. |
-| `map_cross_ontology` | `map_cross_ontology(term, prefixes=, response_mode=)` — a MONDO term → mappings grouped by prefix. |
+| `get_diagnostics` | `get_diagnostics()` — database status, loaded HPO release, counts. |
+
+### Phenotype term lookup
+
+| Tool | Signature |
+|------|-----------|
+| `hpo_resolve_term` | `hpo_resolve_term(query, response_mode=)` — label/synonym/HP id/xref → canonical term + `match_type`. |
+| `hpo_search_terms` | `hpo_search_terms(query, limit=, include_obsolete=, response_mode=)` — FTS over name/synonyms/definition. |
+| `hpo_get_term` | `hpo_get_term(term, response_mode=)` — definition, synonyms, grouped xrefs, parents/children, obsolescence. |
+
+### Hierarchy
+
+| Tool | Signature |
+|------|-----------|
+| `hpo_get_term_ancestors` | `hpo_get_term_ancestors(term, limit=, response_mode=)` — transitive `is_a` ancestors. |
+| `hpo_get_term_descendants` | `hpo_get_term_descendants(term, limit=, response_mode=)` — transitive `is_a` descendants. |
+| `hpo_get_term_parents` | `hpo_get_term_parents(term, response_mode=)` — direct `is_a` parents. |
+| `hpo_get_term_children` | `hpo_get_term_children(term, response_mode=)` — direct `is_a` children. |
+
+### Cross-ontology mapping
+
+| Tool | Signature |
+|------|-----------|
+| `hpo_resolve_xref` | `hpo_resolve_xref(xref_id, limit=, response_mode=)` — external CURIE → HP ids, ranked by predicate. |
+| `hpo_map_cross_ontology` | `hpo_map_cross_ontology(term, prefixes=, response_mode=)` — an HP term → mappings grouped by prefix. |
+
+### Gene ↔ Phenotype ↔ Disease associations (HPOA)
+
+| Tool | Signature |
+|------|-----------|
+| `hpo_get_phenotypes_for_gene` | `hpo_get_phenotypes_for_gene(gene, response_mode=)` — HPO terms annotated to a gene. |
+| `hpo_get_genes_for_phenotype` | `hpo_get_genes_for_phenotype(term, response_mode=)` — genes annotated to an HPO term. |
+| `hpo_get_phenotypes_for_disease` | `hpo_get_phenotypes_for_disease(disease_id, response_mode=)` — HPO terms annotated to a disease. |
+| `hpo_get_diseases_for_phenotype` | `hpo_get_diseases_for_phenotype(term, response_mode=)` — diseases annotated to an HPO term. |
+| `hpo_get_genes_for_disease` | `hpo_get_genes_for_disease(disease_id, response_mode=)` — genes associated with a disease. |
+| `hpo_get_diseases_for_gene` | `hpo_get_diseases_for_gene(gene, response_mode=)` — diseases associated with a gene. |
 
 Every response carries `_meta.next_commands` (ready-to-call follow-ups). Ids are
-normalised to `MONDO:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard |
+normalised to `HP:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard |
 full` (default `compact`).
 
 Tools are **unprefixed** here (`serverInfo.name` = `hpo-link`); the GeneFoundry
-router applies the canonical gateway **namespace token** `mondo` at mount time, so
-`resolve_disease` surfaces as `mondo_resolve_disease` behind the federated endpoint.
+router applies the canonical gateway **namespace token** `hpo` at mount time.
 
 ## Quickstart
 
 ```bash
+uv sync --group dev           # install dependencies
+uv run hpo-link-data build    # download HPO (OBO + HPOA) and build the local database
+uv run hpo-link-data status   # print the loaded HPO release + counts
+uv run hpo-link-mcp           # stdio MCP server (for Claude Desktop)
+uv run hpo-link               # unified REST + MCP server on http://127.0.0.1:8000
+```
+
+Or via `make`:
+
+```bash
 make install        # uv sync --group dev
-make data           # download Mondo (OBO + SSSOM) and build the local index
-make data-status    # print the loaded Mondo release + counts
-make dev            # unified REST + MCP server on http://127.0.0.1:8000
-curl -s http://127.0.0.1:8000/health
+make data           # build the local HPO database
+make data-status    # print loaded release + counts
+make dev            # unified REST + MCP server
+make mcp-serve      # stdio MCP server
 ```
 
 ## MCP client setup
@@ -63,15 +100,26 @@ make mcp-serve      # runs mcp_server.py on stdio (stdout is reserved for the pr
 
 ## Data provenance
 
-The index is built from the Mondo OBO release
-(`http://purl.obolibrary.org/obo/mondo.obo`) plus the consolidated SSSOM
-cross-ontology mappings (from the Mondo repository), fetched via conditional GET
-(ETag / Last-Modified). The OBO already carries dbxrefs, so the SSSOM is a
-**supplementary, optional** source — if it is unavailable the index still builds
-from the OBO (cross-references present, curated SSSOM predicates omitted). The
-build is atomic (temp file + `os.replace`) under a lock, and records provenance
-in a `meta` table (Mondo release version, source validators, counts).
+The database is built from:
+
+- **HPO ontology** (`hp.json`) — downloaded from the HPO GitHub releases via
+  the OBO PURL (`http://purl.obolibrary.org/obo/hp.json`). Contains ~19,800
+  active phenotype terms (HPO v2026-06-06). Fetched via conditional GET
+  (ETag / Last-Modified); a `304` reuses the local file.
+- **HPOA annotations** (`phenotype.hpoa`) — the HPO phenotype-to-disease
+  annotation file linking HPO terms to OMIM/Orphanet/DECIPHER diseases, and
+  gene associations derived from those annotations.
+
+The build is atomic (temp file + `os.replace`) under a lock, and records
+provenance in a `meta` table (HPO release version, source validators, counts).
 `get_diagnostics` and `get_server_capabilities` report the loaded release.
+
+### Prebuilt artifact distribution
+
+To skip the build step, set `HPO_LINK_DATA__PREBUILT_DB_URL` to the URL of a
+prebuilt SQLite artifact (e.g., from a GitHub Release). The entrypoint will
+download and verify it before serving. If absent, the server builds from
+source automatically (`HPO_LINK_DATA__AUTO_BOOTSTRAP=true`).
 
 ## Documentation
 
@@ -82,9 +130,18 @@ in a `meta` table (Mondo release version, source validators, counts).
 
 ## License & citation
 
-Code: MIT. Data: the Mondo Disease Ontology is distributed under
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by the Monarch
-Initiative. Cite: Vasilevsky NA, Matentzoglu NA, Toro S, et al. *Mondo:
-Unifying diseases for the world, by the world.* medRxiv 2022.04.13.22273750.
+**Code:** MIT.
+
+**Data:** HPO is distributed under a custom license for research and educational
+use. See [https://hpo.jax.org/app/license](https://hpo.jax.org/app/license)
+for details. Attribution required.
+
+**Citation:** Köhler S, Gargano M, Matentzoglu N, et al. *The Human Phenotype
+Ontology in 2021.* Nucleic Acids Research 2021;49(D1):D1207–D1217.
+doi:10.1093/nar/gkaa1043.
+
+For the most recent release cite: Gargano MA, Matentzoglu N, Coleman B, et al.
+*The Human Phenotype Ontology in 2024: phenotypes around the world.*
+Nucleic Acids Research 2024;52(D1):D1333–D1346. doi:10.1093/nar/gkad1005.
 
 Research use only; not for diagnosis, treatment, triage, or patient management.

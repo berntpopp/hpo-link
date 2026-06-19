@@ -24,9 +24,7 @@ _DATE = "2026-06-06"
 _TAG = f"db-v{_DATE}"
 _ZST_NAME = f"hpo-{_DATE}.sqlite.zst"
 _ZST_URL = f"https://github.com/berntpopp/hpo-link/releases/download/{_TAG}/{_ZST_NAME}"
-_MANIFEST_URL = (
-    f"https://github.com/berntpopp/hpo-link/releases/download/{_TAG}/manifest.json"
-)
+_MANIFEST_URL = f"https://github.com/berntpopp/hpo-link/releases/download/{_TAG}/manifest.json"
 
 
 def _make_tiny_sqlite_zst() -> tuple[bytes, str]:

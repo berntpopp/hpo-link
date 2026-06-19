@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import sqlite3
 import sys
 from datetime import UTC, datetime
@@ -29,7 +28,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:  # noqa: PLR2004
+    if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} <DATE>", file=sys.stderr)
         sys.exit(1)
 
@@ -39,10 +38,15 @@ def main() -> None:
     zst_path = Path(zst_name)
 
     if not db_path.exists():
-        print(f"ERROR: {db_path} not found. Run `uv run hpo-link-data build` first.", file=sys.stderr)
+        print(
+            f"ERROR: {db_path} not found. Run `uv run hpo-link-data build` first.", file=sys.stderr
+        )
         sys.exit(2)
     if not zst_path.exists():
-        print(f"ERROR: {zst_path} not found. Run `zstd -19 -f {db_path} -o {zst_name}` first.", file=sys.stderr)
+        print(
+            f"ERROR: {zst_path} not found. Run `zstd -19 -f {db_path} -o {zst_name}` first.",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
     # Read meta row from the SQLite database
