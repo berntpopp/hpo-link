@@ -127,7 +127,10 @@ def shape_annotation_rows(rows: list[dict[str, Any]], mode: str) -> list[dict[st
     for row in rows:
         out: dict[str, Any] = {}
         for key, value in row.items():
-            if key in _always_keep or (not _is_empty(value) and value not in _DROP_SENTINELS):
+            # the sentinel is only ever the string "-"; restricting the membership
+            # test to str also avoids a TypeError on unhashable (list/dict) values.
+            is_sentinel = isinstance(value, str) and value in _DROP_SENTINELS
+            if key in _always_keep or (not _is_empty(value) and not is_sentinel):
                 out[key] = value
         shaped.append(out)
     return shaped

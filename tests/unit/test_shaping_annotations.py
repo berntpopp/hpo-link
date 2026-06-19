@@ -143,3 +143,12 @@ def test_shape_annotation_rows_standard_keeps_dash_frequency():
     row = _make_row(frequency="-")
     result = shape_annotation_rows([row], mode="standard")
     assert result[0]["frequency"] == "-"
+
+
+def test_shape_annotation_rows_compact_handles_unhashable_values():
+    """A non-empty list/dict value must not crash the sentinel check (it is unhashable)."""
+    row = _make_row(refs=["PMID:1", "PMID:2"], extra={"k": "v"})
+    result = shape_annotation_rows([row], mode="compact")
+    shaped = result[0]
+    assert shaped["refs"] == ["PMID:1", "PMID:2"], "non-empty list must be kept, not crash"
+    assert shaped["extra"] == {"k": "v"}, "non-empty dict must be kept, not crash"

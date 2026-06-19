@@ -205,9 +205,12 @@ def build_capabilities() -> dict[str, Any]:
             "total:0 — NOT not_found. not_found is reserved for genuine "
             "identity-resolution failure: the resolve_* tools and phenotype→term "
             "lookups where a free-text term cannot be resolved to any HPO id. "
-            "This rule is uniform across the six association tools "
-            "(get_phenotypes_for_gene/disease, get_genes_for_phenotype/disease, "
-            "get_diseases_for_phenotype/gene) and resolve_xref."
+            "The malformed→invalid_input rule is uniform across the six "
+            "association tools (get_phenotypes_for_gene/disease, "
+            "get_genes_for_phenotype/disease, get_diseases_for_phenotype/gene); "
+            "resolve_xref likewise returns an empty 200 page for a well-formed but "
+            "unknown xref (it accepts a bare object id or a CURIE, so it does not "
+            "shape-validate)."
         ),
         "error_codes": ERROR_CODES,
         "limits": {
