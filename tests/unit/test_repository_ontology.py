@@ -181,3 +181,48 @@ def test_hpo_for_xref_case_insensitive(repo: HpoRepository) -> None:
     results = repo.hpo_for_xref("umls:c0151888", limit=10)
     hpo_ids = [r["hpo_id"] for r in results]
     assert "HP:0000479" in hpo_ids
+
+
+# -- counts (T0.2 — WS-A) --------------------------------------------------
+
+
+def test_counts_returns_all_seven_keys(repo: HpoRepository) -> None:
+    """repo.counts() must return all seven expected keys."""
+    result = repo.counts()
+    expected_keys = {
+        "terms",
+        "obsolete",
+        "closure",
+        "xref",
+        "disease_phenotype",
+        "gene_phenotype",
+        "gene_disease",
+    }
+    assert set(result.keys()) == expected_keys
+
+
+def test_counts_terms_positive(repo: HpoRepository) -> None:
+    """repo.counts()['terms'] should be a positive integer."""
+    result = repo.counts()
+    assert isinstance(result["terms"], int)
+    assert result["terms"] >= 1
+
+
+def test_counts_obsolete_le_terms(repo: HpoRepository) -> None:
+    """repo.counts()['obsolete'] must be <= terms (internal consistency)."""
+    result = repo.counts()
+    assert result["obsolete"] <= result["terms"]
+
+
+def test_counts_closure_positive(repo: HpoRepository) -> None:
+    """repo.counts()['closure'] should be >= term count (each term has at least self-edge)."""
+    result = repo.counts()
+    assert result["closure"] >= result["terms"]
+
+
+def test_counts_annotation_tables_positive(repo: HpoRepository) -> None:
+    """disease_phenotype, gene_phenotype, and gene_disease counts should be >= 1."""
+    result = repo.counts()
+    assert result["disease_phenotype"] >= 1
+    assert result["gene_phenotype"] >= 1
+    assert result["gene_disease"] >= 1
