@@ -4,9 +4,13 @@ Branch: `feat/mcp-audit-improvements` (off `main` @ 4578428). CI baseline: GREEN
 
 ## Workstreams (disjoint file ownership; parallel implementers)
 
-- [ ] WS-A — Phase 0 Diagnostics/Observability (discovery.py, repository.counts, metrics.py)
-- [ ] WS-B — Assoc contract+efficiency+frequency (annotation_service.py, shaping.py, identifiers.py)
-- [ ] WS-C — Discovery doc + schema/ontology polish (capabilities.py, schemas.py, ontology.py, hpo_service.py, resolution.py)
+- [x] WS-A — Phase 0 Diagnostics/Observability — commit 4b5ee1d
+- [x] WS-B — Assoc contract+efficiency+frequency — commit b94b461
+- [x] WS-C — Discovery doc + schema/ontology polish (T3.4 deferred) — commit 3508110
+- [x] Review follow-ups (sentinel hardening, resolve_xref prose) — commit c683da9
+
+STATUS: COMPLETE. `make ci-local` green (257 passed). Final review: SHIP.
+Only deferred item: T3.4 search_terms "did you mean" (explicit stretch goal).
 
 ## Log
 
