@@ -1,9 +1,11 @@
 """Response-mode projection for HPO term payloads.
 
 ``standard`` / ``full`` are the identity (the complete record, with structured
-synonyms carrying scope/type/sources). ``compact`` (the default) drops null/empty
-values and collapses synonyms to plain strings. ``minimal`` keeps only the
-identity anchors (``hpo_id`` + ``name``).
+synonyms carrying scope/type/sources, and the inline ``recommended_citation``).
+``compact`` (the default) drops null/empty values and collapses synonyms to plain
+strings. ``minimal`` keeps only the identity anchors (``hpo_id`` + ``name`` +
+``hpo_version``). The long-form citation is a standard/full convenience only;
+``hpo_version`` is the always-present per-call citation anchor.
 """
 
 from __future__ import annotations
@@ -20,11 +22,10 @@ SEARCH_SNIPPET_CHARS = 140
 
 _PRESERVE_KEYS: frozenset[str] = frozenset({"_meta", "success"})
 
-#: Identity anchors kept in ``minimal`` mode.
-#: hpo_version and recommended_citation are always included per spec.
-_MINIMAL_KEEP: frozenset[str] = frozenset(
-    {"hpo_id", "name", "hpo_version", "recommended_citation", "_meta"}
-)
+#: Identity anchors kept in ``minimal`` mode. ``hpo_version`` is the per-call
+#: citation anchor; the long-form ``recommended_citation`` is NOT kept here — it is
+#: fetched once from ``get_server_capabilities`` and inlined only at standard/full.
+_MINIMAL_KEEP: frozenset[str] = frozenset({"hpo_id", "name", "hpo_version", "_meta"})
 
 #: Identity/grounding anchors a sparse fieldset always retains.
 _FIELD_ANCHORS: frozenset[str] = frozenset({"hpo_id", "name", "hpo_version", "_meta", "success"})

@@ -65,10 +65,11 @@ mcp_server.py      stdio transport (Claude Desktop)
   CURIEs case-folded).
 - Ground every claim in the local database and cite the HPO id + HPO release
   version. `hpo_version` is the per-call citation anchor (echoed on every
-  non-minimal payload); the long-form `recommended_citation` appears on term
-  records and on `standard`/`full` association payloads, while the canonical
-  static provenance lives in `get_server_capabilities` (compact association
-  payloads omit the long string per the advertised `provenance_policy`).
+  non-minimal payload). The long-form `recommended_citation` is inlined only on
+  `standard`/`full` payloads — **term and association alike** (one rule across
+  both planes); `compact`/`minimal` carry `hpo_version` and defer the full
+  citation to `get_server_capabilities`, which is the canonical source of record
+  per the advertised `provenance_policy`.
 - `structlog` logs to **stderr only** — stdout is reserved for the stdio MCP
   protocol. Never `print` to stdout outside the CLI.
 - Files stay under 500 lines (hard cap enforced by `scripts/check_file_size.py`

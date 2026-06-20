@@ -30,7 +30,7 @@ def test_resolve_term_by_primary_label(hpo_service: HpoService) -> None:
     assert result["match_type"] == "primary"
     assert result["query"] == "Phenotypic abnormality"
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result  # compact gates the long citation (F-1)
 
 
 def test_resolve_term_by_hpo_id(hpo_service: HpoService) -> None:
@@ -106,11 +106,13 @@ def test_search_terms_pagination_fields(hpo_service: HpoService) -> None:
         assert key in result, f"Missing key: {key}"
 
 
-def test_search_terms_has_version_and_citation(hpo_service: HpoService) -> None:
-    """search_terms result carries hpo_version and recommended_citation."""
+def test_search_terms_version_and_citation_gated(hpo_service: HpoService) -> None:
+    """search_terms (compact) carries hpo_version but gates the long citation."""
     result = hpo_service.search_terms("retina")
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
+    rich = hpo_service.search_terms("retina", response_mode="full")
+    assert "recommended_citation" in rich
 
 
 def test_search_terms_empty_query_raises(hpo_service: HpoService) -> None:
@@ -142,18 +144,18 @@ def test_get_term_minimal_mode_has_hpo_id_and_name(hpo_service: HpoService) -> N
     assert result["hpo_id"] == "HP:0000118"
     assert result["name"] == "Phenotypic abnormality"
     assert "hpo_version" in result, "minimal mode must include hpo_version per spec"
-    assert "recommended_citation" in result, (
-        "minimal mode must include recommended_citation per spec"
+    assert "recommended_citation" not in result, (
+        "minimal gates the long citation (fetched once from get_server_capabilities)"
     )
 
 
 def test_get_term_compact_has_required_fields(hpo_service: HpoService) -> None:
-    """get_term('HP:0000479') compact mode returns hpo_id, name, hpo_version, recommended_citation."""
+    """get_term('HP:0000479') compact returns hpo_id, name, hpo_version; gates the citation."""
     result = hpo_service.get_term("HP:0000479")
     assert result["hpo_id"] == "HP:0000479"
     assert "name" in result
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
 
 
 def test_get_term_by_label(hpo_service: HpoService) -> None:
@@ -213,10 +215,10 @@ def test_term_children_content(hpo_service: HpoService) -> None:
 
 
 def test_term_parents_has_version(hpo_service: HpoService) -> None:
-    """term_parents result carries hpo_version and recommended_citation."""
+    """term_parents (compact) carries hpo_version; gates the long citation."""
     result = hpo_service.term_parents("HP:0000479")
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -240,10 +242,10 @@ def test_term_ancestors_pagination_fields(hpo_service: HpoService) -> None:
 
 
 def test_term_ancestors_has_version(hpo_service: HpoService) -> None:
-    """term_ancestors carries hpo_version and recommended_citation."""
+    """term_ancestors (compact) carries hpo_version; gates the long citation."""
     result = hpo_service.term_ancestors("HP:0000118", limit=10)
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
 
 
 def test_term_descendants_returns_dict(hpo_service: HpoService) -> None:
@@ -282,10 +284,10 @@ def test_resolve_xref_pagination_fields(hpo_service: HpoService) -> None:
 
 
 def test_resolve_xref_has_version(hpo_service: HpoService) -> None:
-    """resolve_xref carries hpo_version and recommended_citation."""
+    """resolve_xref (compact) carries hpo_version; gates the long citation."""
     result = hpo_service.resolve_xref("UMLS:C0151888")
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +313,45 @@ def test_map_cross_ontology_with_xref_term(hpo_service: HpoService) -> None:
 
 
 def test_map_cross_ontology_has_version(hpo_service: HpoService) -> None:
-    """map_cross_ontology carries hpo_version and recommended_citation."""
+    """map_cross_ontology (compact) carries hpo_version; gates the long citation."""
     result = hpo_service.map_cross_ontology("HP:0000118")
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result
+
+
+# ---------------------------------------------------------------------------
+# citation gating across response modes (assessment F-1 / Phase A.1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mode", ["minimal", "compact"])
+def test_resolve_term_omits_citation_in_lean_modes(hpo_service: HpoService, mode: str) -> None:
+    """resolve_term keeps hpo_version but drops the long citation at minimal/compact."""
+    out = hpo_service.resolve_term("Phenotypic abnormality", response_mode=mode)
+    assert out["hpo_version"]
+    assert "recommended_citation" not in out
+
+
+@pytest.mark.parametrize("mode", ["standard", "full"])
+def test_resolve_term_keeps_citation_in_rich_modes(hpo_service: HpoService, mode: str) -> None:
+    """resolve_term inlines the long citation at standard/full."""
+    from hpo_link.constants import RECOMMENDED_CITATION
+
+    out = hpo_service.resolve_term("Phenotypic abnormality", response_mode=mode)
+    assert out["recommended_citation"] == RECOMMENDED_CITATION
+
+
+@pytest.mark.parametrize("mode", ["minimal", "compact"])
+def test_get_term_omits_citation_in_lean_modes(hpo_service: HpoService, mode: str) -> None:
+    """get_term keeps hpo_version but drops the long citation at minimal/compact."""
+    out = hpo_service.get_term("HP:0000118", response_mode=mode)
+    assert out["hpo_version"]
+    assert "recommended_citation" not in out
+
+
+def test_get_term_keeps_citation_in_full(hpo_service: HpoService) -> None:
+    """get_term inlines the long citation at full."""
+    from hpo_link.constants import RECOMMENDED_CITATION
+
+    out = hpo_service.get_term("HP:0000118", response_mode="full")
+    assert out["recommended_citation"] == RECOMMENDED_CITATION

@@ -68,7 +68,7 @@ async def test_resolve_term_success(live_hpo_service) -> None:
     assert "_meta" in result
     assert "next_commands" in result["_meta"]
     assert "hpo_version" in result
-    assert "recommended_citation" in result
+    assert "recommended_citation" not in result  # compact gates the long citation (F-1)
 
 
 async def test_resolve_term_not_found(live_hpo_service) -> None:

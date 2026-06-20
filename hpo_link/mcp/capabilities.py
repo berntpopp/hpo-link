@@ -133,9 +133,12 @@ def build_capabilities() -> dict[str, Any]:
         "default_response_mode": DEFAULT_RESPONSE_MODE,
         "xref_prefixes": list(XREF_PREFIXES),
         "provenance_policy": (
-            "Static provenance (research-use restriction, citation, HPO release) "
-            "is declared here and applies to ALL tool outputs; it is not repeated "
-            "per-call to conserve context tokens."
+            "Static provenance (research-use restriction, citation, HPO release) is "
+            "declared here and applies to ALL tool outputs. Every non-minimal payload "
+            "carries hpo_version as the per-call citation anchor; the long-form "
+            "recommended_citation is inlined only at response_mode standard/full (term "
+            "and association payloads alike, one uniform rule) and is otherwise fetched "
+            "once from here to conserve context tokens."
         ),
         "per_call_meta": [
             "tool",

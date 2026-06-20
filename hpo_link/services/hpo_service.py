@@ -69,12 +69,18 @@ class HpoService:
             raise InvalidInputError("term must be a non-empty HP id, label, or xref.", field="term")
         return self._resolution.resolve_term_id(raw)
 
-    def _version_fields(self) -> dict[str, Any]:
-        """Return version + citation anchors appended to every response."""
-        return {
-            "hpo_version": self._version,
-            "recommended_citation": RECOMMENDED_CITATION,
-        }
+    def _version_fields(self, mode: str = DEFAULT_RESPONSE_MODE) -> dict[str, Any]:
+        """Return version + citation anchors appended to every response.
+
+        ``hpo_version`` is always present (the per-call citation anchor). The
+        long-form ``recommended_citation`` (~250 chars) is inlined only at
+        ``standard``/``full``; at ``compact``/``minimal`` it is fetched once from
+        ``get_server_capabilities`` (mirrors ``AnnotationService._provenance``).
+        """
+        fields: dict[str, Any] = {"hpo_version": self._version}
+        if mode in ("standard", "full"):
+            fields["recommended_citation"] = RECOMMENDED_CITATION
+        return fields
 
     # -- resolve_term ----------------------------------------------------------
 
@@ -105,7 +111,7 @@ class HpoService:
             "name": record["name"],
             "match_type": match_type,
             "obsolete": record["is_obsolete"],
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
         if record.get("replaced_by"):
             out["replaced_by"] = record["replaced_by"]
@@ -139,7 +145,7 @@ class HpoService:
             "query": raw,
             "results": results,
             **page_fields(total=total, returned=len(results), limit=limit, offset=offset),
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
 
     # -- get_term --------------------------------------------------------------
@@ -174,7 +180,7 @@ class HpoService:
             "replaced_by": record["replaced_by"],
             "parents": parents,
             "children": children,
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
         shaped = shape_term(payload, response_mode)
         return select_fields(shaped, fields)
@@ -219,7 +225,7 @@ class HpoService:
             "name": record["name"] if record else None,
             kind: rows,
             "count": len(rows),
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
 
     # -- term_ancestors / term_descendants ------------------------------------
@@ -283,7 +289,7 @@ class HpoService:
             "name": record["name"] if record else None,
             kind: rows,
             **page_fields(total=total, returned=len(rows), limit=limit, offset=offset),
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
 
     # -- resolve_xref ----------------------------------------------------------
@@ -314,7 +320,7 @@ class HpoService:
             "xref_id": raw,
             "matches": results,
             **page_fields(total=total, returned=len(results), limit=limit, offset=offset),
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
 
     # -- map_cross_ontology ----------------------------------------------------
@@ -343,5 +349,5 @@ class HpoService:
             "hpo_id": hpo_id,
             "name": record["name"] if record else None,
             "mappings": mappings,
-            **self._version_fields(),
+            **self._version_fields(response_mode),
         }
