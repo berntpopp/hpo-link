@@ -11,10 +11,21 @@ from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import after_get_term, after_resolve_term, after_search
 from hpo_link.mcp.schemas import RESOLVE_TERM_SCHEMA, SEARCH_SCHEMA, TERM_SCHEMA
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode, TermStr
+from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
+HpoIdStr = Annotated[
+    str,
+    Field(
+        description=(
+            "Canonical HP id for the resolved HPO term (HP:0000118). Legacy `term` "
+            "arguments are accepted as an alias."
+        ),
+        examples=["HP:0000118"],
+    ),
+]
 
 
 def register_ontology_tools(mcp: FastMCP) -> None:
@@ -117,16 +128,16 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "Pass fields=['synonyms', 'definition'] for a sparse projection. "
             "Note on synonyms shape: compact (default) returns synonyms as plain "
             "strings; standard/full return {text, scope} objects. "
-            "Signature: get_term(term, response_mode=, fields=)."
+            "Signature: get_term(hpo_id, response_mode=, fields=)."
         ),
     )
     async def get_term(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         response_mode: ResponseMode = "compact",
         fields: FieldsArg = None,
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().get_term(term, response_mode=response_mode, fields=fields)
+            payload = get_hpo_service().get_term(hpo_id, response_mode=response_mode, fields=fields)
             payload.setdefault("_meta", {})["next_commands"] = after_get_term(payload)
             return payload
 
@@ -135,7 +146,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_term",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )

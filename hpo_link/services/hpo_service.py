@@ -331,6 +331,7 @@ class HpoService:
         term: str,
         prefixes: list[str] | None = None,
         response_mode: str = DEFAULT_RESPONSE_MODE,
+        fields: list[str] | None = None,
     ) -> dict[str, Any]:
         """Return all cross-ontology mappings for a term, grouped by prefix.
 
@@ -346,9 +347,10 @@ class HpoService:
         for xref in xrefs:
             bucket = mappings.setdefault(xref["prefix"], [])
             bucket.append({"object_id": xref["object_id"], "origin": xref.get("origin")})
-        return {
+        payload = {
             "hpo_id": hpo_id,
             "name": record["name"] if record else None,
             "mappings": mappings,
             **self._version_fields(response_mode),
         }
+        return select_fields(payload, fields)

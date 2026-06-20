@@ -61,13 +61,13 @@ When `truncated` is true, `_meta.next_commands` includes a forward-page step
 
 ## The record
 
-`get_term(term, response_mode=, fields=)` accepts an HP id, a label/synonym, or
-an external xref CURIE (resolved first). Pass `fields=["synonyms", "xrefs.UMLS"]`
+`get_term(hpo_id, response_mode=, fields=)` accepts a canonical HP id. Legacy
+`term` calls are accepted as aliases. Pass `fields=["synonyms", "xrefs.UMLS"]`
 for a sparse projection (identity anchors `hpo_id` / `name` / `hpo_version` are
 always returned).
 
 ```
-get_term(term="HP:0000107")
+get_term(hpo_id="HP:0000107")
 → {hpo_id, name, definition, synonyms[], alt_ids[], subsets[], xrefs: {UMLS:[...], SNOMEDCT_US:[...], ...},
    parents[], children[], obsolete, replaced_by, hpo_version, recommended_citation}
 ```
@@ -81,10 +81,10 @@ the top hit.
 ## Hierarchy
 
 ```
-get_term_parents(term)        # direct is_a parents
-get_term_children(term)       # direct is_a children
-get_term_ancestors(term, limit=50, offset=0)    # transitive (closure)
-get_term_descendants(term, limit=50, offset=0)  # transitive (closure)
+get_term_parents(hpo_id)        # direct is_a parents
+get_term_children(hpo_id)       # direct is_a children
+get_term_ancestors(hpo_id, limit=50, offset=0)    # transitive (closure)
+get_term_descendants(hpo_id, limit=50, offset=0)  # transitive (closure)
 ```
 
 Parents/children carry a `count`; ancestors/descendants carry a pagination block
@@ -103,11 +103,11 @@ resolve_xref(xref_id="UMLS:C0000737", limit=25, offset=0)
    total, returned, limit, offset, truncated, next_offset?, hpo_version}
 ```
 
-`map_cross_ontology(term, prefixes=None, fields=)` lists a term's mappings grouped
+`map_cross_ontology(hpo_id, prefixes=None, fields=)` lists a term's mappings grouped
 by prefix (`fields=["mappings.UMLS"]` for a sparse projection).
 
 ```
-map_cross_ontology(term="HP:0000107", prefixes=["UMLS", "SNOMEDCT_US"])
+map_cross_ontology(hpo_id="HP:0000107", prefixes=["UMLS", "SNOMEDCT_US"])
 → {hpo_id, name, mappings: {UMLS: [{object_id, predicate, origin, source}], SNOMEDCT_US: [...]}, hpo_version}
 ```
 
@@ -126,15 +126,15 @@ get_phenotypes_for_gene(gene="PAX6")
 → {gene, gene_kind, gene_value, phenotypes: [{hpo_id, name, frequency,
    frequency_hpo, frequency_ratio, frequency_percent, disease_id}], total, ..., hpo_version}
 
-get_genes_for_phenotype(term="HP:0000107", include_descendants=false)
-→ {term, hpo_id, genes: [{ncbi_gene_id, gene_symbol}], include_descendants, total, ...}
+get_genes_for_phenotype(hpo_id="HP:0000107", include_descendants=false)
+→ {hpo_id, genes: [{ncbi_gene_id, gene_symbol}], include_descendants, total, ...}
 
 get_phenotypes_for_disease(disease_id="OMIM:154700")
 → {disease_id, phenotypes: [{hpo_id, name, aspect, evidence, reference, biocuration,
    frequency_hpo, frequency_ratio, frequency_percent, onset, sex, qualifier, modifier}], total, ...}
 
-get_diseases_for_phenotype(term="HP:0000107", include_descendants=true)
-→ {term, hpo_id, diseases: [{database_id, disease_name}], include_descendants, total, ...}
+get_diseases_for_phenotype(hpo_id="HP:0000107", include_descendants=true)
+→ {hpo_id, diseases: [{database_id, disease_name}], include_descendants, total, ...}
 
 get_genes_for_disease(disease_id="OMIM:154700")
 → {disease_id, genes: [{ncbi_gene_id, gene_symbol, association_type, source}], total, ...}

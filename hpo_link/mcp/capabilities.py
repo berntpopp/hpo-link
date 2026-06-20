@@ -201,7 +201,8 @@ def build_capabilities() -> dict[str, Any]:
         ),
         "field_projection": (
             "get_term and map_cross_ontology accept fields=[...] for a sparse "
-            "projection: top-level keys, or dotted into a group (e.g. 'xrefs.UMLS'). "
+            "projection: top-level keys, or dotted into a group (e.g. 'xrefs.UMLS' "
+            "for get_term, 'mappings.UMLS' for map_cross_ontology). "
             "Identity anchors (hpo_id, name, hpo_version) are always returned."
         ),
         "id_normalization": (

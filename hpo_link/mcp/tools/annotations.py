@@ -11,10 +11,21 @@ from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import cmd
 from hpo_link.mcp.schemas import ANNOTATION_SCHEMA
 from hpo_link.mcp.service_adapters import get_annotation_service
-from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode, TermStr
+from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
+HpoIdStr = Annotated[
+    str,
+    Field(
+        description=(
+            "Canonical HP id for the resolved HPO phenotype (HP:0000118). Legacy `term` "
+            "arguments are accepted as an alias."
+        ),
+        examples=["HP:0000118"],
+    ),
+]
 
 
 def register_annotation_tools(mcp: FastMCP) -> None:
@@ -71,12 +82,12 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         description=(
             "Return the genes annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
-            "Signature: get_genes_for_phenotype(term, include_descendants=, limit=, "
+            "Signature: get_genes_for_phenotype(hpo_id, include_descendants=, limit=, "
             "offset=, response_mode=)."
         ),
     )
     async def get_genes_for_phenotype(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         include_descendants: Annotated[
             bool,
             Field(
@@ -96,15 +107,15 @@ def register_annotation_tools(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_genes_for_phenotype(
-                term,
+                hpo_id,
                 limit=limit,
                 offset=offset,
                 include_descendants=include_descendants,
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_diseases_for_phenotype", term=term),
-                cmd("get_term", term=term),
+                cmd("get_diseases_for_phenotype", hpo_id=hpo_id),
+                cmd("get_term", hpo_id=hpo_id),
             ]
             return payload
 
@@ -113,7 +124,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_genes_for_phenotype",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )
@@ -169,12 +180,12 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         description=(
             "Return diseases annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
-            "Signature: get_diseases_for_phenotype(term, include_descendants=, limit=, "
+            "Signature: get_diseases_for_phenotype(hpo_id, include_descendants=, limit=, "
             "offset=, response_mode=)."
         ),
     )
     async def get_diseases_for_phenotype(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         include_descendants: Annotated[
             bool,
             Field(
@@ -194,15 +205,15 @@ def register_annotation_tools(mcp: FastMCP) -> None:
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_diseases_for_phenotype(
-                term,
+                hpo_id,
                 limit=limit,
                 offset=offset,
                 include_descendants=include_descendants,
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_genes_for_phenotype", term=term),
-                cmd("get_term", term=term),
+                cmd("get_genes_for_phenotype", hpo_id=hpo_id),
+                cmd("get_term", hpo_id=hpo_id),
             ]
             return payload
 
@@ -211,7 +222,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_diseases_for_phenotype",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )

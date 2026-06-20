@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
@@ -63,11 +64,14 @@ class ArgValidationMiddleware(Middleware):
         valid = list(schema.get("properties", {}).keys())
         new_args, applied = normalize_alias_args(valid, context.message.arguments or {})
         context.message.arguments = new_args
+        start = time.perf_counter()
 
         try:
             result = await call_next(context)
         except ValidationError as exc:
-            return self._error_result(name, valid, schema, exc)
+            elapsed = int((time.perf_counter() - start) * 1000)
+            response_mode = str(new_args.get("response_mode", "compact"))
+            return self._error_result(name, valid, schema, exc, response_mode, elapsed)
 
         if (
             applied
@@ -84,6 +88,8 @@ class ArgValidationMiddleware(Middleware):
         valid: list[str],
         schema: dict[str, Any],
         exc: ValidationError,
+        response_mode: str,
+        elapsed_ms: int,
     ) -> ToolResult:
         first = exc.errors(include_url=False)[0]
         loc = ".".join(str(p) for p in first.get("loc", ())) or "input"
@@ -106,6 +112,8 @@ class ArgValidationMiddleware(Middleware):
             signature=tool_signature(name, schema),
             suggestion=suggestion,
             constraints=constraints,
+            response_mode=response_mode,
+            elapsed_ms=elapsed_ms,
         )
         logger.warning("mcp_arg_error tool=%s loc=%s type=%s", name, loc, error_type)
         return ToolResult(

@@ -11,10 +11,21 @@ from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import after_cross_ontology, after_resolve_xref
 from hpo_link.mcp.schemas import CROSS_ONTOLOGY_SCHEMA, RESOLVE_XREF_SCHEMA
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import ResponseMode, TermStr, XrefIdStr
+from hpo_link.mcp.tools._common import FieldsArg, ResponseMode, XrefIdStr
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
+
+HpoIdStr = Annotated[
+    str,
+    Field(
+        description=(
+            "Canonical HP id for the resolved HPO term (HP:0000118). Legacy `term` "
+            "arguments are accepted as an alias."
+        ),
+        examples=["HP:0000118"],
+    ),
+]
 
 
 def register_xref_tools(mcp: FastMCP) -> None:
@@ -71,11 +82,11 @@ def register_xref_tools(mcp: FastMCP) -> None:
             "grouped by target prefix (UMLS/SNOMEDCT_US/NCIT/MEDDRA/ICD-10/ICD-9/"
             "MONDO/DOID/ORPHA/EFO/MSH/MESH). Optionally restrict to a subset of "
             "prefixes. "
-            "Signature: map_cross_ontology(term, prefixes=, response_mode=)."
+            "Signature: map_cross_ontology(hpo_id, prefixes=, response_mode=, fields=)."
         ),
     )
     async def map_cross_ontology(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         prefixes: Annotated[
             list[str] | None,
             Field(
@@ -84,10 +95,11 @@ def register_xref_tools(mcp: FastMCP) -> None:
             ),
         ] = None,
         response_mode: ResponseMode = "compact",
+        fields: FieldsArg = None,
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().map_cross_ontology(
-                term, prefixes=prefixes, response_mode=response_mode
+                hpo_id, prefixes=prefixes, response_mode=response_mode, fields=fields
             )
             payload.setdefault("_meta", {})["next_commands"] = after_cross_ontology(payload)
             return payload
@@ -97,7 +109,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "map_cross_ontology",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )

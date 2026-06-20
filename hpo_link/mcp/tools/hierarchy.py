@@ -21,7 +21,7 @@ from hpo_link.mcp.schemas import (
     PARENTS_SCHEMA,
 )
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import ResponseMode, TermStr
+from hpo_link.mcp.tools._common import ResponseMode
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -29,6 +29,16 @@ if TYPE_CHECKING:
 _ClosureLimit = Annotated[int, Field(ge=1, le=1000, description="Max rows returned (default 50).")]
 _ClosureOffset = Annotated[
     int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
+]
+HpoIdStr = Annotated[
+    str,
+    Field(
+        description=(
+            "Canonical HP id for the resolved HPO term (HP:0000118). Legacy `term` "
+            "arguments are accepted as an alias."
+        ),
+        examples=["HP:0000118"],
+    ),
 ]
 
 
@@ -48,18 +58,18 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             "carries a forward-page step (offset) so you can walk a >limit closure "
             "without re-sending rows. Use get_term_parents for only the immediate "
             "parents. "
-            "Signature: get_term_ancestors(term, limit=, offset=, response_mode=)."
+            "Signature: get_term_ancestors(hpo_id, limit=, offset=, response_mode=)."
         ),
     )
     async def get_term_ancestors(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_ancestors(
-                term, limit=limit, offset=offset, response_mode=response_mode
+                hpo_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = after_ancestors(payload)
             return payload
@@ -69,7 +79,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_term_ancestors",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )
@@ -87,18 +97,18 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             "next_commands carries a forward-page step (offset) so you can walk a "
             ">limit closure without re-sending rows. Use get_term_children for only "
             "the immediate children. "
-            "Signature: get_term_descendants(term, limit=, offset=, response_mode=)."
+            "Signature: get_term_descendants(hpo_id, limit=, offset=, response_mode=)."
         ),
     )
     async def get_term_descendants(
-        term: TermStr,
+        hpo_id: HpoIdStr,
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_descendants(
-                term, limit=limit, offset=offset, response_mode=response_mode
+                hpo_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = after_descendants(payload)
             return payload
@@ -108,7 +118,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_term_descendants",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )
@@ -122,14 +132,14 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         description=(
             "Return the direct is_a parents (immediate broader phenotype terms) of an HPO "
             "term. Use get_term_ancestors for the full transitive set. "
-            "Signature: get_term_parents(term, response_mode=)."
+            "Signature: get_term_parents(hpo_id, response_mode=)."
         ),
     )
     async def get_term_parents(
-        term: TermStr, response_mode: ResponseMode = "compact"
+        hpo_id: HpoIdStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().term_parents(term, response_mode=response_mode)
+            payload = get_hpo_service().term_parents(hpo_id, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_parents(payload)
             return payload
 
@@ -138,7 +148,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_term_parents",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )
@@ -152,14 +162,14 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         description=(
             "Return the direct is_a children (immediate more-specific phenotype terms) of "
             "an HPO term. Use get_term_descendants for the full transitive set. "
-            "Signature: get_term_children(term, response_mode=)."
+            "Signature: get_term_children(hpo_id, response_mode=)."
         ),
     )
     async def get_term_children(
-        term: TermStr, response_mode: ResponseMode = "compact"
+        hpo_id: HpoIdStr, response_mode: ResponseMode = "compact"
     ) -> dict[str, Any]:
         async def call() -> dict[str, Any]:
-            payload = get_hpo_service().term_children(term, response_mode=response_mode)
+            payload = get_hpo_service().term_children(hpo_id, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_children(payload)
             return payload
 
@@ -168,7 +178,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
             call,
             context=McpErrorContext(
                 "get_term_children",
-                arguments={"term": term},
+                arguments={"hpo_id": hpo_id, "term": hpo_id},
                 response_mode=response_mode,
             ),
         )

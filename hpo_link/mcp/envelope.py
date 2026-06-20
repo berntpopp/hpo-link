@@ -175,6 +175,8 @@ def build_arg_error_envelope(
     signature: str,
     suggestion: str | None,
     constraints: tuple[list[str], str] | None = None,
+    response_mode: str = DEFAULT_RESPONSE_MODE,
+    elapsed_ms: int = 0,
 ) -> dict[str, Any]:
     """Standard invalid-input envelope for an argument-binding failure.
 
@@ -182,6 +184,14 @@ def build_arg_error_envelope(
     argument, so ``allowed_values`` carries the valid range/enum (not the list of
     argument *names*) and the message states the constraint.
     """
+    meta: dict[str, Any] = {
+        "tool": tool_name,
+        "request_id": _request_id(),
+        "next_commands": [cmd("get_server_capabilities")],
+        "elapsed_ms": elapsed_ms,
+    }
+    _stamp_capabilities_version(meta)
+    shaped_meta = _shape_meta(meta, response_mode)
     if constraints is not None:
         allowed, human = constraints
         message = f"Invalid value for argument `{loc}` of {tool_name}: {human}."
@@ -194,11 +204,7 @@ def build_arg_error_envelope(
             "field": loc,
             "allowed_values": allowed,
             "hint": signature,
-            "_meta": {
-                "tool": tool_name,
-                "request_id": _request_id(),
-                "next_commands": [cmd("get_server_capabilities")],
-            },
+            "_meta": shaped_meta,
         }
     if error_type == "missing_argument":
         head = f"Missing required argument `{loc}` for {tool_name}."
@@ -217,11 +223,7 @@ def build_arg_error_envelope(
         "field": loc,
         "allowed_values": valid_params,
         "hint": signature,
-        "_meta": {
-            "tool": tool_name,
-            "request_id": _request_id(),
-            "next_commands": [cmd("get_server_capabilities")],
-        },
+        "_meta": shaped_meta,
     }
 
 

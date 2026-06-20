@@ -12,21 +12,23 @@ import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-# Curated synonym -> canonical map, scoped to this server's parameter space. An
-# alias only ever resolves to a canonical name that is a *real* parameter of the
-# tool being called (see ``normalize_alias_args``), so a shared map is safe.
-ARG_ALIASES: dict[str, str] = {
-    "phenotype": "query",
-    "term": "query",
-    "hp": "query",
-    "hpo_id": "query",
-    "label": "query",
-    "id": "xref_id",
-    "curie": "xref_id",
-    "xref": "xref_id",
-    "max": "limit",
-    "mode": "response_mode",
-    "prefix": "prefixes",
+# Curated synonym -> canonical candidates, scoped to this server's parameter
+# space. An alias only ever resolves to a canonical name that is a *real*
+# parameter of the tool being called (see ``normalize_alias_args``), so a shared
+# map is safe. Candidate order handles context-sensitive terms: ``term`` means
+# ``query`` on resolve/search-like tools, but ``hpo_id`` on post-resolve tools.
+ARG_ALIASES: dict[str, tuple[str, ...]] = {
+    "phenotype": ("hpo_id", "query"),
+    "term": ("query", "hpo_id"),
+    "hp": ("hpo_id", "query"),
+    "hpo_id": ("query",),
+    "label": ("query",),
+    "id": ("xref_id",),
+    "curie": ("xref_id",),
+    "xref": ("xref_id",),
+    "max": ("limit",),
+    "mode": ("response_mode",),
+    "prefix": ("prefixes",),
 }
 
 
@@ -42,8 +44,11 @@ def normalize_alias_args(
     valid = set(valid_params)
     result = dict(arguments)
     applied: list[tuple[str, str]] = []
-    for alias, canonical in ARG_ALIASES.items():
-        if alias in result and canonical in valid:
+    for alias, canonicals in ARG_ALIASES.items():
+        canonical = next((target for target in canonicals if target in valid), None)
+        if alias in result and canonical is not None:
+            if alias == canonical:
+                continue
             if canonical in result:
                 result.pop(alias)  # explicit canonical wins; drop the alias
             else:
@@ -55,9 +60,11 @@ def normalize_alias_args(
 def did_you_mean(unknown: str, valid: Iterable[str]) -> str | None:
     """Best canonical suggestion for an unknown argument name, or ``None``."""
     valid_list = list(valid)
-    aliased = ARG_ALIASES.get(unknown)
-    if aliased is not None and aliased in valid_list:
-        return aliased
+    aliases = ARG_ALIASES.get(unknown)
+    if aliases is not None:
+        for aliased in aliases:
+            if aliased in valid_list:
+                return aliased
     matches = difflib.get_close_matches(unknown, valid_list, n=1, cutoff=0.6)
     return matches[0] if matches else None
 
