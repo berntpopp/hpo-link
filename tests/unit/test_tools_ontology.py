@@ -252,3 +252,41 @@ async def test_get_term_success(live_hpo_service) -> None:
     assert "name" in result
     assert "_meta" in result
     assert "next_commands" in result["_meta"]
+
+
+# ---------------------------------------------------------------------------
+# C4a: latency SLO + tool-transition graph (cold-start workflow planning)
+# ---------------------------------------------------------------------------
+
+
+def test_capabilities_publishes_latency_slo() -> None:
+    """build_capabilities() publishes a latency SLO (Speed -> 10)."""
+    from hpo_link.constants import LATENCY_SLO_P99_MS
+    from hpo_link.mcp.capabilities import build_capabilities
+
+    cap = build_capabilities()
+    assert cap["latency_slo"]["p99_ms"] == LATENCY_SLO_P99_MS
+    assert "scope" in cap["latency_slo"]
+
+
+def test_capabilities_tool_graph_is_complete() -> None:
+    """The machine-readable tool-transition graph references only real tools."""
+    from hpo_link.mcp.capabilities import TOOLS, build_capabilities
+
+    cap = build_capabilities()
+    graph = cap["tool_graph"]
+    assert set(graph) <= set(TOOLS)  # every node is a real tool
+    for nexts in graph.values():
+        assert set(nexts) <= set(TOOLS)  # every edge targets a real tool
+    # the kidney-cyst hot path is reachable from a cold start
+    assert "resolve_term" in graph["get_server_capabilities"]
+    assert "get_term" in graph["resolve_term"]
+
+
+def test_capabilities_summary_includes_graph_and_slo() -> None:
+    """A cold client gets the graph + SLO in the light summary, not just full."""
+    from hpo_link.mcp.capabilities import project_capabilities
+
+    summary = project_capabilities("summary")
+    assert "tool_graph" in summary
+    assert "latency_slo" in summary

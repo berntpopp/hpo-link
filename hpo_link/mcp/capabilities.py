@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any
 
 from hpo_link import __version__
 from hpo_link.buildinfo import build_info
-from hpo_link.constants import HPO_LICENSE, RECOMMENDED_CITATION, XREF_PREFIXES
+from hpo_link.constants import (
+    HPO_LICENSE,
+    LATENCY_SLO_P99_MS,
+    RECOMMENDED_CITATION,
+    XREF_PREFIXES,
+)
 from hpo_link.mcp.arg_help import tool_signature
 from hpo_link.mcp.resources import (
     HPO_REFERENCE_NOTES,
@@ -53,6 +58,38 @@ TOOLS: list[str] = [
     "get_diseases_for_gene",
 ]
 
+#: Machine-readable tool-transition graph — the static form of _meta.next_commands.
+#: For each tool, the tools that legitimately follow it, so a COLD client can plan a
+#: whole workflow from get_server_capabilities without trial calls. Every node and
+#: edge must name a real tool in TOOLS (enforced by test_tools_ontology.py).
+TOOL_GRAPH: dict[str, list[str]] = {
+    "get_server_capabilities": ["resolve_term", "search_terms", "get_diagnostics"],
+    "get_diagnostics": ["resolve_term", "get_server_capabilities"],
+    "resolve_term": ["get_term", "search_terms"],
+    "search_terms": ["get_term", "resolve_term"],
+    "get_term": [
+        "get_term_parents",
+        "get_term_children",
+        "get_term_ancestors",
+        "get_term_descendants",
+        "map_cross_ontology",
+        "get_genes_for_phenotype",
+        "get_diseases_for_phenotype",
+    ],
+    "get_term_parents": ["get_term", "get_term_ancestors"],
+    "get_term_children": ["get_term", "get_term_descendants"],
+    "get_term_ancestors": ["get_term_parents", "get_term_descendants", "get_term"],
+    "get_term_descendants": ["get_term_children", "get_term_ancestors", "get_term"],
+    "map_cross_ontology": ["get_term", "resolve_xref", "get_term_ancestors"],
+    "resolve_xref": ["get_term", "map_cross_ontology"],
+    "get_genes_for_phenotype": ["get_diseases_for_gene", "get_phenotypes_for_gene"],
+    "get_diseases_for_phenotype": ["get_genes_for_disease", "get_phenotypes_for_disease"],
+    "get_phenotypes_for_gene": ["get_diseases_for_gene", "get_term"],
+    "get_diseases_for_gene": ["get_phenotypes_for_disease", "get_genes_for_disease"],
+    "get_genes_for_disease": ["get_phenotypes_for_gene", "get_diseases_for_gene"],
+    "get_phenotypes_for_disease": ["get_genes_for_disease", "get_diseases_for_phenotype"],
+}
+
 _SUMMARY_KEYS: tuple[str, ...] = (
     "server",
     "server_version",
@@ -72,6 +109,8 @@ _SUMMARY_KEYS: tuple[str, ...] = (
     "search_semantics",
     "truncation_contract",
     "absent_entity_contract",
+    "tool_graph",
+    "latency_slo",
     "error_codes",
     "limits",
     "read_only",
@@ -215,6 +254,14 @@ def build_capabilities() -> dict[str, Any]:
             "unknown xref (it accepts a bare object id or a CURIE, so it does not "
             "shape-validate)."
         ),
+        "tool_graph": TOOL_GRAPH,
+        "latency_slo": {
+            "p99_ms": LATENCY_SLO_P99_MS,
+            "scope": (
+                "local in-process query (a deep is_a closure walk or a 25-row "
+                "association page); measured server-side, surfaced in get_diagnostics"
+            ),
+        },
         "error_codes": ERROR_CODES,
         "limits": {
             "max_search_limit": 200,
