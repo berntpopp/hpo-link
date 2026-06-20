@@ -93,7 +93,7 @@ class UnifiedServerManager:
         """Suppress non-JSON output that would corrupt stdio MCP framing."""
         env_defaults: dict[str, Any] = {
             "PYTHONUNBUFFERED": "1",
-            "MONDO_LINK_TRANSPORT": "stdio",
+            "HPO_LINK_TRANSPORT": "stdio",
             "FASTMCP_DISABLE_BANNER": "1",
             "FASTMCP_QUIET": "1",
             "NO_COLOR": "1",

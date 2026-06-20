@@ -1,4 +1,4 @@
-"""hpo-link: an MCP/API server grounding disease work in the Mondo Disease Ontology."""
+"""hpo-link: an MCP/API server grounding phenotype work in the Human Phenotype Ontology (HPO)."""
 
 from __future__ import annotations
 

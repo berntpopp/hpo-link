@@ -34,7 +34,7 @@ from hpo_link.services.shaping import DEFAULT_RESPONSE_MODE
 logger = logging.getLogger(__name__)
 
 # Per-call _meta is kept lean: static provenance (research-use restriction,
-# citation, Mondo release) lives ONLY in get_server_capabilities. Per-call _meta
+# citation, HPO release) lives ONLY in get_server_capabilities. Per-call _meta
 # carries only dynamic fields: tool, request_id, [next_commands, capabilities_version,
 # elapsed_ms] -- and those three are tiered by response_mode (see _shape_meta).
 _RETRYABLE = {"rate_limited", "upstream_unavailable", "data_unavailable"}

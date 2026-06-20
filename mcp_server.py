@@ -14,7 +14,7 @@ import sys
 def main() -> None:
     """Run the hpo-link MCP server on the stdio transport."""
     # Configure environment BEFORE importing anything that may print to stdout.
-    os.environ.setdefault("MONDO_LINK_TRANSPORT", "stdio")
+    os.environ.setdefault("HPO_LINK_TRANSPORT", "stdio")
     os.environ.setdefault("PYTHONUNBUFFERED", "1")
     os.environ.setdefault("FASTMCP_DISABLE_BANNER", "1")
     os.environ.setdefault("FASTMCP_QUIET", "1")

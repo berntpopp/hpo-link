@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "hpo-link"
 version = "0.1.0"
-description = "MCP/API server that grounds disease work in the Mondo Disease Ontology"
+description = "MCP/API server that grounds phenotype work in the Human Phenotype Ontology (HPO)"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "hpo-link contributors", email = "bernt.popp@charite.de" },
 ]
 keywords = [
-    "mondo", "disease", "ontology", "mcp", "api", "bioinformatics",
+    "hpo", "phenotype", "ontology", "mcp", "api", "bioinformatics",
     "cross-reference", "omim", "orphanet",
 ]
 classifiers = [
@@ -141,7 +141,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests that hit the live Mondo / Monarch PURLs / bulk downloads",
+    "integration: marks tests that hit the live HPO / HPOA OBO PURLs / bulk downloads",
     "unit: marks tests as unit tests",
     "mcp: marks tests that test MCP functionality",
 ]
