@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import Field
 
 from hpo_link.buildinfo import build_info
+from hpo_link.constants import LATENCY_SLO_P99_MS, STALE_AFTER_DAYS
 from hpo_link.mcp import metrics
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.capabilities import collect_tool_signatures, project_capabilities
@@ -55,6 +57,34 @@ def _resolve_counts(meta: dict[str, Any], repo: Any) -> dict[str, int]:
         result_key: (meta[meta_col] if meta.get(meta_col) is not None else fallback[result_key])
         for meta_col, result_key in meta_key_map
     }
+
+
+def _freshness(build_utc: str | None, *, now: datetime | None = None) -> dict[str, Any]:
+    """Built-date age + staleness signal so an operator sees a stale index locally.
+
+    Returns a well-formed block even when build_utc is missing/unparseable: in that
+    case age_days and stale are None. stale is True when the built index is older
+    than STALE_AFTER_DAYS.
+    """
+    out: dict[str, Any] = {
+        "build_utc": build_utc,
+        "stale_after_days": STALE_AFTER_DAYS,
+        "age_days": None,
+        "stale": None,
+    }
+    if not build_utc:
+        return out
+    try:
+        built = datetime.fromisoformat(build_utc)
+    except ValueError:
+        return out
+    if built.tzinfo is None:
+        built = built.replace(tzinfo=UTC)
+    current = now or datetime.now(tz=UTC)
+    age = (current - built).days
+    out["age_days"] = age
+    out["stale"] = age > STALE_AFTER_DAYS
+    return out
 
 
 def register_discovery_tools(mcp: FastMCP) -> None:
@@ -143,6 +173,8 @@ def register_discovery_tools(mcp: FastMCP) -> None:
                 "hpoa_version": meta.get("hpoa_version"),
                 "counts": counts,
                 "build_utc": meta.get("build_utc"),
+                "freshness": _freshness(meta.get("build_utc")),
+                "latency_slo": {"p99_ms": LATENCY_SLO_P99_MS},
                 "build": build_info(),
                 "runtime_metrics": metrics.snapshot(),
             }

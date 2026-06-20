@@ -285,7 +285,7 @@ async def run_mcp_tool(
         envelope["_meta"]["elapsed_ms"] = elapsed
         _stamp_capabilities_version(envelope["_meta"])
         envelope["_meta"] = _shape_meta(envelope["_meta"], ctx.response_mode)
-        metrics.record(tool_name, elapsed, ok=False)
+        metrics.record(tool_name, elapsed, ok=False, error_code=envelope["error_code"])
         logger.warning(
             "mcp_tool_error tool=%s code=%s exc=%s",
             tool_name,

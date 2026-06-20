@@ -228,3 +228,46 @@ def test_resolve_counts_all_positive_against_built_db(repo: Any) -> None:
     assert all(isinstance(v, int) and v >= 0 for v in counts.values())
     assert counts["terms"] > 0
     assert counts["obsolete"] <= counts["terms"]
+
+
+def test_freshness_helper_flags_stale() -> None:
+    """A build older than the stale threshold is flagged stale with an age in days."""
+    from datetime import UTC, datetime
+
+    from hpo_link.mcp.tools.discovery import _freshness
+
+    fr = _freshness("2026-01-01T00:00:00+00:00", now=datetime(2026, 6, 1, tzinfo=UTC))
+    assert fr["age_days"] == 151
+    assert fr["stale"] is True
+    assert fr["stale_after_days"] == 90
+    assert fr["build_utc"] == "2026-01-01T00:00:00+00:00"
+
+
+def test_freshness_helper_fresh() -> None:
+    """A recent build is not stale."""
+    from datetime import UTC, datetime
+
+    from hpo_link.mcp.tools.discovery import _freshness
+
+    fr = _freshness("2026-05-20T00:00:00+00:00", now=datetime(2026, 6, 1, tzinfo=UTC))
+    assert fr["stale"] is False
+    assert fr["age_days"] == 12
+
+
+def test_freshness_helper_handles_missing_build_date() -> None:
+    """No build date -> age/stale are None (still a well-formed block)."""
+    from hpo_link.mcp.tools.discovery import _freshness
+
+    fr = _freshness(None)
+    assert fr["age_days"] is None
+    assert fr["stale"] is None
+    assert fr["stale_after_days"] == 90
+
+
+def test_freshness_helper_handles_unparseable_build_date() -> None:
+    """A malformed build_utc degrades gracefully to unknown age."""
+    from hpo_link.mcp.tools.discovery import _freshness
+
+    fr = _freshness("not-a-date")
+    assert fr["age_days"] is None
+    assert fr["stale"] is None

@@ -70,6 +70,7 @@ RESOLVE_TERM_SCHEMA = _envelope(
     hpo_id=_STR_NULL,
     name=_STR_NULL,
     match_type=_STR_NULL,
+    match_confidence={"type": ["number", "null"]},
     obsolete=_BOOL,
     hpo_version=_STR_NULL,
     recommended_citation=_STR_NULL,
@@ -193,5 +194,7 @@ DIAGNOSTICS_SCHEMA = _envelope(
     hpoa_version=_STR_NULL,
     counts=_OBJ,
     build_utc=_STR_NULL,
+    freshness=_OBJ,
+    latency_slo=_OBJ,
     runtime_metrics=_OBJ,
 )

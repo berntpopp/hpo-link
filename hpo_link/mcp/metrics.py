@@ -41,8 +41,11 @@ class _Metrics:
         self._requests = 0
         self._errors = 0
         self._per_tool: dict[str, dict[str, int]] = {}
+        self._errors_by_code: dict[str, int] = {}
 
-    def record(self, tool: str, elapsed_ms: int, *, ok: bool) -> None:
+    def record(
+        self, tool: str, elapsed_ms: int, *, ok: bool, error_code: str | None = None
+    ) -> None:
         """Record one tool call's latency and success/failure outcome."""
         with self._lock:
             self._requests += 1
@@ -52,6 +55,8 @@ class _Metrics:
             if not ok:
                 self._errors += 1
                 tally["errors"] += 1
+                code = error_code or "internal_error"
+                self._errors_by_code[code] = self._errors_by_code.get(code, 0) + 1
 
     def snapshot(self) -> dict[str, Any]:
         """Return a compact, JSON-safe view of current runtime behaviour."""
@@ -60,6 +65,7 @@ class _Metrics:
             errors = self._errors
             samples = sorted(self._latencies)
             per_tool = {k: dict(v) for k, v in sorted(self._per_tool.items())}
+            errors_by_code = dict(sorted(self._errors_by_code.items()))
         report_rate = requests >= _ERROR_RATE_MIN_SAMPLE
         snap: dict[str, Any] = {
             "requests": requests,
@@ -76,6 +82,7 @@ class _Metrics:
             "sampled": len(samples),
         }
         snap["per_tool"] = per_tool
+        snap["errors_by_code"] = errors_by_code
         return snap
 
     def reset(self) -> None:
@@ -85,14 +92,15 @@ class _Metrics:
             self._requests = 0
             self._errors = 0
             self._per_tool.clear()
+            self._errors_by_code.clear()
 
 
 _METRICS = _Metrics()
 
 
-def record(tool: str, elapsed_ms: int, *, ok: bool) -> None:
+def record(tool: str, elapsed_ms: int, *, ok: bool, error_code: str | None = None) -> None:
     """Record one tool call into the process-wide collector."""
-    _METRICS.record(tool, elapsed_ms, ok=ok)
+    _METRICS.record(tool, elapsed_ms, ok=ok, error_code=error_code)
 
 
 def snapshot() -> dict[str, Any]:

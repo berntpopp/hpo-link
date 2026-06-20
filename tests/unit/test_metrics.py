@@ -65,3 +65,37 @@ def test_snapshot_zero_requests_withholds_error_rate() -> None:
     assert snap["error_rate"] is None
     assert "error_rate_withheld_below" in snap
     assert snap["error_rate_withheld_below"] == _ERROR_RATE_MIN_SAMPLE
+
+
+def test_snapshot_tracks_errors_by_code() -> None:
+    """snapshot() reports a per-error-code breakdown of failures."""
+    from hpo_link.mcp import metrics
+
+    metrics.reset()
+    metrics.record("get_term", 1, ok=True)
+    metrics.record("get_term", 1, ok=False, error_code="not_found")
+    metrics.record("resolve_term", 1, ok=False, error_code="invalid_input")
+    metrics.record("resolve_term", 1, ok=False, error_code="not_found")
+    snap = metrics.snapshot()
+    assert snap["errors_by_code"] == {"invalid_input": 1, "not_found": 2}
+    metrics.reset()
+
+
+def test_record_failure_without_code_is_internal_error() -> None:
+    """A failure recorded without an explicit code is bucketed as internal_error."""
+    from hpo_link.mcp import metrics
+
+    metrics.reset()
+    metrics.record("x", 1, ok=False)
+    assert metrics.snapshot()["errors_by_code"] == {"internal_error": 1}
+    metrics.reset()
+
+
+def test_snapshot_errors_by_code_empty_when_no_failures() -> None:
+    """No failures -> empty errors_by_code map (still present)."""
+    from hpo_link.mcp import metrics
+
+    metrics.reset()
+    metrics.record("x", 1, ok=True)
+    assert metrics.snapshot()["errors_by_code"] == {}
+    metrics.reset()
