@@ -73,13 +73,13 @@ verify-deploy: ## Fail if the deployed build sha != local HEAD (URL=<server>/hea
 clean: ## Remove local caches and reports
 	rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage coverage.xml dist build
 
-data: ## Download Mondo and build the local index
+data: ## Download the HPO release and build the local index
 	uv run hpo-link-data build
 
 data-refresh: ## Conditionally refresh the local index (cron entry point)
 	uv run hpo-link-data refresh
 
-data-status: ## Print the loaded Mondo release / provenance
+data-status: ## Print the loaded HPO release / provenance
 	uv run hpo-link-data status
 
 dev: ## Start unified REST + MCP development server

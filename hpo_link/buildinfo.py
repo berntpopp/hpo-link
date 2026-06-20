@@ -1,7 +1,7 @@
 """Build/version stamp so a running server can report its own provenance.
 
-Provenance is injected by the Docker image build (``MONDO_LINK_GIT_SHA`` /
-``MONDO_LINK_BUILT_AT``). In a source checkout those env vars are absent, so the
+Provenance is injected by the Docker image build (``HPO_LINK_GIT_SHA`` /
+``HPO_LINK_BUILT_AT``). In a source checkout those env vars are absent, so the
 git sha is resolved from ``.git`` with a dependency-free reader and ``built_at``
 falls back to the package mtime — the server can always say which build answered.
 """
@@ -52,6 +52,6 @@ def build_info() -> dict[str, str | None]:
     """Return version + git sha + build time (env-injected, else resolved locally)."""
     return {
         "version": __version__,
-        "git_sha": os.environ.get("MONDO_LINK_GIT_SHA") or _git_sha_from_dotgit() or "unknown",
-        "built_at": os.environ.get("MONDO_LINK_BUILT_AT") or _built_at_fallback(),
+        "git_sha": os.environ.get("HPO_LINK_GIT_SHA") or _git_sha_from_dotgit() or "unknown",
+        "built_at": os.environ.get("HPO_LINK_BUILT_AT") or _built_at_fallback(),
     }

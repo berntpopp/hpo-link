@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Bootstrap the Mondo index and (optionally) start the refresh scheduler."""
+    """Bootstrap the HPO index and (optionally) start the refresh scheduler."""
     logger = configure_logging()
     logger.info("hpo-link starting", host=settings.host, port=settings.port)
     await bootstrap_data(settings.data, logger)
@@ -40,7 +40,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="hpo-link",
-        description="MCP/API server grounding disease work in the Mondo Disease Ontology.",
+        description="MCP/API server grounding phenotype work in the Human Phenotype Ontology (HPO).",
         version=__version__,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
         return {
             "name": "hpo-link",
             "version": __version__,
-            "data_source": "Mondo Disease Ontology (Monarch PURL) -> local SQLite index",
+            "data_source": "Human Phenotype Ontology (HPO) OBO + HPOA annotations -> local SQLite index",
             "mcp_endpoint": settings.mcp_path,
             "docs": "/docs",
             "health": "/health",
