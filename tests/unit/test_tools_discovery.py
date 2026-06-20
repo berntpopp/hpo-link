@@ -208,3 +208,23 @@ def test_resolve_counts_empty_meta_uses_all_fallback() -> None:
     repo = _fake_repo(fallback)
     result = _resolve_counts(meta, repo)
     assert result == fallback
+
+
+# B.1: end-to-end — _resolve_counts against the real built fixture DB returns
+# real, internally-consistent volume counts (locks the diagnostics-counts fix).
+def test_resolve_counts_all_positive_against_built_db(repo: Any) -> None:
+    """Against a freshly built DB every count is a real non-negative integer."""
+    counts = _resolve_counts(repo.read_meta(), repo)
+    expected_keys = {
+        "terms",
+        "obsolete",
+        "closure",
+        "xref",
+        "disease_phenotype",
+        "gene_phenotype",
+        "gene_disease",
+    }
+    assert set(counts) == expected_keys
+    assert all(isinstance(v, int) and v >= 0 for v in counts.values())
+    assert counts["terms"] > 0
+    assert counts["obsolete"] <= counts["terms"]
