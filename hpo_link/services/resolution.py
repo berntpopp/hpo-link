@@ -35,6 +35,27 @@ _LABEL_MATCH_TYPE: dict[str, str] = {
     "alt_id": "alt_id",
 }
 
+#: Deterministic confidence by match_type. Exact identity lookups (id / primary
+#: label / alt_id) are 1.0; an exact synonym is near-certain; an xref reverse-map
+#: slightly less; a related synonym weaker; a fuzzy FTS fallback is the floor. The
+#: numeric form lets a consumer threshold programmatically (match_type is the
+#: qualitative twin).
+MATCH_CONFIDENCE: dict[str, float] = {
+    "hpo_id": 1.0,
+    "primary": 1.0,
+    "alt_id": 1.0,
+    "exact_synonym": 0.95,
+    "xref": 0.9,
+    "related_synonym": 0.8,
+    "fuzzy": 0.6,
+}
+
+
+def confidence_for(match_type: str) -> float:
+    """Numeric confidence in [0, 1] for a resolve match_type (conservative default)."""
+    return MATCH_CONFIDENCE.get(match_type, 0.6)
+
+
 #: Fuzzy thresholds (tuned against bm25-derived scores; repo.search returns
 #: ``score = round(-bm25, 4)`` where higher = more relevant). A near-miss resolves
 #: only when the top hit clears an absolute floor AND dominates the runner-up by a

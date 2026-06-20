@@ -355,3 +355,40 @@ def test_get_term_keeps_citation_in_full(hpo_service: HpoService) -> None:
 
     out = hpo_service.get_term("HP:0000118", response_mode="full")
     assert out["recommended_citation"] == RECOMMENDED_CITATION
+
+
+# ---------------------------------------------------------------------------
+# match_confidence (assessment C.5 — numeric grounding signal)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "query,expected_type,expected_conf",
+    [
+        ("HP:0000118", "hpo_id", 1.0),
+        ("Phenotypic abnormality", "primary", 1.0),
+        ("Abnormal retina", "exact_synonym", 0.95),
+        ("Retinal abnormality", "related_synonym", 0.8),
+    ],
+)
+def test_resolve_term_match_confidence(
+    hpo_service: HpoService, query: str, expected_type: str, expected_conf: float
+) -> None:
+    """resolve_term exposes a deterministic numeric match_confidence per match_type."""
+    out = hpo_service.resolve_term(query)
+    assert out["match_type"] == expected_type
+    assert out["match_confidence"] == expected_conf
+
+
+def test_resolve_term_match_confidence_in_unit_range(hpo_service: HpoService) -> None:
+    """match_confidence is a float in [0, 1]."""
+    out = hpo_service.resolve_term("HP:0000479")
+    assert isinstance(out["match_confidence"], float)
+    assert 0.0 <= out["match_confidence"] <= 1.0
+
+
+def test_confidence_for_unknown_match_type_is_low_default() -> None:
+    """confidence_for() returns a conservative default for an unknown match type."""
+    from hpo_link.services.resolution import confidence_for
+
+    assert confidence_for("something_unexpected") == 0.6

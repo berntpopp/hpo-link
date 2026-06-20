@@ -15,7 +15,7 @@ from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
 from hpo_link.exceptions import DataUnavailableError, InvalidInputError, NotFoundError
 from hpo_link.services.pagination import page_fields
-from hpo_link.services.resolution import Resolver
+from hpo_link.services.resolution import Resolver, confidence_for
 from hpo_link.services.shaping import (
     DEFAULT_RESPONSE_MODE,
     select_fields,
@@ -110,6 +110,7 @@ class HpoService:
             "hpo_id": hpo_id,
             "name": record["name"],
             "match_type": match_type,
+            "match_confidence": confidence_for(match_type),
             "obsolete": record["is_obsolete"],
             **self._version_fields(response_mode),
         }
