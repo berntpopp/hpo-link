@@ -26,7 +26,7 @@ GITHUB_DB_OWNER_REPO = "berntpopp/hpo-link"
 
 def obo_purl(date: str, filename: str) -> str:
     """Version-pinned OBO PURL, e.g. obo_purl('2026-06-06','hp.json')."""
-    return f"http://purl.obolibrary.org/obo/hp/releases/{date}/{filename}"
+    return f"https://purl.obolibrary.org/obo/hp/releases/{date}/{filename}"
 
 
 ONTOLOGY_FILES = ("hp.json", "hp-base.json")

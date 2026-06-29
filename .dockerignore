@@ -1,0 +1,42 @@
+# Container & Deployment Hardening Standard v1, rule 4: keep secrets and cruft
+# out of every image layer and shrink the build context. Build context is the
+# repo root (docker/Dockerfile uses `context: ..`).
+
+# Secrets — never bake env files into a layer (keep the committed examples).
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!.env.docker.example
+
+# VCS / CI
+.git
+.gitignore
+.github
+
+# Python caches and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.benchmarks/
+htmlcov/
+.coverage
+
+# Tests, docs, planning, and runtime-built data (none are COPYed into the image)
+tests/
+docs/
+.planning/
+data/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

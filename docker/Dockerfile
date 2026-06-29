@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 # Multi-stage Dockerfile for hpo-link.
 
-FROM python:3.12-slim AS builder
+# Base image pinned by digest (manifest-list) for byte-reproducible rebuilds —
+# Container & Deployment Hardening Standard v1, rule 2. Bump via Renovate/Dependabot.
+FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -27,7 +29,7 @@ RUN pip install --upgrade pip uv && \
     uv sync --frozen --no-dev --active --no-install-project
 
 
-FROM python:3.12-slim AS production
+FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS production
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

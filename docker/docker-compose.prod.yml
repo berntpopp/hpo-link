@@ -1,0 +1,41 @@
+# Production overlay for hpo-link (Container & Deployment Hardening Standard v1).
+#
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+#
+# Expose-only behind the reverse proxy: the base file's published host-port
+# mapping is dropped with `ports: !reset []`. `!reset` (not a plain `[]`) is
+# REQUIRED because Compose MERGES list fields across `-f` overlays, so `ports: []`
+# would NOT drop the base "<host>:8000" mapping and the endpoint would stay
+# published on the public IP. The container is reachable only via the proxy.
+services:
+  hpo-link:
+    environment:
+      HPO_LINK_LOG_LEVEL: INFO
+      HPO_LINK_LOG_FORMAT: json
+    ports: !reset []
+    expose:
+      - "8000"
+    read_only: true
+    tmpfs:
+      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+          pids: 256
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        labels: "service=hpo-link,environment=production"
