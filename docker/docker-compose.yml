@@ -42,6 +42,29 @@ services:
       retries: 3
       start_period: 120s
     restart: unless-stopped
+    # Container & Deployment Hardening Standard v1 (backported so running the base
+    # file directly is still safe). The built SQLite index lives on the `hpo-data`
+    # named volume (writable); the rootfs is read-only and scratch is an explicit,
+    # size-capped tmpfs (TMPDIR=/tmp/hpo-link in the image).
+    read_only: true
+    tmpfs:
+      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    # Limits in both forms: deploy.resources (honored by Compose v2) and the
+    # non-swarm keys (honored by legacy docker-compose) so they apply either way.
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+          pids: 256
     logging:
       driver: "json-file"
       options:
