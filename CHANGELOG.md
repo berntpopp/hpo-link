@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Adopt the GeneFoundry Container & Deployment Hardening Standard v1: digest-pinned
+  base image, `.dockerignore`, read-only rootfs + tmpfs scratch + writable data
+  volume, `cap_drop: ALL`, `no-new-privileges`, `init`, mem/cpu/pids limits on the
+  base compose, a new expose-only `docker-compose.prod.yml`, and a CI container
+  scan + SBOM workflow (Trivy). Also fetch the HPO OBO release over `https://`
+  (scheme only; no checksum infra changes).
+
 ### Token-efficiency pass
 
 - **Tiered `_meta` by `response_mode` (token tax):** the per-call `_meta` block is
