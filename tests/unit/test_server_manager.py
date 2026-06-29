@@ -93,7 +93,9 @@ async def test_start_unified_server_wires_mcp_and_serves(
     mgr = UnifiedServerManager(logger=logger)
     await mgr.start_unified_server("127.0.0.1", 9123)
 
-    fake_mcp.http_app.assert_called_once_with(path=settings.mcp_path)
+    fake_mcp.http_app.assert_called_once_with(
+        path=settings.mcp_path, stateless_http=True, json_response=True
+    )
     fake_app.mount.assert_called_once_with("/", fake_asgi)
     # The FastAPI lifespan was replaced by a composed one that enters BOTH the
     # original FastAPI lifespan and the mounted MCP app's lifespan, in order.
