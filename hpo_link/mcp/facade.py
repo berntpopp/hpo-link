@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from hpo_link import __version__
 from hpo_link.mcp.capabilities import register_capability_resources
 from hpo_link.mcp.middleware import ArgValidationMiddleware
 from hpo_link.mcp.resources import HPO_SERVER_INSTRUCTIONS
@@ -20,6 +21,7 @@ def create_hpo_mcp() -> FastMCP:
     """Build a FastMCP instance with all hpo-link tools, resources, middleware."""
     mcp = FastMCP(
         name="hpo-link",
+        version=__version__,
         instructions=HPO_SERVER_INSTRUCTIONS,
         mask_error_details=True,
     )

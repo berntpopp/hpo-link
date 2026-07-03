@@ -132,6 +132,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   closest search hits as `candidates` and chains `_meta.next_commands` straight to
   `hpo_get_term` on the top hit, instead of merely routing back to the search tool.
 
+## [0.1.2] - 2026-07-03
+
+### Fixed
+
+- **MCP `serverInfo.version` advertises the package version, not FastMCP's.** The
+  FastMCP facade was constructed without a `version=` argument, so an `initialize`
+  handshake reported the FastMCP framework version (e.g. `3.4.2`) as
+  `serverInfo.version` instead of the `hpo-link` package version. The facade now
+  passes `version=__version__`, matching what `/health` already reports.
+- **Single-source versioning.** `hpo_link.__version__` was a second hardcoded
+  literal that had drifted below `pyproject.toml` (`0.1.0` vs `0.1.1`). It is now
+  derived from the installed distribution metadata
+  (`importlib.metadata.version`), so `pyproject.toml [project].version` is the one
+  source of truth and `__version__`, the installed metadata, `/health`,
+  `get_diagnostics`, and MCP `serverInfo` can no longer disagree. A new
+  `tests/unit/test_version_single_source.py` guard locks the invariant.
+
 ## [0.1.0] - 2026-06-16
 
 ### Added
