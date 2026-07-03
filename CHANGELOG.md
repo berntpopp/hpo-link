@@ -50,6 +50,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`_meta.unsafe_for_clinical_use` on every tool response:** every `_meta` block
+  now carries `unsafe_for_clinical_use: true` — on both the success and the error
+  path, at every `response_mode` including `minimal` (a universal invariant with no
+  opt-out, unlike `next_commands`/`capabilities_version`/`elapsed_ms`). Purely
+  additive to the response envelope: no restructuring, no version bump. Implements
+  the fleet-wide Response-Envelope Standard v1 disclaimer decision (2026-07-03).
 - **Acronym / fuzzy resolution:** `hpo_resolve_term` now falls back to a
   conservative FTS match (`match_type: "fuzzy"`) for a near-miss or acronym-like
   label with no exact id/xref/label match. It resolves only a clear single winner
