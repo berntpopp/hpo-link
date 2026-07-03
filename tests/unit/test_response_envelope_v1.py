@@ -25,18 +25,15 @@ below):
     nested ``error: {}`` object. ``isError: true`` is an explicit v2/future
     concern and is intentionally NOT asserted here.
 
-GROUND-TRUTH DRIFT (verified by reading ``hpo_link/mcp/envelope.py``, not
-assumed): hpo-link's per-call ``_meta`` never carries
-``unsafe_for_clinical_use``, on either the success or the error path. The
-module's own top-of-file comment states the design intent explicitly: "Per-
-call _meta is kept lean: static provenance (research-use restriction,
-citation, HPO release) lives ONLY in get_server_capabilities." The research-
-use disclaimer is only present as ``research_use_only: True`` in the
+FLEET DISCLAIMER STANDARDIZATION (2026-07-03, verified by reading
+``hpo_link/mcp/envelope.py``): hpo-link's per-call ``_meta`` now carries
+``unsafe_for_clinical_use: True`` on BOTH the success and the error path, at
+every ``response_mode`` including ``minimal`` -- the key is a universal
+invariant with no opt-out (see ``_shape_meta`` in ``envelope.py``). This is
+purely additive to the response envelope described above; the research-use
+notice/citation/HPO-release provenance triad remains declared once in the
 ``get_server_capabilities`` discovery payload
-(``hpo_link/mcp/capabilities.py``), never echoed per-call. The tests below
-assert that REAL behavior (the key's absence) instead of fabricating
-conformance that is not there; the drift is reported alongside this test in
-the PR description as a follow-up candidate.
+(``hpo_link/mcp/capabilities.py``) and is not duplicated per-call.
 """
 
 from __future__ import annotations
@@ -62,9 +59,9 @@ async def test_success_envelope_matches_response_envelope_standard_v1() -> None:
     assert result["results"] == [{"hpo_id": "HP:0000118", "name": "Phenotypic abnormality"}]
     assert result["_meta"]["tool"] == "search_terms"
     assert isinstance(result["_meta"]["request_id"], str) and result["_meta"]["request_id"]
-    # GROUND TRUTH (drift vs. the ratified contract -- see module docstring):
-    # the per-call success _meta does NOT carry unsafe_for_clinical_use here.
-    assert "unsafe_for_clinical_use" not in result["_meta"]
+    # Fleet disclaimer standardization (2026-07-03): every success _meta carries
+    # unsafe_for_clinical_use, regardless of response_mode.
+    assert result["_meta"]["unsafe_for_clinical_use"] is True
 
 
 async def test_single_item_result_key_is_preserved() -> None:
@@ -78,7 +75,7 @@ async def test_single_item_result_key_is_preserved() -> None:
     assert result["success"] is True
     assert result["result"] == {"hpo_id": "HP:0000118", "name": "Phenotypic abnormality"}
     assert result["_meta"]["tool"] == "get_term"
-    assert "unsafe_for_clinical_use" not in result["_meta"]
+    assert result["_meta"]["unsafe_for_clinical_use"] is True
 
 
 async def test_error_envelope_is_flat_not_a_bare_exception() -> None:
@@ -108,6 +105,37 @@ async def test_error_envelope_is_flat_not_a_bare_exception() -> None:
     assert "error" not in result
     assert "isError" not in result
     assert result["_meta"]["tool"] == "get_term"
-    # GROUND TRUTH (drift vs. the ratified contract -- see module docstring):
-    # the error-path _meta does NOT carry unsafe_for_clinical_use here either.
-    assert "unsafe_for_clinical_use" not in result["_meta"]
+    # Fleet disclaimer standardization (2026-07-03): every error _meta carries
+    # unsafe_for_clinical_use too, not just the success path.
+    assert result["_meta"]["unsafe_for_clinical_use"] is True
+
+
+async def test_minimal_response_mode_still_carries_unsafe_for_clinical_use() -> None:
+    """``response_mode="minimal"`` strips ``next_commands``/``capabilities_version``/
+    ``elapsed_ms``, but ``unsafe_for_clinical_use`` is a universal invariant with no
+    opt-out -- it must survive on both the success and the error path.
+    """
+
+    async def ok_call() -> dict[str, object]:
+        return {"result": {"hpo_id": "HP:0000118", "name": "Phenotypic abnormality"}}
+
+    ok_result = await run_mcp_tool(
+        "get_term",
+        ok_call,
+        context=McpErrorContext(tool_name="get_term", response_mode="minimal"),
+    )
+    assert ok_result["_meta"]["unsafe_for_clinical_use"] is True
+    assert "next_commands" not in ok_result["_meta"]
+
+    async def err_call() -> dict[str, object]:
+        raise NotFoundError("HP:9999999 not found in the local HPO index")
+
+    err_result = await run_mcp_tool(
+        "get_term",
+        err_call,
+        context=McpErrorContext(
+            tool_name="get_term", arguments={"term": "HP:9999999"}, response_mode="minimal"
+        ),
+    )
+    assert err_result["_meta"]["unsafe_for_clinical_use"] is True
+    assert "next_commands" not in err_result["_meta"]

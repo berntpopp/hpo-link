@@ -182,16 +182,20 @@ def build_capabilities() -> dict[str, Any]:
         "per_call_meta": [
             "tool",
             "request_id",
+            "unsafe_for_clinical_use",
             "elapsed_ms",
             "capabilities_version",
             "next_commands",
         ],
         "per_call_meta_semantics": (
             "_meta verbosity is tiered by response_mode to control the per-call token "
-            "tax: minimal returns only {tool, request_id}; compact (default) adds "
-            "next_commands (workflow guidance) and capabilities_version (the warm-client "
-            "cache key) but omits elapsed_ms; standard/full add elapsed_ms. Every compact "
-            "or richer response carries next_commands; minimal is the explicit opt-out."
+            "tax: minimal returns only {tool, request_id, unsafe_for_clinical_use}; "
+            "compact (default) adds next_commands (workflow guidance) and "
+            "capabilities_version (the warm-client cache key) but omits elapsed_ms; "
+            "standard/full add elapsed_ms. Every compact or richer response carries "
+            "next_commands; minimal is the explicit opt-out. unsafe_for_clinical_use is "
+            "a universal invariant with no opt-out: it is present in every _meta block, "
+            "success and error alike, at every response_mode."
         ),
         "capabilities_version_semantics": (
             "_meta.capabilities_version is a content hash of this discovery contract. "
