@@ -27,15 +27,17 @@ jobs:
       - name: Build Docker image
         run: docker build -f docker/Dockerfile -t hpo-link:scan .
 
-      - name: Run Trivy vulnerability scan
+      - name: Trivy scan (fail on fixable CRITICAL/HIGH)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: hpo-link:scan
           format: table
-          output: trivy-report.txt
-          exit-code: "0"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
 
-      - name: Generate SBOM
+      - name: Generate SBOM (CycloneDX)
+        if: always()
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: hpo-link:scan
@@ -44,9 +46,8 @@ jobs:
           exit-code: "0"
 
       - name: Upload scan artifacts
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: container-security-artifacts
-          path: |
-            trivy-report.txt
-            hpo-link-sbom.cdx.json
+          path: hpo-link-sbom.cdx.json
