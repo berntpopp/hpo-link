@@ -18,3 +18,7 @@ coverage.xml
 # Data (built/downloaded + raw source artifacts — never commit)
 data/*
 !data/.gitkeep
+
+# Local docker env holds production secrets — never commit it
+# (keep .env.docker.example, which is a different, tracked filename)
+.env.docker
