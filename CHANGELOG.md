@@ -6,8 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-07
+
 ### Security
 
+- **CORS credentials disabled on the unauthenticated boundary:** `allow_credentials`
+  is now `False` (the backend holds no cookies/session), and a startup guard refuses
+  to boot with the `allow_credentials=True` + wildcard-origin footgun.
+- **No paths/URLs in log values:** the refresh, ingest builder, downloader, and
+  service-adapter log events now emit the file basename / a stable identifier only
+  (never the absolute filesystem path or the source URL), closing a
+  deployment-layout info-leak surface.
+- **`git_sha` is `None`, not the literal `"unknown"`, when unresolved:** `/health`
+  and the `get_diagnostics` tool now surface a machine-readable null instead of a
+  placeholder string when neither the env stamp nor `.git` resolves the commit.
 - Adopt the GeneFoundry Container & Deployment Hardening Standard v1: digest-pinned
   base image, `.dockerignore`, read-only rootfs + tmpfs scratch + writable data
   volume, `cap_drop: ALL`, `no-new-privileges`, `init`, mem/cpu/pids limits on the
