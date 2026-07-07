@@ -46,6 +46,19 @@ def test_build_info_git_sha_falls_back_when_unset(monkeypatch: pytest.MonkeyPatc
     assert isinstance(info["git_sha"], str) and info["git_sha"]
 
 
+def test_build_info_git_sha_is_none_when_unresolvable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When neither env nor .git resolves, git_sha is None — never the literal 'unknown'.
+
+    Emitting a placeholder string via /health and diagnostics is worse than a
+    machine-readable null: a consumer cannot distinguish "no sha" from a real one.
+    """
+    monkeypatch.delenv("HPO_LINK_GIT_SHA", raising=False)
+    monkeypatch.setattr("hpo_link.buildinfo._git_sha_from_dotgit", lambda: None)
+    info = build_info()
+    assert info["git_sha"] is None
+    assert info["git_sha"] != "unknown"
+
+
 # ---------------------------------------------------------------------------
 # No MONDO_LINK_ env-var name survives anywhere in the shipped source
 # ---------------------------------------------------------------------------

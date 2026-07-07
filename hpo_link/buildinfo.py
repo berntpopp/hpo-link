@@ -52,6 +52,9 @@ def build_info() -> dict[str, str | None]:
     """Return version + git sha + build time (env-injected, else resolved locally)."""
     return {
         "version": __version__,
-        "git_sha": os.environ.get("HPO_LINK_GIT_SHA") or _git_sha_from_dotgit() or "unknown",
+        # Prefer a machine-readable ``None`` over a literal "unknown" placeholder
+        # when the sha cannot be resolved (env-injected, else read from .git):
+        # a consumer of /health or diagnostics can then tell "no sha" from a real one.
+        "git_sha": os.environ.get("HPO_LINK_GIT_SHA") or _git_sha_from_dotgit(),
         "built_at": os.environ.get("HPO_LINK_BUILT_AT") or _built_at_fallback(),
     }
