@@ -58,7 +58,11 @@ def test_as_settings_wraps_foreign_config(tmp_path: Path) -> None:
 
 
 async def test_bootstrap_data_success(monkeypatch: _pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Successful build resets services and logs hpo_data_ready with the db path."""
+    """Successful build resets services and logs hpo_data_ready with the db basename only.
+
+    Guard (PII/path hygiene): the event must carry the file basename, never the
+    full filesystem path (deployment-layout disclosure).
+    """
     from hpo_link.config import settings
 
     built_path = tmp_path / "hpo.sqlite"
@@ -72,7 +76,9 @@ async def test_bootstrap_data_success(monkeypatch: _pytest.MonkeyPatch, tmp_path
 
     ensure_mock.assert_called_once()
     reset_mock.assert_called_once()
-    logger.info.assert_called_once_with("hpo_data_ready", db_path=str(built_path))
+    logger.info.assert_called_once_with("hpo_data_ready", db="hpo.sqlite")
+    # The full path (tmp_path) must not leak into any log field.
+    assert str(tmp_path) not in str(logger.info.call_args)
     logger.warning.assert_not_called()
 
 

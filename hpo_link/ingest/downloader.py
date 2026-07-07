@@ -134,7 +134,8 @@ def download_file(
             etag = response.headers.get("ETag")
             last_modified = response.headers.get("Last-Modified")
             content_length = _int_or_none(response.headers.get("Content-Length"))
-            logger.info("downloading", url=url, dest=str(dest))
+            # Log the filename only — not the full local path or source URL.
+            logger.info("downloading", file=dest.name)
             with dest.open("wb") as fh:
                 for chunk in response.iter_bytes(_CHUNK_SIZE):
                     fh.write(chunk)

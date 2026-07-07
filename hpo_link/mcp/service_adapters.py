@@ -29,7 +29,9 @@ def _open_repo() -> HpoRepository | None:
         try:
             repo = HpoRepository(db_path)
         except DataUnavailableError as exc:  # pragma: no cover - corrupt db
-            logger.warning("hpo_repo_open_failed path=%s err=%s", db_path, exc)
+            # Log the basename + exception type only — the full path and error
+            # string can carry deployment-layout details (path-disclosure hygiene).
+            logger.warning("hpo_repo_open_failed db=%s err=%s", db_path.name, type(exc).__name__)
     return repo
 
 

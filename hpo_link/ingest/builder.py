@@ -351,7 +351,7 @@ def build_database(
             os.replace(tmp_path, config.data.db_path)
             logger.info(
                 "database_built",
-                db=str(config.data.db_path),
+                db=config.data.db_path.name,
                 terms=meta.term_count,
                 duration_s=meta.build_duration_s,
             )
@@ -409,7 +409,7 @@ def _try_prebuilt(config: ServerSettings) -> Path | None:
             logger.info(
                 "prebuilt_db_installed",
                 hpo_version=asset.hpo_version,
-                dest=str(db_path),
+                dest=db_path.name,
             )
             return db_path
     except Exception as exc:

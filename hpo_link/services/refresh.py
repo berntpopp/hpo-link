@@ -47,7 +47,8 @@ async def bootstrap_data(config: HPODataConfig, logger: Any) -> None:
     try:
         path = await asyncio.to_thread(ensure_database, _as_settings(config))
         reset_services()
-        logger.info("hpo_data_ready", db_path=str(path))
+        # Log the basename only — never the full path (deployment-layout disclosure).
+        logger.info("hpo_data_ready", db=path.name)
     except (HpoLinkError, DownloadError, OSError) as exc:
         logger.warning("hpo_data_bootstrap_failed", error=str(exc))
 
