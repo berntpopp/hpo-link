@@ -36,6 +36,23 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("hpo-link shutting down")
 
 
+def _validate_cors(*, allow_credentials: bool, origins: list[str]) -> None:
+    """Fail closed on the credentials-plus-wildcard CORS footgun.
+
+    hpo-link is unauthenticated and holds no cookies or session, so combining
+    ``allow_credentials=True`` with a ``"*"`` origin is both meaningless and
+    unsafe (browsers reject it, and it signals a misconfiguration). Refuse to
+    start rather than serve it.
+    """
+    if allow_credentials and "*" in origins:
+        msg = (
+            "Refusing to start: CORS allow_credentials=True is incompatible with a "
+            "wildcard '*' origin. hpo-link is unauthenticated and holds no cookies; "
+            "keep allow_credentials off."
+        )
+        raise RuntimeError(msg)
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
@@ -48,10 +65,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Credentials off: the backend holds no cookies/session, so CORS credentials
+    # are meaningless and a footgun if origins ever widen to "*" (see D4).
+    allow_credentials = False
+    _validate_cors(allow_credentials=allow_credentials, origins=settings.cors_origins)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_credentials=allow_credentials,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
