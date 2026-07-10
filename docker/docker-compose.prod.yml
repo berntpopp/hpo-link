@@ -12,6 +12,7 @@ services:
     environment:
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
+      HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1","hpo-link.genefoundry.org"]'
     ports: !reset []
     expose:
       - "8000"

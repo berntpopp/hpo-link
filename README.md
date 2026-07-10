@@ -98,6 +98,15 @@ stdio (Claude Desktop and similar):
 make mcp-serve      # runs mcp_server.py on stdio (stdout is reserved for the protocol)
 ```
 
+## HTTP boundary configuration
+
+`HPO_LINK_ALLOWED_HOSTS` is a JSON list of exact Host values and defaults to
+`["localhost","127.0.0.1","::1"]`; production Compose also permits
+`hpo-link.genefoundry.org`. Write IPv6 entries bare, without brackets. Wildcard
+patterns are rejected. `HPO_LINK_ALLOWED_ORIGINS` defaults to `[]` and is the
+browser-origin admission gate: include every origin that `HPO_LINK_CORS_ORIGINS`
+is intended to serve. Requests without an Origin header remain valid.
+
 ## Data provenance
 
 The database is built from:
