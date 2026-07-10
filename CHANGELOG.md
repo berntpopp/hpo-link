@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-10
+
+### Security
+
+- Harden HPO source and prebuilt database acquisition with exact-host validated
+  redirects, measured configurable bounds, release-bound manifests, strict
+  SHA-256 and size verification, bounded decompression, SQLite validation, and
+  atomic preservation of the previous database on failure.
+
 ## [0.1.3] - 2026-07-07
 
 ### Security
