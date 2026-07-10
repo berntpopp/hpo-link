@@ -16,10 +16,11 @@ import logging
 import time
 from typing import Any
 
+from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
 from mcp.types import CallToolRequestParams, TextContent
-from pydantic import ValidationError
+from pydantic import ValidationError as PydanticValidationError
 
 from hpo_link.mcp.arg_help import (
     describe_constraints,
@@ -68,10 +69,13 @@ class ArgValidationMiddleware(Middleware):
 
         try:
             result = await call_next(context)
-        except ValidationError as exc:
+        except FastMCPValidationError as exc:
+            validation_error = exc.__cause__
+            if not isinstance(validation_error, PydanticValidationError):
+                raise
             elapsed = int((time.perf_counter() - start) * 1000)
             response_mode = str(new_args.get("response_mode", "compact"))
-            return self._error_result(name, valid, schema, exc, response_mode, elapsed)
+            return self._error_result(name, valid, schema, validation_error, response_mode, elapsed)
 
         if (
             applied
@@ -87,7 +91,7 @@ class ArgValidationMiddleware(Middleware):
         name: str,
         valid: list[str],
         schema: dict[str, Any],
-        exc: ValidationError,
+        exc: PydanticValidationError,
         response_mode: str,
         elapsed_ms: int,
     ) -> ToolResult:

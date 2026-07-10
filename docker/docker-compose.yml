@@ -29,6 +29,7 @@ services:
       HPO_LINK_PORT: 8000
       HPO_LINK_TRANSPORT: unified
       HPO_LINK_MCP_PATH: /mcp
+      HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
       HPO_LINK_DATA__DATA_DIR: /app/data
@@ -41,7 +42,7 @@ services:
       # Persist the built SQLite index across container restarts.
       - hpo-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -84,7 +84,7 @@ async def test_start_unified_server_wires_mcp_and_serves(
     config_factory = MagicMock(return_value="config-sentinel")
     server_factory = MagicMock(return_value=fake_server)
 
-    monkeypatch.setattr("hpo_link.app.app", fake_app)
+    monkeypatch.setattr("hpo_link.app.create_app", lambda: fake_app)
     monkeypatch.setattr("hpo_link.mcp.facade.create_hpo_mcp", lambda: fake_mcp)
     monkeypatch.setattr("hpo_link.server_manager.uvicorn.Config", config_factory)
     monkeypatch.setattr("hpo_link.server_manager.uvicorn.Server", server_factory)
@@ -94,7 +94,12 @@ async def test_start_unified_server_wires_mcp_and_serves(
     await mgr.start_unified_server("127.0.0.1", 9123)
 
     fake_mcp.http_app.assert_called_once_with(
-        path=settings.mcp_path, stateless_http=True, json_response=True
+        path=settings.mcp_path,
+        stateless_http=True,
+        json_response=True,
+        host_origin_protection=True,
+        allowed_hosts=settings.allowed_hosts,
+        allowed_origins=settings.allowed_origins,
     )
     fake_app.mount.assert_called_once_with("/", fake_asgi)
     # The FastAPI lifespan was replaced by a composed one that enters BOTH the
@@ -128,7 +133,7 @@ async def test_start_http_only_server_serves_without_mcp(
     config_factory = MagicMock(return_value="config-sentinel")
     server_factory = MagicMock(return_value=fake_server)
 
-    monkeypatch.setattr("hpo_link.app.app", fake_app)
+    monkeypatch.setattr("hpo_link.app.create_app", lambda: fake_app)
     monkeypatch.setattr("hpo_link.server_manager.uvicorn.Config", config_factory)
     monkeypatch.setattr("hpo_link.server_manager.uvicorn.Server", server_factory)
 
