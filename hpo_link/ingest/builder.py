@@ -400,12 +400,24 @@ def _try_prebuilt(config: ServerSettings) -> Path | None:
 
     db_path = config.data.db_path
     try:
-        with httpx.Client(follow_redirects=True, timeout=config.data.download_timeout) as client:
-            asset = find_prebuilt_asset(client)
+        with httpx.Client(follow_redirects=False, timeout=config.data.download_timeout) as client:
+            asset = find_prebuilt_asset(
+                client,
+                max_manifest_bytes=config.data.max_manifest_bytes,
+                max_bundle_bytes=config.data.max_bundle_bytes,
+                max_database_bytes=config.data.max_database_bytes,
+            )
             if asset is None:
                 logger.info("no_prebuilt_asset_available")
                 return None
-            fetch_prebuilt_db(client, asset, db_path)
+            fetch_prebuilt_db(
+                client,
+                asset,
+                db_path,
+                max_compressed_bytes=config.data.max_bundle_bytes,
+                max_db_bytes=config.data.max_database_bytes,
+                max_download_seconds=config.data.max_download_seconds,
+            )
             logger.info(
                 "prebuilt_db_installed",
                 hpo_version=asset.hpo_version,

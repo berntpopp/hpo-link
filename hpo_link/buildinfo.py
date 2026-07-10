@@ -18,18 +18,29 @@ from hpo_link import __version__
 def _git_sha_from_dotgit() -> str | None:
     """Resolve the current commit sha by reading ``.git`` (no subprocess)."""
     root = Path(__file__).resolve().parent.parent
-    git = root / ".git"
-    if not git.exists():
+    dotgit = root / ".git"
+    if not dotgit.exists():
         return None
     try:
+        git = dotgit
+        if dotgit.is_file():
+            pointer = dotgit.read_text(encoding="utf-8").strip()
+            if not pointer.startswith("gitdir:"):
+                return None
+            git = (root / pointer.removeprefix("gitdir:").strip()).resolve()
+        common = git
+        commondir = git / "commondir"
+        if commondir.exists():
+            common = (git / commondir.read_text(encoding="utf-8").strip()).resolve()
+
         head = (git / "HEAD").read_text(encoding="utf-8").strip()
         if not head.startswith("ref:"):
             return head[:12]  # detached HEAD: raw sha
         ref = head[4:].strip()
-        loose = git / ref
+        loose = common / ref
         if loose.exists():
             return loose.read_text(encoding="utf-8").strip()[:12]
-        packed = git / "packed-refs"
+        packed = common / "packed-refs"
         if packed.exists():
             for line in packed.read_text(encoding="utf-8").splitlines():
                 if line and not line.startswith(("#", "^")) and line.endswith(ref):

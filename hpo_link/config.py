@@ -44,6 +44,43 @@ class HPODataConfig(BaseModel):
         le=1800,
         description="HTTP timeout (seconds) for downloading an HPO release file.",
     )
+    max_source_bytes: int = Field(
+        default=128 * 1024 * 1024,
+        ge=1,
+        description=(
+            "Per-source cap; largest source measured 35,672,303 bytes on 2026-07-10. "
+            "Override with HPO_LINK_DATA__MAX_SOURCE_BYTES as releases grow."
+        ),
+    )
+    max_manifest_bytes: int = Field(
+        default=64 * 1024,
+        ge=1,
+        description=(
+            "GitHub metadata cap; manifest measured 550 bytes on 2026-07-10. "
+            "Override with HPO_LINK_DATA__MAX_MANIFEST_BYTES if metadata grows."
+        ),
+    )
+    max_bundle_bytes: int = Field(
+        default=128 * 1024 * 1024,
+        ge=1,
+        description=(
+            "Compressed prebuilt cap; bundle measured 19,083,660 bytes on 2026-07-10. "
+            "Override with HPO_LINK_DATA__MAX_BUNDLE_BYTES as releases grow."
+        ),
+    )
+    max_database_bytes: int = Field(
+        default=512 * 1024 * 1024,
+        ge=1,
+        description=(
+            "Expanded SQLite cap; database measured 136,249,344 bytes on 2026-07-10. "
+            "Override with HPO_LINK_DATA__MAX_DATABASE_BYTES as releases grow."
+        ),
+    )
+    max_download_seconds: float = Field(
+        default=1800.0,
+        ge=1.0,
+        description="Total download deadline; override HPO_LINK_DATA__MAX_DOWNLOAD_SECONDS.",
+    )
     user_agent: str = Field(
         default=f"hpo-link/{__version__} (+https://github.com/berntpopp/hpo-link)",
         description="User-Agent sent to the OBO PURLs.",
