@@ -18,6 +18,12 @@ import structlog
 
 from hpo_link.constants import GITHUB_RELEASES_LATEST_URL, obo_purl
 from hpo_link.exceptions import DownloadError
+from hpo_link.ingest.download_security import (
+    DownloadPolicy,
+    open_validated_stream,
+    read_bounded,
+    stream_atomic,
+)
 
 if TYPE_CHECKING:
     from hpo_link.config import ServerSettings
@@ -25,7 +31,13 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 CACHE_FILENAME = "download_cache.json"
-_CHUNK_SIZE = 1 << 16
+_METADATA_MAX_BYTES = 64 * 1024
+HPO_SOURCE_POLICY = DownloadPolicy(
+    allowed_hosts=frozenset(
+        {"purl.obolibrary.org", "github.com", "release-assets.githubusercontent.com"}
+    ),
+    max_redirects=5,
+)
 
 
 @dataclass
@@ -40,15 +52,18 @@ class DownloadResult:
     content_length: int | None = None
 
 
-def resolve_latest_version(client: httpx.Client) -> str:
+def resolve_latest_version(client: httpx.Client, *, max_bytes: int = _METADATA_MAX_BYTES) -> str:
     """Resolve the latest HPO release tag from the GitHub Releases API.
 
     Returns the tag name with a leading ``v`` stripped (e.g. ``"2026-06-06"``).
     Raises :class:`DownloadError` on any HTTP or network failure.
     """
     try:
-        resp = client.get(GITHUB_RELEASES_LATEST_URL)
-        resp.raise_for_status()
+        with client.stream("GET", GITHUB_RELEASES_LATEST_URL, follow_redirects=False) as resp:
+            if resp.is_redirect:
+                raise DownloadError("GitHub Releases API redirect is not allowed")
+            resp.raise_for_status()
+            raw = read_bounded(resp, max_bytes=max_bytes)
     except httpx.HTTPStatusError as exc:
         raise DownloadError(
             f"GitHub Releases API failed: {exc.response.status_code}",
@@ -56,7 +71,10 @@ def resolve_latest_version(client: httpx.Client) -> str:
         ) from exc
     except httpx.HTTPError as exc:
         raise DownloadError(f"GitHub Releases API failed: {exc}") from exc
-    data: dict[str, str] = resp.json()
+    try:
+        data: dict[str, str] = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise DownloadError("GitHub Releases API returned invalid JSON") from exc
     return data["tag_name"].lstrip("v")
 
 
@@ -120,7 +138,13 @@ def download_file(
             headers["If-Modified-Since"] = str(cached_validators["last_modified"])
 
     try:
-        with client.stream("GET", url, headers=headers) as response:
+        policy = DownloadPolicy(
+            allowed_hosts=HPO_SOURCE_POLICY.allowed_hosts,
+            max_redirects=HPO_SOURCE_POLICY.max_redirects,
+            max_bytes=config.data.max_source_bytes,
+            max_seconds=config.data.max_download_seconds,
+        )
+        with open_validated_stream(client, url, headers=headers, policy=policy) as response:
             if response.status_code == httpx.codes.NOT_MODIFIED:
                 logger.info("not_modified", url=url)
                 return DownloadResult(
@@ -136,9 +160,12 @@ def download_file(
             content_length = _int_or_none(response.headers.get("Content-Length"))
             # Log the filename only — not the full local path or source URL.
             logger.info("downloading", file=dest.name)
-            with dest.open("wb") as fh:
-                for chunk in response.iter_bytes(_CHUNK_SIZE):
-                    fh.write(chunk)
+            stream_atomic(
+                response,
+                dest,
+                max_bytes=config.data.max_source_bytes,
+                max_seconds=config.data.max_download_seconds,
+            )
     except httpx.HTTPStatusError as exc:
         raise DownloadError(
             f"GET {url} failed: {exc.response.status_code}",
@@ -177,8 +204,8 @@ def download_bulk(config: ServerSettings, *, force: bool = False) -> dict[str, D
     data_dir = config.data.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    with httpx.Client(follow_redirects=True, timeout=config.data.download_timeout) as client:
-        version = resolve_latest_version(client)
+    with httpx.Client(follow_redirects=False, timeout=config.data.download_timeout) as client:
+        version = resolve_latest_version(client, max_bytes=config.data.max_manifest_bytes)
         logger.info("resolved_hpo_version", version=version)
 
         file_map: dict[str, str] = {

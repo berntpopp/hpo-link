@@ -12,7 +12,7 @@ import pytest
 import respx
 import zstandard
 
-from hpo_link.exceptions import DataUnavailableError
+from hpo_link.exceptions import DataUnavailableError, DownloadError
 from hpo_link.ingest.release import PrebuiltAsset, fetch_prebuilt_db, find_prebuilt_asset
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def _mock_manifest(sha256: str, zst_bytes: bytes) -> dict[str, object]:
         "schema_version": 1,
         "sqlite_zst": _ZST_NAME,
         "sha256": sha256,
-        "sqlite_bytes": 4096,
+        "sqlite_bytes": len(zstandard.ZstdDecompressor().decompress(zst_bytes)),
         "zst_bytes": len(zst_bytes),
         "counts": {},
         "built_utc": "2026-06-06T06:00:00+00:00",
@@ -182,6 +182,50 @@ def test_find_prebuilt_asset_http_error_returns_none() -> None:
     assert asset is None
 
 
+@respx.mock
+def test_manifest_rejects_invalid_digest() -> None:
+    zst_bytes = zstandard.ZstdCompressor().compress(b"x")
+    releases = _mock_releases_list("bad", zst_bytes)
+    manifest = _mock_manifest("bad", zst_bytes)
+    manifest["sha256"] = "not-sha256"
+    respx.get(_GH_RELEASES_URL).mock(return_value=httpx.Response(200, json=releases))
+    respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(200, json=manifest))
+
+    with httpx.Client(follow_redirects=False) as client:
+        assert find_prebuilt_asset(client) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("hpo_version", "2025-01-01"),
+        ("sqlite_zst", "different.sqlite.zst"),
+    ],
+)
+@respx.mock
+def test_manifest_must_match_selected_release_asset(field: str, value: str) -> None:
+    zst_bytes, sha256 = _make_tiny_sqlite_zst()
+    releases = _mock_releases_list(sha256, zst_bytes)
+    manifest = _mock_manifest(sha256, zst_bytes)
+    manifest[field] = value
+    respx.get(_GH_RELEASES_URL).mock(return_value=httpx.Response(200, json=releases))
+    respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(200, json=manifest))
+
+    with httpx.Client(follow_redirects=False) as client:
+        assert find_prebuilt_asset(client) is None
+
+
+@respx.mock
+def test_manifest_stream_limit_is_enforced() -> None:
+    zst_bytes, sha256 = _make_tiny_sqlite_zst()
+    releases = _mock_releases_list(sha256, zst_bytes)
+    respx.get(_GH_RELEASES_URL).mock(return_value=httpx.Response(200, json=releases))
+    respx.get(_MANIFEST_URL).mock(return_value=httpx.Response(200, content=b"x" * 1025))
+
+    with httpx.Client(follow_redirects=False) as client:
+        assert find_prebuilt_asset(client, max_manifest_bytes=1024) is None
+
+
 # ---------------------------------------------------------------------------
 # Tests: fetch_prebuilt_db
 # ---------------------------------------------------------------------------
@@ -199,6 +243,7 @@ def test_fetch_prebuilt_db_success(tmp_path: Path) -> None:
         download_url=_ZST_URL,
         sha256=sha256,
         zst_bytes=len(zst_bytes),
+        sqlite_bytes=len(zstandard.ZstdDecompressor().decompress(zst_bytes)),
     )
     dest = tmp_path / "hpo.sqlite"
 
@@ -228,6 +273,7 @@ def test_fetch_prebuilt_db_sha256_mismatch_raises_and_no_file(tmp_path: Path) ->
         download_url=_ZST_URL,
         sha256=wrong_sha256,
         zst_bytes=len(zst_bytes),
+        sqlite_bytes=len(zstandard.ZstdDecompressor().decompress(zst_bytes)),
     )
     dest = tmp_path / "hpo.sqlite"
 
@@ -250,6 +296,7 @@ def test_fetch_prebuilt_db_does_not_leave_temp_files(tmp_path: Path) -> None:
         download_url=_ZST_URL,
         sha256=wrong_sha256,
         zst_bytes=len(zst_bytes),
+        sqlite_bytes=len(zstandard.ZstdDecompressor().decompress(zst_bytes)),
     )
     dest = tmp_path / "hpo.sqlite"
 
@@ -259,6 +306,88 @@ def test_fetch_prebuilt_db_does_not_leave_temp_files(tmp_path: Path) -> None:
     # No .tmp files should remain
     tmp_files = list(tmp_path.glob("*.tmp"))
     assert tmp_files == [], f"Temp files not cleaned up: {tmp_files}"
+
+
+@respx.mock
+def test_prebuilt_expansion_limit_preserves_old_database(tmp_path: Path) -> None:
+    compressed = zstandard.ZstdCompressor().compress(b"x" * 65)
+    sha256 = hashlib.sha256(compressed).hexdigest()
+    respx.get(_ZST_URL).mock(return_value=httpx.Response(200, content=compressed))
+    destination = tmp_path / "hpo.sqlite"
+    destination.write_bytes(b"old")
+    asset = PrebuiltAsset(
+        hpo_version=_DATE,
+        download_url=_ZST_URL,
+        sha256=sha256,
+        zst_bytes=len(compressed),
+        sqlite_bytes=65,
+    )
+
+    with (
+        httpx.Client(follow_redirects=False) as client,
+        pytest.raises(DataUnavailableError, match="exceeded 64"),
+    ):
+        fetch_prebuilt_db(
+            client,
+            asset,
+            destination,
+            max_compressed_bytes=1024,
+            max_db_bytes=64,
+        )
+
+    assert destination.read_bytes() == b"old"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+@respx.mock
+def test_prebuilt_compressed_size_mismatch_preserves_old_database(tmp_path: Path) -> None:
+    compressed = zstandard.ZstdCompressor().compress(b"x")
+    sha256 = hashlib.sha256(compressed).hexdigest()
+    respx.get(_ZST_URL).mock(return_value=httpx.Response(200, content=compressed))
+    destination = tmp_path / "hpo.sqlite"
+    destination.write_bytes(b"old")
+    asset = PrebuiltAsset(
+        hpo_version=_DATE,
+        download_url=_ZST_URL,
+        sha256=sha256,
+        zst_bytes=len(compressed) + 1,
+        sqlite_bytes=1,
+    )
+
+    with (
+        httpx.Client(follow_redirects=False) as client,
+        pytest.raises(DownloadError, match="size mismatch"),
+    ):
+        fetch_prebuilt_db(client, asset, destination)
+
+    assert destination.read_bytes() == b"old"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+@respx.mock
+def test_prebuilt_invalid_sqlite_header_preserves_old_database(tmp_path: Path) -> None:
+    expanded = b"not a sqlite database"
+    compressed = zstandard.ZstdCompressor().compress(expanded)
+    sha256 = hashlib.sha256(compressed).hexdigest()
+    respx.get(_ZST_URL).mock(return_value=httpx.Response(200, content=compressed))
+    destination = tmp_path / "hpo.sqlite"
+    destination.write_bytes(b"old")
+    asset = PrebuiltAsset(
+        hpo_version=_DATE,
+        download_url=_ZST_URL,
+        sha256=sha256,
+        zst_bytes=len(compressed),
+        sqlite_bytes=len(expanded),
+    )
+
+    with (
+        httpx.Client(follow_redirects=False) as client,
+        pytest.raises(DataUnavailableError, match="invalid SQLite header"),
+    ):
+        fetch_prebuilt_db(client, asset, destination)
+
+    assert destination.read_bytes() == b"old"
+    assert list(tmp_path.glob("*.tmp")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +427,12 @@ def test_find_and_fetch_full_roundtrip(tmp_path: Path) -> None:
 
 def test_prebuilt_asset_frozen() -> None:
     """PrebuiltAsset is a frozen dataclass."""
-    asset = PrebuiltAsset(hpo_version=_DATE, download_url=_ZST_URL, sha256="abc", zst_bytes=100)
+    asset = PrebuiltAsset(
+        hpo_version=_DATE,
+        download_url=_ZST_URL,
+        sha256="abc",
+        zst_bytes=100,
+        sqlite_bytes=200,
+    )
     with pytest.raises(Exception):  # noqa: B017
         asset.hpo_version = "changed"  # type: ignore[misc]

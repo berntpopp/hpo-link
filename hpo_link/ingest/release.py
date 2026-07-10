@@ -8,7 +8,9 @@ to the final destination path atomically.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +20,28 @@ import structlog
 import zstandard
 
 from hpo_link.constants import GITHUB_DB_OWNER_REPO
+from hpo_link.exceptions import DataUnavailableError, DownloadError
+from hpo_link.ingest.download_security import (
+    DownloadPolicy,
+    copy_bounded,
+    open_validated_stream,
+    read_bounded,
+    stream_atomic,
+    validate_https_url,
+)
 
 logger = structlog.get_logger()
 
-_CHUNK_SIZE = 1 << 16
 _GH_RELEASES_URL = "https://api.github.com/repos/{owner_repo}/releases"
+_DEFAULT_MANIFEST_BYTES = 64 * 1024
+_DEFAULT_BUNDLE_BYTES = 128 * 1024 * 1024
+_DEFAULT_DATABASE_BYTES = 512 * 1024 * 1024
+_GITHUB_API_POLICY = DownloadPolicy(allowed_hosts=frozenset({"api.github.com"}), max_redirects=0)
+_GITHUB_ASSET_POLICY = DownloadPolicy(
+    allowed_hosts=frozenset({"github.com", "release-assets.githubusercontent.com"}),
+    max_redirects=5,
+)
+_SQLITE_HEADER = b"SQLite format 3\x00"
 
 
 @dataclass(frozen=True)
@@ -33,6 +52,50 @@ class PrebuiltAsset:
     download_url: str
     sha256: str
     zst_bytes: int
+    sqlite_bytes: int
+
+
+def _read_direct_metadata(
+    client: httpx.Client,
+    url: str,
+    *,
+    headers: dict[str, str],
+    max_bytes: int,
+) -> bytes:
+    """Read bounded GitHub API metadata without accepting redirects."""
+    target = httpx.URL(url)
+    validate_https_url(target, _GITHUB_API_POLICY)
+    request = client.build_request("GET", target, headers=headers)
+    response = client.send(request, stream=True, follow_redirects=False)
+    try:
+        if response.is_redirect:
+            raise DownloadError("GitHub API redirect is not allowed")
+        response.raise_for_status()
+        return read_bounded(response, max_bytes=max_bytes)
+    finally:
+        response.close()
+
+
+def _read_asset_metadata(client: httpx.Client, url: str, *, max_bytes: int) -> bytes:
+    """Read bounded release metadata through the validated GitHub asset chain."""
+    with open_validated_stream(
+        client,
+        url,
+        headers={"Accept": "application/json"},
+        policy=_GITHUB_ASSET_POLICY,
+    ) as response:
+        response.raise_for_status()
+        return read_bounded(response, max_bytes=max_bytes)
+
+
+def _positive_int(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 0
+    try:
+        parsed = int(value)
+    except (OverflowError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
 
 
 def find_prebuilt_asset(
@@ -40,6 +103,9 @@ def find_prebuilt_asset(
     *,
     owner_repo: str = GITHUB_DB_OWNER_REPO,
     want_version: str | None = None,
+    max_manifest_bytes: int = _DEFAULT_MANIFEST_BYTES,
+    max_bundle_bytes: int = _DEFAULT_BUNDLE_BYTES,
+    max_database_bytes: int = _DEFAULT_DATABASE_BYTES,
 ) -> PrebuiltAsset | None:
     """Return the best matching ``PrebuiltAsset`` from GitHub Releases, or ``None``.
 
@@ -52,8 +118,12 @@ def find_prebuilt_asset(
     """
     url = _GH_RELEASES_URL.format(owner_repo=owner_repo)
     try:
-        resp = client.get(url, headers={"Accept": "application/vnd.github+json"})
-        resp.raise_for_status()
+        raw_releases = _read_direct_metadata(
+            client,
+            url,
+            headers={"Accept": "application/vnd.github+json"},
+            max_bytes=max_manifest_bytes,
+        )
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "github_releases_http_error",
@@ -64,8 +134,21 @@ def find_prebuilt_asset(
     except httpx.HTTPError as exc:
         logger.warning("github_releases_network_error", url=url, error=str(exc))
         return None
+    except DownloadError as exc:
+        logger.warning("github_releases_invalid", url=url, error=str(exc))
+        return None
 
-    releases: list[dict[str, object]] = resp.json()
+    try:
+        parsed_releases = json.loads(raw_releases)
+    except json.JSONDecodeError:
+        logger.warning("github_releases_invalid_json", url=url)
+        return None
+    if not isinstance(parsed_releases, list):
+        logger.warning("github_releases_invalid_shape", url=url)
+        return None
+    releases: list[dict[str, object]] = [
+        release for release in parsed_releases if isinstance(release, dict)
+    ]
 
     # Filter to db-v* tags only
     db_releases = [
@@ -121,12 +204,9 @@ def find_prebuilt_asset(
         )
         return None
 
-    _ = zst_name  # captured for logging only
-
     # Fetch the manifest
     try:
-        mresp = client.get(manifest_url)
-        mresp.raise_for_status()
+        raw_manifest = _read_asset_metadata(client, manifest_url, max_bytes=max_manifest_bytes)
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "manifest_http_error",
@@ -137,16 +217,45 @@ def find_prebuilt_asset(
     except httpx.HTTPError as exc:
         logger.warning("manifest_network_error", manifest_url=manifest_url, error=str(exc))
         return None
+    except DownloadError as exc:
+        logger.warning("manifest_invalid_download", manifest_url=manifest_url, error=str(exc))
+        return None
 
-    manifest: dict[str, object] = mresp.json()
+    try:
+        parsed_manifest = json.loads(raw_manifest)
+    except json.JSONDecodeError:
+        logger.warning("manifest_invalid_json")
+        return None
+    if not isinstance(parsed_manifest, dict):
+        logger.warning("manifest_invalid_shape")
+        return None
+    manifest: dict[str, object] = parsed_manifest
 
     hpo_version = str(manifest.get("hpo_version", ""))
+    sqlite_zst = str(manifest.get("sqlite_zst", ""))
     sha256 = str(manifest.get("sha256", ""))
-    zst_bytes_raw = manifest.get("zst_bytes")
-    zst_bytes = int(zst_bytes_raw) if isinstance(zst_bytes_raw, (int, float, str)) else 0
+    zst_bytes = _positive_int(manifest.get("zst_bytes"))
+    sqlite_bytes = _positive_int(manifest.get("sqlite_bytes"))
 
-    if not hpo_version or not sha256:
+    if not hpo_version:
         logger.warning("manifest_missing_fields", manifest=manifest)
+        return None
+    selected_tag = str(selected.get("tag_name", ""))
+    if hpo_version != selected_tag[4:] or sqlite_zst != zst_name:
+        logger.warning("manifest_release_mismatch")
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", sha256):
+        logger.warning("manifest_invalid_sha256")
+        return None
+    if zst_bytes <= 0 or sqlite_bytes <= 0:
+        logger.warning("manifest_invalid_sizes")
+        return None
+    if zst_bytes > max_bundle_bytes or sqlite_bytes > max_database_bytes:
+        logger.warning(
+            "manifest_sizes_exceed_limits",
+            zst_bytes=zst_bytes,
+            sqlite_bytes=sqlite_bytes,
+        )
         return None
 
     logger.info(
@@ -160,6 +269,7 @@ def find_prebuilt_asset(
         download_url=zst_url,
         sha256=sha256,
         zst_bytes=zst_bytes,
+        sqlite_bytes=sqlite_bytes,
     )
 
 
@@ -167,6 +277,10 @@ def fetch_prebuilt_db(
     client: httpx.Client,
     asset: PrebuiltAsset,
     dest: Path,
+    *,
+    max_compressed_bytes: int = _DEFAULT_BUNDLE_BYTES,
+    max_db_bytes: int = _DEFAULT_DATABASE_BYTES,
+    max_download_seconds: float | None = None,
 ) -> Path:
     """Download, verify, decompress, and atomically place the prebuilt DB.
 
@@ -186,9 +300,11 @@ def fetch_prebuilt_db(
         DataUnavailableError: When the downloaded sha256 does not match.
         DownloadError: When the HTTP request fails.
     """
-    from hpo_link.exceptions import DataUnavailableError, DownloadError
-
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if asset.zst_bytes > max_compressed_bytes:
+        raise DataUnavailableError(f"compressed artifact exceeded {max_compressed_bytes} bytes")
+    if asset.sqlite_bytes > max_db_bytes:
+        raise DataUnavailableError(f"expanded artifact exceeded {max_db_bytes} bytes")
 
     # Download the .zst to a temp file
     fd_zst, tmp_zst_name = tempfile.mkstemp(dir=dest.parent, suffix=".sqlite.zst.tmp")
@@ -198,12 +314,27 @@ def fetch_prebuilt_db(
     hasher = hashlib.sha256()
     try:
         try:
-            with client.stream("GET", asset.download_url) as response:
+            policy = DownloadPolicy(
+                allowed_hosts=_GITHUB_ASSET_POLICY.allowed_hosts,
+                max_redirects=_GITHUB_ASSET_POLICY.max_redirects,
+                max_bytes=max_compressed_bytes,
+                max_seconds=max_download_seconds,
+            )
+            with open_validated_stream(
+                client,
+                asset.download_url,
+                headers={"Accept": "application/octet-stream"},
+                policy=policy,
+            ) as response:
                 response.raise_for_status()
-                with tmp_zst.open("wb") as fh:
-                    for chunk in response.iter_bytes(_CHUNK_SIZE):
-                        fh.write(chunk)
-                        hasher.update(chunk)
+                stream_atomic(
+                    response,
+                    tmp_zst,
+                    max_bytes=max_compressed_bytes,
+                    expected_size=asset.zst_bytes,
+                    hasher=hasher,
+                    max_seconds=max_download_seconds,
+                )
         except httpx.HTTPStatusError as exc:
             raise DownloadError(
                 f"GET {asset.download_url} failed: {exc.response.status_code}",
@@ -213,8 +344,7 @@ def fetch_prebuilt_db(
             raise DownloadError(f"GET {asset.download_url} failed: {exc}") from exc
 
         actual_sha256 = hasher.hexdigest()
-        if actual_sha256 != asset.sha256:
-            tmp_zst.unlink(missing_ok=True)
+        if actual_sha256.lower() != asset.sha256.lower():
             raise DataUnavailableError(
                 f"Prebuilt DB sha256 mismatch: expected {asset.sha256}, got {actual_sha256}"
             )
@@ -223,16 +353,32 @@ def fetch_prebuilt_db(
 
         # Decompress .zst to a second temp file, then atomic-replace dest
         fd_db, tmp_db_name = tempfile.mkstemp(dir=dest.parent, suffix=".sqlite.tmp")
-        os.close(fd_db)
         tmp_db = Path(tmp_db_name)
         try:
             dctx = zstandard.ZstdDecompressor()
-            with tmp_zst.open("rb") as src, tmp_db.open("wb") as dst:
-                dctx.copy_stream(src, dst)
+            with (
+                os.fdopen(fd_db, "wb") as dst,
+                tmp_zst.open("rb") as compressed,
+                dctx.stream_reader(compressed) as src,
+            ):
+                try:
+                    written = copy_bounded(src, dst, max_bytes=max_db_bytes)
+                except DownloadError as exc:
+                    raise DataUnavailableError(str(exc)) from exc
+            if written != asset.sqlite_bytes:
+                raise DataUnavailableError(
+                    "Prebuilt DB expanded size mismatch: "
+                    f"expected {asset.sqlite_bytes}, received {written}"
+                )
+            with tmp_db.open("rb") as handle:
+                sqlite_header = handle.read(len(_SQLITE_HEADER))
+            if sqlite_header != _SQLITE_HEADER:
+                raise DataUnavailableError("Prebuilt DB has invalid SQLite header")
             os.replace(tmp_db, dest)
-        except Exception:
+        except (OSError, zstandard.ZstdError) as exc:
+            raise DataUnavailableError(f"Prebuilt DB decompression failed: {exc}") from exc
+        finally:
             tmp_db.unlink(missing_ok=True)
-            raise
     finally:
         tmp_zst.unlink(missing_ok=True)
 
