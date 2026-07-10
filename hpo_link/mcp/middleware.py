@@ -69,8 +69,8 @@ class ArgValidationMiddleware(Middleware):
 
         try:
             result = await call_next(context)
-        except (PydanticValidationError, FastMCPValidationError) as exc:
-            validation_error = exc if isinstance(exc, PydanticValidationError) else exc.__cause__
+        except FastMCPValidationError as exc:
+            validation_error = exc.__cause__
             if not isinstance(validation_error, PydanticValidationError):
                 raise
             elapsed = int((time.perf_counter() - start) * 1000)

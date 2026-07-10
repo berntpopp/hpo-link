@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from hpo_link.mcp.service_adapters import reset_services, set_annotation_service, set_hpo_service
 
@@ -143,3 +144,18 @@ async def test_middleware_argument_errors_shape_meta_by_response_mode(
     meta = payload["_meta"]
     assert expected_keys <= set(meta)
     assert forbidden_keys.isdisjoint(meta)
+
+
+async def test_middleware_does_not_reclassify_tool_body_validation_errors(
+    router_mcp: Any,
+) -> None:
+    class RequiredValue(BaseModel):
+        value: int
+
+    @router_mcp.tool(name="raise_body_validation")
+    async def raise_body_validation() -> dict[str, Any]:
+        RequiredValue.model_validate({})
+        return {}
+
+    with pytest.raises(ValidationError):
+        await router_mcp.call_tool("raise_body_validation", {})
