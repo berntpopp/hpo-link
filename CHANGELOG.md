@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-11
+
+### Security (defense in depth)
+
+- Guard FastMCP-core not-found reflection: the caller's own requested tool name,
+  resource URI, and prompt name can no longer reflect caller-supplied prose (or
+  control/zero-width/bidi/NUL code points) into any caller-visible error frame or
+  server log. Adds a protocol-handler backstop (unknown-tool return path + unknown
+  prompt `prompts/get`, which FastMCP core echoed as `Unknown prompt: '<name>'`) and
+  extends the log-scrub filter to the `mcp.shared.session` request-validation records
+  (root logger) that echoed a malformed/forbidden resource URI. Caller-visible
+  responses were already fixed; this closes the residual prompt-name caller echo and
+  the request-validation log leak. Research use only.
+
 ## [0.3.1] - 2026-07-11
 
 ### Security (defense in depth)
