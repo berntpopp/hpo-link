@@ -99,6 +99,28 @@ async def test_bootstrap_data_failure_is_non_fatal(monkeypatch: _pytest.MonkeyPa
     assert logger.warning.call_args.args[0] == "hpo_data_bootstrap_failed"
 
 
+async def test_bootstrap_data_decode_error_is_non_fatal_and_logs_class_only(
+    monkeypatch: _pytest.MonkeyPatch,
+) -> None:
+    """A UnicodeDecodeError (previously uncaught) is swallowed; str(exc) is NOT logged."""
+    from hpo_link.config import settings
+
+    decode_error = UnicodeDecodeError("utf-8", b"\xff\x00", 0, 1, "invalid start byte")
+    ensure_mock = MagicMock(side_effect=decode_error)
+    monkeypatch.setattr("hpo_link.ingest.builder.ensure_database", ensure_mock)
+    monkeypatch.setattr("hpo_link.mcp.service_adapters.reset_services", MagicMock())
+    logger = MagicMock()
+
+    await bootstrap_data(settings.data, logger)  # must NOT raise
+
+    call = logger.warning.call_args
+    assert call.args[0] == "hpo_data_bootstrap_failed"
+    assert call.kwargs == {"error_type": "UnicodeDecodeError"}
+    # the raw decode message (str(exc)) must not appear anywhere in the log call
+    assert "invalid start byte" not in str(call)
+    assert "codec can't decode" not in str(call)
+
+
 # ---------------------------------------------------------------------------
 # start_refresh_scheduler / stop_refresh_scheduler
 # ---------------------------------------------------------------------------

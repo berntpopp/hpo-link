@@ -105,6 +105,59 @@ _PUBLIC_ERROR_MESSAGE: dict[str, str] = {
 _SAFE_FIELD_RE = re.compile(r"^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$")
 _REDACTED_FIELD = "argument"
 
+#: Canonical HP id grammar — the only shape allowed into a caller-visible error field.
+_HP_ID_RE = re.compile(r"^HP:\d{7}$")
+
+
+def _valid_hp_ids(items: Any) -> list[dict[str, str]]:
+    """Reduce candidate / suggestion / replacement rows to grammar-validated HP-id identity.
+
+    Caller-visible structured error fields are built ONLY from validated identifiers: each
+    row is rebuilt as ``{"hpo_id": ...}`` keeping only a canonical ``HP:\\d{7}`` id, and any
+    row whose id is free-text or non-conforming is DROPPED entirely — its external ``name``
+    prose (and any other free-text sibling) is never echoed into the error envelope.
+    """
+    out: list[dict[str, str]] = []
+    for item in items or []:
+        if isinstance(item, dict):
+            hid = item.get("hpo_id")
+            if isinstance(hid, str) and _HP_ID_RE.match(hid):
+                out.append({"hpo_id": hid})
+    return out
+
+
+def build_fixed_error_envelope(
+    *,
+    error_code: str,
+    message: str,
+    recovery_action: str,
+    tool: str = "unknown",
+    response_mode: str = DEFAULT_RESPONSE_MODE,
+) -> dict[str, Any]:
+    """A flat error envelope with a FIXED server-authored message and no caller echo.
+
+    Used for failures that never bind to a tool body (an unknown tool name, an unknown
+    resource URI) so the caller-supplied name/URI is never reflected. ``tool`` is a fixed
+    label, never the caller-supplied value.
+    """
+    meta: dict[str, Any] = {
+        "tool": tool,
+        "request_id": _request_id(),
+        "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
+        "next_commands": [cmd("get_server_capabilities")],
+    }
+    _stamp_capabilities_version(meta)
+    return _scrub_envelope(
+        {
+            "success": False,
+            "error_code": error_code,
+            "message": sanitize_message(message),
+            "retryable": error_code in _RETRYABLE,
+            "recovery_action": recovery_action,
+            "_meta": _shape_meta(meta, response_mode),
+        }
+    )
+
 
 def _safe_message(exc: BaseException) -> str:
     """Code-point-strip + cap a SERVER-AUTHORED exception message.
@@ -236,30 +289,40 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
         },
     }
     if isinstance(exc, InvalidInputError):
+        # ``field`` is a server-authored parameter name; code-point-strip + identifier-gate
+        # it. ``allowed``/``hint`` are server-authored guidance (scrubbed by the backstop).
         if exc.field is not None:
-            envelope["field"] = exc.field
+            envelope["field"] = safe_field_name(exc.field)
         if exc.allowed is not None:
             envelope["allowed_values"] = exc.allowed
         if exc.hint is not None:
             envelope["hint"] = exc.hint
+    # candidates/suggestions/replaced_by are rebuilt from grammar-validated HP ids only —
+    # a candidate's external free-text ``name`` is never echoed (it can carry injection
+    # prose that code-point stripping would leave intact), and next_commands chain only
+    # to validated ids.
     if isinstance(exc, AmbiguousQueryError) and exc.candidates:
-        envelope["candidates"] = exc.candidates
+        candidates = _valid_hp_ids(exc.candidates)
+        if candidates:
+            envelope["candidates"] = candidates
         envelope["_meta"]["next_commands"] = [
-            cmd("get_term", term=c["hpo_id"]) for c in exc.candidates[:3] if c.get("hpo_id")
+            cmd("get_term", term=c["hpo_id"]) for c in candidates[:3]
         ] or [cmd("get_server_capabilities")]
         return envelope
     if isinstance(exc, WithdrawnEntryError):
         envelope["obsolete"] = True
-        envelope["withdrawn_status"] = exc.withdrawn_status
-        envelope["replaced_by"] = exc.replaced_by
-        envelope["_meta"]["next_commands"] = withdrawn_recovery(exc.replaced_by)
+        replaced_by = _valid_hp_ids(exc.replaced_by)
+        if replaced_by:
+            envelope["replaced_by"] = replaced_by
+        envelope["_meta"]["next_commands"] = withdrawn_recovery(replaced_by)
         return envelope
     if isinstance(exc, NotFoundError) and exc.suggestions:
-        envelope["candidates"] = exc.suggestions
-        steps = [cmd("get_term", term=s["hpo_id"]) for s in exc.suggestions[:3] if s.get("hpo_id")]
-        query = str(context.arguments.get("term", "") or context.arguments.get("query", ""))
-        if query:
-            steps.append(cmd("search_terms", query=query))
+        candidates = _valid_hp_ids(exc.suggestions)
+        if candidates:
+            envelope["candidates"] = candidates
+        steps = [cmd("get_term", term=c["hpo_id"]) for c in candidates[:3]]
+        # NOTE: the caller's free-text query is deliberately NOT reflected into a recovery
+        # step here (error path) — only validated candidate ids and fixed fallbacks.
         envelope["_meta"]["next_commands"] = steps or [cmd("get_server_capabilities")]
         return envelope
     if context.fallback is not None:

@@ -16,10 +16,11 @@ import logging
 import time
 from typing import Any
 
+from fastmcp.exceptions import ResourceError
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
-from mcp.types import CallToolRequestParams, TextContent
+from mcp.types import CallToolRequestParams, ReadResourceRequestParams, TextContent
 from pydantic import ValidationError as PydanticValidationError
 
 from hpo_link.mcp.arg_help import (
@@ -29,7 +30,15 @@ from hpo_link.mcp.arg_help import (
     normalize_alias_args,
     tool_signature,
 )
-from hpo_link.mcp.envelope import build_arg_error_envelope, safe_field_name
+from hpo_link.mcp.envelope import (
+    build_arg_error_envelope,
+    build_fixed_error_envelope,
+    safe_field_name,
+)
+
+#: Fixed, name-free frames for reflection surfaces that bypass the tool error envelope.
+_UNKNOWN_TOOL_MESSAGE = "The requested tool is not available. Call get_server_capabilities."
+_UNKNOWN_RESOURCE_MESSAGE = "The requested resource is not available."
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +66,24 @@ class ArgValidationMiddleware(Middleware):
     ) -> ToolResult:
         """Normalize aliases, then convert binding errors into the envelope."""
         name = context.message.name
-        try:
-            schema = await self._schema(context, name)
-        except Exception:  # registry miss: let core handle the call untouched
-            return await call_next(context)
+        fctx = context.fastmcp_context
+        if fctx is not None:
+            # Preflight the registry: get_tool returns None for an unknown tool, and the
+            # core would then raise "Unknown tool: '<name>'" (echoing the caller-supplied
+            # name, bypassing mask_error_details). Return a FIXED, name-free frame instead.
+            try:
+                tool_obj = await fctx.fastmcp.get_tool(name)
+            except Exception:
+                tool_obj = None
+            if tool_obj is None:
+                logger.warning("mcp_unknown_tool")
+                return self._fixed_tool_result(_UNKNOWN_TOOL_MESSAGE)
+            schema = dict(getattr(tool_obj, "parameters", None) or {})
+        else:
+            try:
+                schema = await self._schema(context, name)
+            except Exception:  # no context and no schema: let core handle the call
+                return await call_next(context)
 
         valid = list(schema.get("properties", {}).keys())
         new_args, applied = normalize_alias_args(valid, context.message.arguments or {})
@@ -160,3 +183,31 @@ class ArgValidationMiddleware(Middleware):
             structured_content=envelope,
             content=[TextContent(type="text", text=json.dumps(envelope))],
         )
+
+    @staticmethod
+    def _fixed_tool_result(message: str) -> ToolResult:
+        """A ToolResult carrying a FIXED, caller-echo-free error envelope."""
+        envelope = build_fixed_error_envelope(
+            error_code="invalid_input", message=message, recovery_action="switch_tool"
+        )
+        return ToolResult(
+            structured_content=envelope,
+            content=[TextContent(type="text", text=json.dumps(envelope))],
+        )
+
+    async def on_read_resource(
+        self,
+        context: MiddlewareContext[ReadResourceRequestParams],
+        call_next: CallNext[ReadResourceRequestParams, Any],
+    ) -> Any:
+        """Never echo a caller-supplied resource URI on a failed/unknown read.
+
+        FastMCP's default resource-not-found error embeds the requested URI (which is
+        caller-controlled and can carry prose / forbidden code points). Replace any read
+        failure with a FIXED, URI-free ``ResourceError``.
+        """
+        try:
+            return await call_next(context)
+        except Exception:
+            logger.warning("mcp_unknown_resource")
+            raise ResourceError(_UNKNOWN_RESOURCE_MESSAGE) from None

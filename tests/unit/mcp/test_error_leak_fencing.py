@@ -101,11 +101,30 @@ def _both_mirrors(result: Any) -> list[dict[str, Any]]:
     return [structured, mirror]
 
 
+_PROSE_MARKERS = (
+    "delete_everything",
+    "Ignore all previous instructions",
+    "IGNORE ALL",
+    FAKE_DB_PATH,
+    "/srv/secret",
+    "disk I/O",
+    "Seizure",  # a candidate NAME (external free-text) must never be echoed in an error
+)
+
+
 def _assert_no_forbidden_codepoints(payload: dict[str, Any]) -> None:
     """No fence-forbidden code point survives ANYWHERE in the serialized envelope."""
     blob = json.dumps(payload, ensure_ascii=False)
     leaked = sorted({hex(ord(c)) for c in blob if ord(c) in FORBIDDEN_CODEPOINTS})
     assert not leaked, f"forbidden code points leaked into the error envelope: {leaked}"
+
+
+def _assert_no_prose_or_codepoints(payload: dict[str, Any]) -> None:
+    """RECURSIVELY reject injection prose AND forbidden code points across the payload."""
+    blob = json.dumps(payload, ensure_ascii=False)
+    for marker in _PROSE_MARKERS:
+        assert marker not in blob, f"injection prose leaked into the error envelope: {marker!r}"
+    _assert_no_forbidden_codepoints(payload)
 
 
 def _assert_prose_absent(text: str) -> None:
@@ -145,9 +164,10 @@ async def test_ambiguous_message_severed_and_candidate_name_scrubbed() -> None:
         assert payload["error_code"] == "ambiguous_query"
         assert payload["message"] == "The query matched multiple HPO terms; see candidates."
         _assert_prose_absent(payload["message"])
-        # candidates are surfaced structurally, but the recursive backstop scrubs code points
-        assert payload["candidates"][0]["hpo_id"] == "HP:0000001"
-        _assert_no_forbidden_codepoints(payload)
+        # candidates are rebuilt from the validated HP id ONLY — the free-text `name`
+        # (external prose) is dropped, not merely code-point-scrubbed.
+        assert payload["candidates"] == [{"hpo_id": "HP:0000001"}]
+        _assert_no_prose_or_codepoints(payload)
 
 
 async def test_data_unavailable_path_severed_to_fixed_message() -> None:
@@ -227,3 +247,35 @@ async def test_generic_exception_maps_to_fixed_internal_error() -> None:
         assert "boom" not in payload["message"]
         _assert_prose_absent(payload["message"])
         _assert_no_forbidden_codepoints(payload)
+
+
+async def test_unknown_tool_name_is_not_reflected() -> None:
+    """An unknown, hostile tool name must not be echoed (FastMCP ToolError bypasses masking)."""
+    mcp = _make_mcp(_RaisingService(NotFoundError("unused")))
+    hostile_tool = f"{HOSTILE_PROSE}{HOSTILE_CPS}"
+    result = await mcp.call_tool(hostile_tool, {})
+
+    for payload in _both_mirrors(result):
+        assert payload["success"] is False
+        assert payload["error_code"] == "invalid_input"
+        assert (
+            payload["message"]
+            == "The requested tool is not available. Call get_server_capabilities."
+        )
+        _assert_no_prose_or_codepoints(payload)
+
+
+async def test_unknown_resource_uri_is_not_reflected() -> None:
+    """An unknown resource URI must not be echoed (FastMCP's default embeds it)."""
+    from fastmcp.exceptions import ResourceError
+
+    mcp = _make_mcp(_RaisingService(NotFoundError("unused")))
+    # URL-valid but unknown, carrying a recognizable token in a valid-URI position.
+    hostile_uri = "hpo://delete-everything-ignore-all-unknown"
+    with pytest.raises(ResourceError) as excinfo:
+        await mcp.read_resource(hostile_uri)
+
+    text = str(excinfo.value)
+    assert text == "The requested resource is not available."
+    assert "delete-everything" not in text
+    assert "ignore-all" not in text

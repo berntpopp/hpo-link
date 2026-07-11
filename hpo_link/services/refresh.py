@@ -19,8 +19,6 @@ import contextlib
 import random
 from typing import TYPE_CHECKING, Any
 
-from hpo_link.exceptions import DownloadError, HpoLinkError
-
 if TYPE_CHECKING:
     from hpo_link.config import HPODataConfig, ServerSettings
 
@@ -49,8 +47,11 @@ async def bootstrap_data(config: HPODataConfig, logger: Any) -> None:
         reset_services()
         # Log the basename only — never the full path (deployment-layout disclosure).
         logger.info("hpo_data_ready", db=path.name)
-    except (HpoLinkError, DownloadError, OSError) as exc:
-        logger.warning("hpo_data_bootstrap_failed", error=str(exc))
+    except Exception as exc:
+        # Broad + non-fatal: any failure (BadGzipFile, UnicodeDecodeError, OSError, ...)
+        # leaves the server up with tools reporting data_unavailable. Log only the
+        # exception CLASS — str(exc) can carry a path / decoded upstream bytes.
+        logger.warning("hpo_data_bootstrap_failed", error_type=type(exc).__name__)
 
 
 async def _refresh_loop(config: HPODataConfig, logger: Any) -> None:
@@ -71,8 +72,9 @@ async def _refresh_loop(config: HPODataConfig, logger: Any) -> None:
                 logger.info("hpo_data_refreshed", hpo_version=version)
             else:
                 logger.debug("hpo_data_unchanged")
-        except (HpoLinkError, DownloadError, OSError) as exc:
-            logger.warning("hpo_data_refresh_failed", error=str(exc))
+        except Exception as exc:
+            # Broad + non-fatal (see bootstrap_data); log only the exception CLASS.
+            logger.warning("hpo_data_refresh_failed", error_type=type(exc).__name__)
 
 
 def start_refresh_scheduler(config: HPODataConfig, logger: Any) -> asyncio.Task[None] | None:

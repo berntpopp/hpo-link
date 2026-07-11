@@ -7,9 +7,15 @@ chainers steer the success path (resolve -> record -> hierarchy -> cross-ontolog
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from hpo_link.identifiers import is_hpo_id
+
+#: Strict external cross-reference CURIE grammar (PREFIX:body) — the only free-text-looking
+#: value allowed to be reflected into an error-path recovery argument. It is a bounded
+#: identifier that cannot carry whitespace, prose, or forbidden code points.
+_XREF_CURIE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*:[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 
 
 def cmd(tool: str, **arguments: Any) -> dict[str, Any]:
@@ -41,15 +47,22 @@ def _more_steps(
     return steps
 
 
-def _looks_like_xref_curie(value: str) -> bool:
-    """Return True when value looks like an external CURIE (PREFIX:local, not HP:)."""
-    return ":" in value and not is_hpo_id(value)
+def _is_xref_curie(value: str) -> bool:
+    """Return True when value is a STRICT external CURIE (PREFIX:body, not an HP id)."""
+    return bool(_XREF_CURIE_RE.match(value)) and not is_hpo_id(value)
 
 
 def default_error_next_commands(
     tool: str, error_code: str, arguments: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """A sensible recovery step for any error lacking an explicit fallback."""
+    """A recovery step for any error lacking an explicit fallback.
+
+    Error-path recovery arguments are built ONLY from grammar-validated identifiers: a
+    caller-supplied value is reflected into a next_commands argument only when it is a
+    canonical HP id or a strict xref CURIE. Free-text (a phenotype label / arbitrary
+    query) is NOT echoed — it could carry injection prose — so those cases fall back to a
+    fixed ``get_server_capabilities`` step.
+    """
     if tool in (
         "resolve_term",
         "get_term",
@@ -60,16 +73,15 @@ def default_error_next_commands(
         "map_cross_ontology",
     ):
         value = str(arguments.get("term", "") or arguments.get("query", ""))
-        if value and _looks_like_xref_curie(value):
-            return [cmd("resolve_xref", xref_id=value), cmd("search_terms", query=value)]
-        if value and not is_hpo_id(value):
-            return [cmd("search_terms", query=value), cmd("get_server_capabilities")]
         if is_hpo_id(value):
             return [cmd("resolve_term", query=value), cmd("get_server_capabilities")]
+        if _is_xref_curie(value):
+            return [cmd("resolve_xref", xref_id=value), cmd("get_server_capabilities")]
+        return [cmd("get_server_capabilities")]
     if tool == "resolve_xref":
         value = str(arguments.get("xref_id", ""))
-        return [cmd("search_terms", query=value)] if value else [cmd("get_server_capabilities")]
-    if error_code == "data_unavailable":
+        if _is_xref_curie(value):
+            return [cmd("resolve_xref", xref_id=value), cmd("get_server_capabilities")]
         return [cmd("get_server_capabilities")]
     return [cmd("get_server_capabilities")]
 

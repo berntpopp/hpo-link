@@ -425,7 +425,9 @@ def _try_prebuilt(config: ServerSettings) -> Path | None:
             )
             return db_path
     except Exception as exc:
-        logger.warning("prebuilt_fetch_failed", error=str(exc))
+        # Log only the exception CLASS — str(exc) can carry a path or decoded upstream
+        # bytes (BadGzipFile / UnicodeDecodeError / ...).
+        logger.warning("prebuilt_fetch_failed", error_type=type(exc).__name__)
         return None
 
 
