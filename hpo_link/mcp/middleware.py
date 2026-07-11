@@ -29,7 +29,7 @@ from hpo_link.mcp.arg_help import (
     normalize_alias_args,
     tool_signature,
 )
-from hpo_link.mcp.envelope import build_arg_error_envelope
+from hpo_link.mcp.envelope import build_arg_error_envelope, safe_field_name
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +70,16 @@ class ArgValidationMiddleware(Middleware):
         try:
             result = await call_next(context)
         except FastMCPValidationError as exc:
-            validation_error = exc.__cause__
-            if not isinstance(validation_error, PydanticValidationError):
-                raise
             elapsed = int((time.perf_counter() - start) * 1000)
             response_mode = str(new_args.get("response_mode", "compact"))
-            return self._error_result(name, valid, schema, validation_error, response_mode, elapsed)
+            validation_error = exc.__cause__
+            if isinstance(validation_error, PydanticValidationError):
+                return self._error_result(
+                    name, valid, schema, validation_error, response_mode, elapsed
+                )
+            # FastMCP's OWN ValidationError without a pydantic cause: still never surface
+            # str(exc) — emit a fixed generic invalid_input frame.
+            return self._generic_error_result(name, valid, schema, response_mode, elapsed)
 
         if (
             applied
@@ -119,7 +123,39 @@ class ArgValidationMiddleware(Middleware):
             response_mode=response_mode,
             elapsed_ms=elapsed_ms,
         )
-        logger.warning("mcp_arg_error tool=%s loc=%s type=%s", name, loc, error_type)
+        # Log a redacted field name only — the raw ``loc`` is caller-controlled and can
+        # carry prose / forbidden code points (path-disclosure & log-hygiene invariant).
+        logger.warning(
+            "mcp_arg_error tool=%s field=%s type=%s",
+            name,
+            safe_field_name(loc, set(valid)),
+            error_type,
+        )
+        return ToolResult(
+            structured_content=envelope,
+            content=[TextContent(type="text", text=json.dumps(envelope))],
+        )
+
+    def _generic_error_result(
+        self,
+        name: str,
+        valid: list[str],
+        schema: dict[str, Any],
+        response_mode: str,
+        elapsed_ms: int,
+    ) -> ToolResult:
+        """Fixed invalid_input frame for a validation error with no pydantic detail."""
+        envelope = build_arg_error_envelope(
+            tool_name=name,
+            loc="",
+            error_type="invalid_arguments",
+            valid_params=valid,
+            signature=tool_signature(name, schema),
+            suggestion=None,
+            response_mode=response_mode,
+            elapsed_ms=elapsed_ms,
+        )
+        logger.warning("mcp_arg_error tool=%s type=invalid_arguments", name)
         return ToolResult(
             structured_content=envelope,
             content=[TextContent(type="text", text=json.dumps(envelope))],

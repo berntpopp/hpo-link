@@ -25,9 +25,13 @@ class HpoRepository(AnnotationsMixin):
     def __init__(self, db_path: Path | str) -> None:
         """Open a read-only connection to the HPO database."""
         self._path = Path(db_path)
+        # Messages are body-free (no filesystem path / sqlite str(exc)): the SQLite path
+        # is deployment-layout detail and the raw sqlite error can carry it too. The
+        # actionable hint is a STATIC string; the raw cause is preserved only via
+        # ``from exc`` (server-side chained cause), never in the caller-visible message.
         if not self._path.exists():
             raise DataUnavailableError(
-                f"HPO database not found at {self._path}. Build it with `hpo-link-data build`."
+                "The local HPO database is not available. Build it with `hpo-link-data build`."
             )
         try:
             self._conn = sqlite3.connect(
@@ -36,7 +40,7 @@ class HpoRepository(AnnotationsMixin):
                 check_same_thread=False,
             )
         except sqlite3.Error as exc:  # pragma: no cover - rare OS-level failure
-            raise DataUnavailableError(f"Cannot open HPO database at {self._path}: {exc}.") from exc
+            raise DataUnavailableError("The local HPO database could not be opened.") from exc
         self._conn.row_factory = sqlite3.Row
 
     def close(self) -> None:
@@ -86,9 +90,7 @@ class HpoRepository(AnnotationsMixin):
         try:
             row = self._conn.execute("SELECT * FROM meta WHERE id = 1").fetchone()
         except sqlite3.Error as exc:
-            raise DataUnavailableError(
-                f"HPO database at {self._path} is unreadable: {exc}."
-            ) from exc
+            raise DataUnavailableError("The local HPO database could not be read.") from exc
         return dict(row) if row is not None else {}
 
     # -- term records ----------------------------------------------------------

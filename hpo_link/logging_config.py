@@ -14,6 +14,7 @@ import structlog
 
 from . import __version__
 from .config import settings
+from .mcp.log_filters import ExternalErrorDetailFilter
 
 if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger
@@ -36,6 +37,10 @@ def configure_stdlib_logging() -> None:
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(logging.Formatter("%(message)s"))
     handler.setLevel(getattr(logging, settings.log_level))
+    # Keep FastMCP/MCP framework error detail (caller-supplied argument values) out of
+    # the log sink — FastMCP logs the raw pydantic ValidationError before the router's
+    # arg-validation middleware reshapes the caller-facing frame.
+    handler.addFilter(ExternalErrorDetailFilter())
     root_logger.addHandler(handler)
 
     is_debug = settings.log_level == "DEBUG"
