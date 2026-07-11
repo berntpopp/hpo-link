@@ -14,6 +14,7 @@ from typing import Any
 from hpo_link.constants import RECOMMENDED_CITATION
 from hpo_link.data.repository import HpoRepository
 from hpo_link.exceptions import DataUnavailableError, InvalidInputError, NotFoundError
+from hpo_link.mcp.untrusted_content import enforce_untrusted_text_limits
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.resolution import Resolver, confidence_for
 from hpo_link.services.shaping import (
@@ -141,7 +142,11 @@ class HpoService:
         hits, total = self._db.search(
             raw, limit=limit, offset=offset, include_obsolete=include_obsolete
         )
-        results = [shape_search_hit(hit, response_mode) for hit in hits]
+        shaped_hits = [shape_search_hit(hit, response_mode) for hit in hits]
+        results = [shaped for shaped, _ in shaped_hits]
+        enforce_untrusted_text_limits(
+            [obj for _, fenced_objs in shaped_hits for obj in fenced_objs]
+        )
         return {
             "query": raw,
             "results": results,
@@ -183,7 +188,8 @@ class HpoService:
             "children": children,
             **self._version_fields(response_mode),
         }
-        shaped = shape_term(payload, response_mode)
+        shaped, fenced_objs = shape_term(payload, response_mode)
+        enforce_untrusted_text_limits(fenced_objs)
         return select_fields(shaped, fields)
 
     # -- term_parents / term_children ------------------------------------------

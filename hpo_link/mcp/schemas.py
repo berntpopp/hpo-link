@@ -55,6 +55,29 @@ _SYNONYM_ITEM = {
 }
 _SYNONYMS_ARR = {"type": "array", "items": _SYNONYM_ITEM}
 
+# Response-Envelope Standard v1.1: externally sourced free text is fenced as a
+# typed object (kind/text/provenance/raw_sha256), never a bare string, so hosts
+# never confuse retrieved HPO prose with instructions.
+_UNTRUSTED_TEXT = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "kind": {"const": "untrusted_text"},
+        "text": _STR,
+        "provenance": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "source": _STR,
+                "record_id": _STR,
+                "retrieved_at": _STR,
+            },
+        },
+        "raw_sha256": _STR,
+    },
+}
+_UNTRUSTED_TEXT_NULL = {"oneOf": [_UNTRUSTED_TEXT, {"type": "null"}]}
+
 CAPABILITIES_SCHEMA = _envelope(
     server=_STR,
     server_version=_STR,
@@ -83,8 +106,8 @@ _SEARCH_HIT = {
         "hpo_id": _STR,
         "name": _STR,
         "score": {"type": "number"},
-        "definition": _STR_NULL,
-        "definition_snippet": _STR,
+        "definition": _UNTRUSTED_TEXT_NULL,
+        "definition_snippet": _UNTRUSTED_TEXT,
     },
 }
 
@@ -104,7 +127,7 @@ SEARCH_SCHEMA = _envelope(
 TERM_SCHEMA = _envelope(
     hpo_id=_STR,
     name=_STR,
-    definition=_STR_NULL,
+    definition=_UNTRUSTED_TEXT_NULL,
     synonyms=_SYNONYMS_ARR,
     alt_ids=_ARR,
     subsets=_ARR,
