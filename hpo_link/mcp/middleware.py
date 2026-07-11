@@ -14,13 +14,23 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
+from fastmcp import FastMCP
 from fastmcp.exceptions import ResourceError
 from fastmcp.exceptions import ValidationError as FastMCPValidationError
 from fastmcp.server.middleware.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.tool import ToolResult
-from mcp.types import CallToolRequestParams, ReadResourceRequestParams, TextContent
+from mcp.types import (
+    CallToolRequest,
+    CallToolRequestParams,
+    CallToolResult,
+    GetPromptRequest,
+    ReadResourceRequest,
+    ReadResourceRequestParams,
+    ServerResult,
+    TextContent,
+)
 from pydantic import ValidationError as PydanticValidationError
 
 from hpo_link.mcp.arg_help import (
@@ -39,6 +49,7 @@ from hpo_link.mcp.envelope import (
 #: Fixed, name-free frames for reflection surfaces that bypass the tool error envelope.
 _UNKNOWN_TOOL_MESSAGE = "The requested tool is not available. Call get_server_capabilities."
 _UNKNOWN_RESOURCE_MESSAGE = "The requested resource is not available."
+_UNKNOWN_PROMPT_MESSAGE = "The requested prompt is not available."
 
 logger = logging.getLogger(__name__)
 
@@ -211,3 +222,121 @@ class ArgValidationMiddleware(Middleware):
         except Exception:
             logger.warning("mcp_unknown_resource")
             raise ResourceError(_UNKNOWN_RESOURCE_MESSAGE) from None
+
+
+# ---------------------------------------------------------------------------
+# Layer 3 -- protocol-handler backstop (clinvar pattern)
+# ---------------------------------------------------------------------------
+# FastMCP's CORE dispatch reflects the caller-controlled component name/URI
+# verbatim when it is unknown -- notably ``Unknown prompt: '<name>'`` (raised by
+# the low-level prompts/get handler, which mcp turns into ``ErrorData(code=0,
+# message=str(exc))``, echoing the name to the caller BEFORE any FastMCP
+# middleware can intervene). This wraps the raw ``_mcp_server.request_handlers``
+# for CallTool / ReadResource / GetPrompt as the OUTERMOST layer so no requested
+# name/URI (nor its code points) can reach the JSON-RPC error frame. All messages
+# are fixed server-authored constants.
+
+
+class _ProtocolError(Exception):
+    """A dispatch-level failure re-raised with a FIXED, input-free message."""
+
+
+def _is_structured_envelope(result: CallToolResult) -> bool:
+    """True if an isError CallToolResult carries one of OUR JSON envelopes.
+
+    Distinguishes a structured hpo-link error (already name-free, e.g. the Layer-1
+    unknown-tool frame) from a RAW FastMCP dispatch error whose plain text echoes
+    the caller-supplied tool name.
+    """
+    if not result.content:
+        return False
+    text = getattr(result.content[0], "text", None)
+    if not isinstance(text, str):
+        return False
+    try:
+        obj = json.loads(text)
+    except (ValueError, TypeError):
+        return False
+    return isinstance(obj, dict) and "error_code" in obj
+
+
+def _fixed_tool_not_found_result() -> ServerResult:
+    """A fixed, name-free CallToolResult for an unknown/failed tool dispatch."""
+    envelope = build_fixed_error_envelope(
+        error_code="invalid_input",
+        message=_UNKNOWN_TOOL_MESSAGE,
+        recovery_action="switch_tool",
+    )
+    return ServerResult(
+        CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(envelope))],
+            structuredContent=envelope,
+            isError=True,
+        )
+    )
+
+
+def install_protocol_error_handler(mcp: FastMCP) -> None:
+    """Wrap the raw tool/resource/prompt request handlers so a FastMCP-core
+    not-found (or read) error can never reflect the caller-supplied name/URI.
+
+    Install AFTER all tools/resources are registered (so the handlers exist) and
+    as the OUTERMOST wrapper on ``CallToolRequest``.
+    """
+    handlers = mcp._mcp_server.request_handlers
+
+    call_tool = handlers.get(CallToolRequest)
+    if call_tool is not None:
+
+        async def wrapped_call_tool(
+            request: CallToolRequest,
+            *,
+            _orig: Any = call_tool,
+        ) -> ServerResult:
+            try:
+                result = cast(ServerResult, await _orig(request))
+            except Exception:
+                # A registered tool never raises here (run_mcp_tool returns an
+                # envelope); any exception is a dispatch-level failure whose
+                # message would echo the caller name -- mask it.
+                logger.warning("mcp_protocol_error kind=tool")
+                return _fixed_tool_not_found_result()
+            root = getattr(result, "root", None)
+            if (
+                isinstance(root, CallToolResult)
+                and root.isError
+                and not _is_structured_envelope(root)
+            ):
+                # FastMCP RETURNS an isError result echoing "Unknown tool: '<name>'"
+                # for the return-path; replace any non-structured isError frame.
+                logger.warning("mcp_protocol_error kind=tool")
+                return _fixed_tool_not_found_result()
+            return result
+
+        handlers[CallToolRequest] = wrapped_call_tool
+
+    for request_type, message, kind in (
+        (ReadResourceRequest, _UNKNOWN_RESOURCE_MESSAGE, "resource"),
+        (GetPromptRequest, _UNKNOWN_PROMPT_MESSAGE, "prompt"),
+    ):
+        orig = handlers.get(request_type)
+        if orig is None:
+            continue
+
+        async def wrapped(
+            request: Any,
+            *,
+            _orig: Any = orig,
+            _message: str = message,
+            _kind: str = kind,
+        ) -> Any:
+            try:
+                return await _orig(request)
+            except Exception as exc:
+                # Re-raise with a FIXED, input-free message so no requested
+                # name/URI (or its code points) reaches the JSON-RPC error frame.
+                # Log the exception CLASS only (never the caller-controlled value).
+                logger.warning("mcp_protocol_error kind=%s type=%s", _kind, type(exc).__name__)
+                raise _ProtocolError(_message) from None
+
+        handlers[request_type] = wrapped
