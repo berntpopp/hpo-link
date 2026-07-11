@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-11
+
+### Changed (BREAKING)
+
+- **Response-Envelope Standard v1.1 untrusted-content fencing:** `get_term`
+  `/definition` and `search_terms` `/results/*/definition` and
+  `/results/*/definition_snippet` now emit a typed `untrusted_text` object
+  (`kind`, `text`, `provenance`, `raw_sha256`) instead of a bare string, so
+  hosts can never confuse retrieved HPO ontology prose with instructions.
+  Clients reading these fields as plain strings must update to read
+  `.text`. Defense in depth; research use only, not clinical decision
+  support.
+
 ## [0.2.0] - 2026-07-10
 
 ### Security
