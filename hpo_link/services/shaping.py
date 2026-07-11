@@ -47,6 +47,25 @@ def _fence_field(raw: str, *, record_id: str) -> tuple[dict[str, Any], Untrusted
     return fenced.model_dump(mode="json"), fenced
 
 
+def _fence_comments(
+    comments: Any, *, hpo_id: str
+) -> tuple[list[dict[str, Any]], list[UntrustedText]]:
+    """Fence each upstream HPO ``comments`` entry as an ``untrusted_text`` object.
+
+    ``record_id`` is ``{hpo_id}#comment:{i}`` so each comment is individually
+    auditable. Non-string / empty entries are skipped.
+    """
+    dumps: list[dict[str, Any]] = []
+    objs: list[UntrustedText] = []
+    for i, comment in enumerate(comments or []):
+        if not isinstance(comment, str) or not comment:
+            continue
+        dumped, fenced = _fence_field(comment, record_id=f"{hpo_id}#comment:{i}")
+        dumps.append(dumped)
+        objs.append(fenced)
+    return dumps, objs
+
+
 def _is_empty(value: Any) -> bool:
     """True for the null/empty values compact mode drops."""
     return value is None or value == [] or value == "" or value == {}
@@ -69,7 +88,9 @@ def _plain_synonyms(synonyms: Any) -> list[str]:
     return out
 
 
-def shape_term(record: dict[str, Any], mode: str) -> tuple[dict[str, Any], list[UntrustedText]]:
+def shape_term(
+    record: dict[str, Any], mode: str
+) -> tuple[dict[str, Any], dict[str, list[UntrustedText]]]:
     """Project a term record to the requested verbosity.
 
     - ``minimal``: ``hpo_id`` + ``name`` (and any preserved keys).
@@ -77,37 +98,48 @@ def shape_term(record: dict[str, Any], mode: str) -> tuple[dict[str, Any], list[
       truncate definition to snippet.
     - ``standard`` / ``full``: the complete record incl. structured synonyms.
 
-    ``definition`` (Response-Envelope v1.1) is externally sourced free text, so it
-    is emitted as a fenced ``untrusted_text`` object rather than a bare string.
-    Returns ``(shaped_record, fenced_objects)`` — callers pass ``fenced_objects``
-    to ``enforce_untrusted_text_limits`` before returning the MCP response.
+    ``definition`` and every ``comments`` entry (Response-Envelope v1.1) are
+    externally sourced free text, so each is emitted as a fenced ``untrusted_text``
+    object rather than a bare string/list-of-strings. Returns
+    ``(shaped_record, fenced_by_field)`` mapping each fenced top-level field
+    (``definition`` / ``comments``) to its ``UntrustedText`` objects, so ``get_term``
+    can enforce limits over only the fields that survive sparse-field projection.
     """
     record_id = str(record.get("hpo_id") or "")
-    fenced_objs: list[UntrustedText] = []
+    fenced_by_field: dict[str, list[UntrustedText]] = {}
     if mode == "minimal":
-        return {k: v for k, v in record.items() if k in _MINIMAL_KEEP}, fenced_objs
+        return {k: v for k, v in record.items() if k in _MINIMAL_KEEP}, fenced_by_field
     if mode in ("standard", "full"):
         out = dict(record)
         definition = out.get("definition")
         if isinstance(definition, str) and definition:
             dumped, fenced = _fence_field(definition, record_id=record_id)
             out["definition"] = dumped
-            fenced_objs.append(fenced)
-        return out, fenced_objs
+            fenced_by_field["definition"] = [fenced]
+        comment_dumps, comment_objs = _fence_comments(out.get("comments"), hpo_id=record_id)
+        if comment_objs:
+            out["comments"] = comment_dumps
+            fenced_by_field["comments"] = comment_objs
+        return out, fenced_by_field
     # compact
     out = {}
     for key, value in record.items():
         if key == "synonyms":
             value = _plain_synonyms(value)
-        if key == "definition" and isinstance(value, str) and value:
-            snippet = _snippet(value, SEARCH_SNIPPET_CHARS)
+        elif key == "definition" and isinstance(value, str) and value:
+            snippet = _truncate_raw(value, SEARCH_SNIPPET_CHARS)
             dumped, fenced = _fence_field(snippet, record_id=record_id)
             value = dumped
-            fenced_objs.append(fenced)
+            fenced_by_field["definition"] = [fenced]
+        elif key == "comments":
+            comment_dumps, comment_objs = _fence_comments(value, hpo_id=record_id)
+            if comment_objs:
+                fenced_by_field["comments"] = comment_objs
+            value = comment_dumps
         if key not in _PRESERVE_KEYS and _is_empty(value):
             continue
         out[key] = value
-    return out, fenced_objs
+    return out, fenced_by_field
 
 
 def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
@@ -118,6 +150,11 @@ def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str
     and ONE level of dotting into a grouped object -- e.g. ``"xrefs.UMLS"`` keeps
     only the UMLS group under ``xrefs``. Unknown fields are skipped (open-world).
     Returns the payload unchanged when ``fields`` is falsy.
+
+    A fenced ``untrusted_text`` object is treated as an OPAQUE leaf: a dotted
+    projection like ``definition.text`` MUST NOT descend into the wrapper and return
+    the bare ``text`` without ``kind``/``provenance``/``raw_sha256`` (that would
+    silently unfence upstream prose). Such a projection emits the whole fenced object.
     """
     if not fields:
         return payload
@@ -126,7 +163,10 @@ def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str
         top, _, sub = field.partition(".")
         if sub:
             container = payload.get(top)
-            if isinstance(container, dict) and sub in container:
+            if isinstance(container, dict) and container.get("kind") == "untrusted_text":
+                # opaque fenced leaf — never unwrap; emit the whole object
+                out[top] = container
+            elif isinstance(container, dict) and sub in container:
                 nested = out.setdefault(top, {})
                 if isinstance(nested, dict):
                     nested[sub] = container[sub]
@@ -169,12 +209,19 @@ def shape_annotation_rows(rows: list[dict[str, Any]], mode: str) -> list[dict[st
     return shaped
 
 
-def _snippet(text: str, limit: int) -> str:
-    """Truncate ``text`` to ``limit`` chars on a word boundary (adds ``…``)."""
-    text = " ".join(text.split())  # normalise whitespace runs
+def _truncate_raw(text: str, limit: int) -> str:
+    """Truncate ``text`` to at most ``limit`` chars on a word boundary.
+
+    Preserves internal whitespace (tab/LF/CR) — it does NOT collapse whitespace
+    runs. This matters because the truncated snippet is then fenced as an
+    ``untrusted_text`` object, and Response-Envelope v1.1 requires the digest to
+    cover the snippet's true pre-normalization bytes with tab/LF/CR intact (a
+    ``" ".join(text.split())`` pre-fence would strip them and make ``raw_sha256``
+    cover rewritten text). Appends ``…`` only when the text is actually truncated.
+    """
     if len(text) <= limit:
         return text
-    cut = text[:limit].rstrip()
+    cut = text[:limit]
     head, _, _ = cut.rpartition(" ")
     return (head or cut) + "…"
 
@@ -209,7 +256,7 @@ def shape_search_hit(
             out["definition"] = dumped
             fenced_objs.append(fenced)
     elif mode == "compact" and definition:
-        snippet = _snippet(definition, snippet_chars)
+        snippet = _truncate_raw(definition, snippet_chars)
         dumped, fenced = _fence_field(snippet, record_id=record_id)
         out["definition_snippet"] = dumped
         fenced_objs.append(fenced)

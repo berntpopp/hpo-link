@@ -199,9 +199,13 @@ class HpoService:
             "children": children,
             **self._version_fields(response_mode),
         }
-        shaped, fenced_objs = shape_term(payload, response_mode)
-        enforce_untrusted_text_limits(fenced_objs)
-        return select_fields(shaped, fields)
+        shaped, fenced_by_field = shape_term(payload, response_mode)
+        projected = select_fields(shaped, fields)
+        # Enforce limits over only the fenced objects that survive sparse-field
+        # projection — a projected-out field must not count toward the ceiling.
+        emitted = [obj for key, objs in fenced_by_field.items() if key in projected for obj in objs]
+        enforce_untrusted_text_limits(emitted)
+        return projected
 
     # -- term_parents / term_children ------------------------------------------
 

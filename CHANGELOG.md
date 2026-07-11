@@ -10,14 +10,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed (BREAKING)
 
-- **Response-Envelope Standard v1.1 untrusted-content fencing:** `get_term`
-  `/definition` and `search_terms` `/results/*/definition` and
-  `/results/*/definition_snippet` now emit a typed `untrusted_text` object
-  (`kind`, `text`, `provenance`, `raw_sha256`) instead of a bare string, so
-  hosts can never confuse retrieved HPO ontology prose with instructions.
-  Clients reading these fields as plain strings must update to read
-  `.text`. Defense in depth; research use only, not clinical decision
-  support.
+- **Response-Envelope Standard v1.1 untrusted-content fencing:** every externally
+  sourced HPO free-text field now emits a typed `untrusted_text` object (`kind`,
+  `text`, `provenance`, `raw_sha256`) instead of a bare string, so hosts can never
+  confuse retrieved HPO ontology prose with instructions. Fenced surfaces:
+  `get_term` `/definition` and `/comments/*`, and `search_terms`
+  `/results/*/definition` and `/results/*/definition_snippet`. Clients reading
+  these fields as plain strings (or a `comments` list of strings) must update to
+  read `.text`. Defense in depth; research use only, not clinical decision support.
+
+### Added
+
+- `limit_exceeded` error code: exceeding a v1.1 untrusted-object/byte ceiling now
+  returns an explicit typed limit error in the envelope (never a silent omission or
+  a generic `internal_error`).
 
 ## [0.2.0] - 2026-07-10
 

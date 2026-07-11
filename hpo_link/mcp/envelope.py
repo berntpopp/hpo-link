@@ -29,6 +29,7 @@ from hpo_link.exceptions import (
 )
 from hpo_link.mcp import metrics
 from hpo_link.mcp.next_commands import cmd, default_error_next_commands, withdrawn_recovery
+from hpo_link.mcp.untrusted_content import UntrustedTextLimitError
 from hpo_link.services.shaping import DEFAULT_RESPONSE_MODE
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,10 @@ def _classify(exc: BaseException) -> tuple[str, str]:
         return "rate_limited", "Upstream rate limit hit. Retry shortly."
     if isinstance(exc, ServiceUnavailableError | DownloadError):
         return "upstream_unavailable", "The upstream is temporarily unavailable."
+    if isinstance(exc, UntrustedTextLimitError):
+        # A v1.1 untrusted-text ceiling was exceeded — an explicit typed limit error,
+        # never a generic internal_error (the standard forbids silent omission).
+        return "limit_exceeded", _safe_message(exc)
     if isinstance(exc, PydanticValidationError):
         first = exc.errors()[0]
         loc = ".".join(str(p) for p in first["loc"]) or "input"
@@ -121,7 +126,7 @@ def classify_exception(exc: BaseException) -> tuple[str, str]:
 def _recovery_action(error_code: str) -> str:
     if error_code in _RETRYABLE:
         return "retry_backoff"
-    if error_code in {"invalid_input", "not_found", "ambiguous_query"}:
+    if error_code in {"invalid_input", "not_found", "ambiguous_query", "limit_exceeded"}:
         return "reformulate_input"
     return "switch_tool"
 

@@ -128,6 +128,7 @@ TERM_SCHEMA = _envelope(
     hpo_id=_STR,
     name=_STR,
     definition=_UNTRUSTED_TEXT_NULL,
+    comments={"type": "array", "items": _UNTRUSTED_TEXT},
     synonyms=_SYNONYMS_ARR,
     alt_ids=_ARR,
     subsets=_ARR,
