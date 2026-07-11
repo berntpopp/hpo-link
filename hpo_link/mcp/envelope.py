@@ -90,6 +90,7 @@ def _capabilities_version() -> str | None:
 #: local SQLite path, deployment-layout detail — intact. The raw detail survives only in
 #: the chained exception cause (logged by type, never surfaced to the caller).
 _PUBLIC_ERROR_MESSAGE: dict[str, str] = {
+    "invalid_input": "The request contained an invalid argument; see field.",
     "not_found": "No matching HPO term was found.",
     "ambiguous_query": "The query matched multiple HPO terms; see candidates.",
     "data_unavailable": "The local HPO database is unavailable.",
@@ -171,9 +172,11 @@ def _classify(exc: BaseException) -> tuple[str, str]:
     if isinstance(exc, AmbiguousQueryError):
         return "ambiguous_query", _PUBLIC_ERROR_MESSAGE["ambiguous_query"]
     if isinstance(exc, InvalidInputError):
-        # message is fixed server-authored guidance (no caller interpolation); the
-        # offending value is never embedded — field/allowed_values/hint carry specifics.
-        return "invalid_input", _safe_message(exc)
+        # SEVER: some validators interpolate the rejected identifier (e.g.
+        # ``disease_id {value!r} is not a valid CURIE``), so the message can carry caller
+        # prose. Return a FIXED public message; the offending argument is named by the
+        # server-authored structured ``field`` (and ``allowed_values``/``hint``) instead.
+        return "invalid_input", _PUBLIC_ERROR_MESSAGE["invalid_input"]
     if isinstance(exc, DataUnavailableError):
         # SEVER: the message can embed the local SQLite path + a raw sqlite str(exc).
         return "data_unavailable", _PUBLIC_ERROR_MESSAGE["data_unavailable"]

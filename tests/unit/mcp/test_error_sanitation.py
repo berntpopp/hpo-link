@@ -82,3 +82,25 @@ def test_log_filter_leaves_below_warning_records_intact() -> None:
     record = _record("fastmcp", logging.INFO, "listening on %s", ("127.0.0.1:8000",))
     assert ExternalErrorDetailFilter().filter(record) is True
     assert record.args == ("127.0.0.1:8000",)
+
+
+def test_facade_installs_filter_on_fastmcp_own_handlers() -> None:
+    """FastMCP's own non-propagating RichHandlers must carry the scrub filter.
+
+    Root-handler-only attachment would miss them (fastmcp logger has propagate=False),
+    so the facade attaches the filter directly to those handlers.
+    """
+    from hpo_link.mcp.facade import create_hpo_mcp
+    from hpo_link.mcp.service_adapters import reset_services
+
+    reset_services()
+    try:
+        create_hpo_mcp()
+        fastmcp_logger = logging.getLogger("fastmcp")
+        assert fastmcp_logger.handlers, "expected FastMCP to install its own handlers"
+        for handler in fastmcp_logger.handlers:
+            assert any(
+                isinstance(existing, ExternalErrorDetailFilter) for existing in handler.filters
+            ), "scrub filter not attached to a FastMCP handler"
+    finally:
+        reset_services()

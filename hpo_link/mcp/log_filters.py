@@ -36,3 +36,29 @@ class ExternalErrorDetailFilter(logging.Filter):
         record.exc_info = None
         record.exc_text = None
         return True
+
+
+#: One shared filter instance so idempotent installs don't stack duplicates.
+_SHARED_FILTER = ExternalErrorDetailFilter()
+
+
+def _has_filter(target: logging.Logger | logging.Handler) -> bool:
+    return any(isinstance(existing, ExternalErrorDetailFilter) for existing in target.filters)
+
+
+def install_external_error_filter() -> None:
+    """Attach the scrub filter to the framework loggers' OWN (non-propagating) handlers.
+
+    FastMCP configures the ``fastmcp`` logger with its own ``RichHandler``s and
+    ``propagate=False``, so its validation/exception records never reach the root
+    handler's filter. Attach the filter directly to those handlers (idempotently) — and
+    to the loggers themselves as a fallback for records emitted directly on them. Call
+    after the FastMCP facade is built, so the framework handlers already exist.
+    """
+    for name in _SCRUBBED_LOGGERS:
+        logger = logging.getLogger(name)
+        if not _has_filter(logger):
+            logger.addFilter(_SHARED_FILTER)
+        for handler in logger.handlers:
+            if not _has_filter(handler):
+                handler.addFilter(_SHARED_FILTER)

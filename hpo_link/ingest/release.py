@@ -238,7 +238,14 @@ def find_prebuilt_asset(
     sqlite_bytes = _positive_int(manifest.get("sqlite_bytes"))
 
     if not hpo_version:
-        logger.warning("manifest_missing_fields", manifest=manifest)
+        # Log only fixed field-presence metadata — never the parsed upstream manifest,
+        # whose values are attacker-influenceable and can carry hostile text / bidi / NUL.
+        logger.warning(
+            "manifest_missing_fields",
+            has_hpo_version=bool(hpo_version),
+            has_sqlite_zst=bool(sqlite_zst),
+            has_sha256=bool(sha256),
+        )
         return None
     selected_tag = str(selected.get("tag_name", ""))
     if hpo_version != selected_tag[4:] or sqlite_zst != zst_name:

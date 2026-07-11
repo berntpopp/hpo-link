@@ -190,6 +190,32 @@ async def test_hostile_unknown_argument_name_is_not_echoed() -> None:
         _assert_no_forbidden_codepoints(payload)
 
 
+async def test_invalid_input_message_severed_not_echoed() -> None:
+    """A validator that interpolates the rejected identifier must not leak it.
+
+    Drives the REAL AnnotationService: ``validate_disease_id`` builds
+    ``disease_id {value!r} is not a valid CURIE`` from caller input, so the classifier
+    must sever the message to a fixed public string (the field names the argument).
+    """
+    from hpo_link.services.annotation_service import AnnotationService
+
+    reset_services()
+    set_annotation_service(AnnotationService(None))  # validation runs before any repo use
+    from hpo_link.mcp.facade import create_hpo_mcp
+
+    mcp = create_hpo_mcp()
+    hostile_id = f"{HOSTILE_PROSE}{HOSTILE_CPS}"  # no ':' → rejected as a malformed CURIE
+    result = await mcp.call_tool("get_phenotypes_for_disease", {"disease_id": hostile_id})
+
+    for payload in _both_mirrors(result):
+        assert payload["success"] is False
+        assert payload["error_code"] == "invalid_input"
+        assert payload["message"] == "The request contained an invalid argument; see field."
+        assert payload["field"] == "disease_id"  # server-authored, safe
+        _assert_prose_absent(payload["message"])
+        _assert_no_forbidden_codepoints(payload)
+
+
 async def test_generic_exception_maps_to_fixed_internal_error() -> None:
     """A generic (transport-shaped) exception → fixed internal_error, no str(exc) leak."""
     mcp = _make_mcp(_RaisingService(RuntimeError(f"boom {HOSTILE_PROSE}{HOSTILE_CPS}")))

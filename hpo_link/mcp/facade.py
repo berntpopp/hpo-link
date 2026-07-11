@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 
 from hpo_link import __version__
 from hpo_link.mcp.capabilities import register_capability_resources
+from hpo_link.mcp.log_filters import install_external_error_filter
 from hpo_link.mcp.middleware import ArgValidationMiddleware
 from hpo_link.mcp.resources import HPO_SERVER_INSTRUCTIONS
 from hpo_link.mcp.tools import (
@@ -25,6 +26,10 @@ def create_hpo_mcp() -> FastMCP:
         instructions=HPO_SERVER_INSTRUCTIONS,
         mask_error_details=True,
     )
+    # FastMCP configures its own non-propagating RichHandlers, which bypass the root
+    # handler's scrub filter — attach the filter to them now that they exist, so FastMCP's
+    # raw pydantic-validation WARNING (caller argument values) never reaches a log sink.
+    install_external_error_filter()
 
     register_discovery_tools(mcp)
     register_ontology_tools(mcp)
