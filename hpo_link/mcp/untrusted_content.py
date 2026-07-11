@@ -58,6 +58,24 @@ def fence_untrusted_text(raw: str, *, source: str, record_id: str) -> UntrustedT
     )
 
 
+MAX_MESSAGE_CHARS = 280
+
+
+def sanitize_message(text: str) -> str:
+    """Strip the fence's forbidden control/zero-width/bidi/NUL code points + length-cap.
+
+    A code-point backstop applied to caller-visible error/diagnostics strings so a
+    hostile upstream value or a caller-influenced identifier can never smuggle
+    control, zero-width, bidirectional, or NUL code points into an error frame. It
+    strips code points only — it does NOT neutralize injection *prose*, so any string
+    whose prose is caller- or upstream-derived must additionally be severed to a
+    fixed, server-authored message at the classification boundary (see
+    ``hpo_link.mcp.envelope``). Reuses ``FORBIDDEN_CODEPOINTS`` (the primary fence set).
+    """
+    clean = "".join(char for char in text if ord(char) not in FORBIDDEN_CODEPOINTS)
+    return clean[:MAX_MESSAGE_CHARS]
+
+
 DEFAULT_MAX_TEXT_BYTES = 2_097_152
 DEFAULT_MAX_OBJECTS = 128
 DEFAULT_MAX_TOTAL_TEXT_BYTES = 8_388_608
