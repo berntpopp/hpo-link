@@ -115,6 +115,43 @@ def test_search_terms_version_and_citation_gated(hpo_service: HpoService) -> Non
     assert "recommended_citation" in rich
 
 
+def test_search_terms_full_page_of_200_definitions_does_not_raise() -> None:
+    """A full 200-hit page, each with a fenced definition, must not trip the limit.
+
+    ``search_terms`` caps ``limit`` at 200 (``mcp/tools/ontology.py`` ``le=200``),
+    and full mode fences one ``untrusted_text`` object per definition. The default
+    untrusted-object ceiling is 128, so the search enforce call must raise its
+    ceiling to the recorded 200 cap; otherwise a legitimate ``limit=200`` full-mode
+    search would error with ``UntrustedTextLimitError``.
+    """
+
+    class _StubRepo:
+        def read_meta(self) -> dict[str, str]:
+            return {"hpo_version": "2026-01-01"}
+
+        def search(
+            self, query: str, *, limit: int, include_obsolete: bool, offset: int = 0
+        ) -> tuple[list[dict[str, object]], int]:
+            hits = [
+                {
+                    "hpo_id": f"HP:{i:07d}",
+                    "name": f"Term {i}",
+                    "definition": f"Definition prose for term {i}.",
+                    "score": -float(i),
+                }
+                for i in range(limit)
+            ]
+            return hits, 1000
+
+    svc = HpoService(_StubRepo())  # type: ignore[arg-type]
+    result = svc.search_terms("phenotype", limit=200, response_mode="full")
+
+    assert len(result["results"]) == 200
+    # every hit's definition is the fenced typed object, not a bare string
+    fenced = result["results"][0]["definition"]
+    assert fenced["kind"] == "untrusted_text"
+
+
 def test_search_terms_empty_query_raises(hpo_service: HpoService) -> None:
     """search_terms with empty query raises InvalidInputError."""
     with pytest.raises(InvalidInputError):

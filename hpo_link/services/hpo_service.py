@@ -26,6 +26,13 @@ from hpo_link.services.shaping import (
 
 _MAX_LIMIT = 1000
 
+#: Hard ceiling on ``search_terms`` page size (mirrors the ``le=200`` tool bound in
+#: ``mcp/tools/ontology.py`` and ``max_search_limit`` in capabilities). A full-mode
+#: page can therefore emit up to 200 fenced ``untrusted_text`` definitions, so the
+#: response-level untrusted-object limit for search uses this value rather than the
+#: default 128 — otherwise a legitimate ``limit=200`` full-mode search would error.
+_MAX_SEARCH_LIMIT = 200
+
 
 class HpoService:
     """Service layer over the read-only HPO SQLite index."""
@@ -137,15 +144,19 @@ class HpoService:
         raw = (query or "").strip()
         if not raw:
             raise InvalidInputError("query must be a non-empty search string.", field="query")
-        limit = max(1, min(limit, 200))
+        limit = max(1, min(limit, _MAX_SEARCH_LIMIT))
         offset = max(0, offset)
         hits, total = self._db.search(
             raw, limit=limit, offset=offset, include_obsolete=include_obsolete
         )
         shaped_hits = [shape_search_hit(hit, response_mode) for hit in hits]
         results = [shaped for shaped, _ in shaped_hits]
+        # A full-mode page fences one untrusted_text per hit; the page can hold up to
+        # _MAX_SEARCH_LIMIT hits, so raise the object ceiling to that recorded cap. The
+        # 2 MiB-per-object and 8 MiB-total byte limits remain the real DoS backstop.
         enforce_untrusted_text_limits(
-            [obj for _, fenced_objs in shaped_hits for obj in fenced_objs]
+            [obj for _, fenced_objs in shaped_hits for obj in fenced_objs],
+            max_objects=_MAX_SEARCH_LIMIT,
         )
         return {
             "query": raw,
