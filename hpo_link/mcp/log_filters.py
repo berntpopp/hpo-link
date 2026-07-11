@@ -1,62 +1,87 @@
-"""Logging filter that keeps external-framework error detail out of the log sink.
+"""Logging filter that keeps external-framework caller input out of the log sink.
 
-FastMCP logs the full pydantic ``ValidationError`` — which echoes caller-supplied
-argument values (``loc``/``input``) and can carry forbidden code points — around
-argument binding, *before* the router's :class:`ArgValidationMiddleware` reshapes the
-caller-facing frame (see ``fastmcp.server.server``:
-``logger.warning("Invalid arguments for tool %r: %s", name, e.errors())``).
+FastMCP core and the MCP SDK log the caller's OWN requested tool name / resource URI
+/ prompt name (with any control/zero-width/bidi/NUL code points it carries) on their
+OWN loggers, BEFORE the router's :class:`ArgValidationMiddleware` / the Layer-3
+protocol backstop reshape the caller-facing frame. These records reflect caller input
+into a log/telemetry sink independent of who the caller is. Examples (all real, this
+FastMCP/mcp version):
 
-``mask_error_details=True`` masks the tool *response*, not this *log* record. This
-filter strips the caller-derived detail (``args`` / ``exc_info`` / ``exc_text``) from
-FastMCP/MCP framework records at WARNING and above, keeping only the stable
-server-authored message template, so raw caller input never lands in a log sink
-(the fleet PII / log-hygiene invariant).
+* ``fastmcp.server.server``   — ``Invalid arguments for tool %r: %s`` (arg values)
+* ``fastmcp.server.mixins.mcp_operations`` — ``[<srv>] Handler called: call_tool %s
+  with %s`` / ``... get_prompt %s ...`` / ``... read_resource %s`` (name/URI in args)
+* ``mcp.server.lowlevel.server`` — ``Tool cache miss for %s, refreshing cache``
+* ROOT (``mcp.shared.session`` bare ``logging.warning``) — ``Failed to validate
+  request: <pydantic error with the raw URI>`` / ``Message that failed validation: …``
+
+``mask_error_details=True`` masks the tool *response*, not these *log* records. This
+filter neutralizes them at the SOURCE logger (a logging filter only runs for records
+emitted on the logger it is attached to — ancestor filters are skipped during
+propagation), replacing the whole message and clearing ``args``/``exc_info`` so raw
+caller input never lands in a log sink at ANY level (the fleet PII / log-hygiene
+invariant), then a WARNING+ prefix fallback catches any other framework record whose
+interpolated args carry caller-derived detail.
 """
 
 from __future__ import annotations
 
 import logging
 
-#: Framework logger-name prefixes whose error records may echo caller input.
+#: Framework logger-name prefixes for the WARNING+ args-clearing fallback.
 _SCRUBBED_LOGGERS = ("fastmcp", "mcp")
 
-#: ``mcp.shared.session`` logs request/notification VALIDATION failures via the ROOT
-#: logger (bare ``logging.warning``/``logging.debug``, no module logger) with the
-#: offending, caller-controlled URI/params ALREADY f-string-interpolated into the
-#: message itself (not in ``args``) — so clearing ``args`` is insufficient and the
-#: whole message must be replaced. A malformed / forbidden-code-point resource URI
-#: (which pydantic ``AnyUrl`` rejects during request deserialization, BEFORE any
-#: request handler runs) reflects here; the caller-visible JSON-RPC frame is already
-#: fixed ("Invalid request parameters") but this log record is not.
-_SESSION_VALIDATION_PREFIXES = (
+#: Substrings that appear in ``record.msg`` (the f-string prefix or %-template) of a
+#: FastMCP-core / MCP-SDK record that reflects the caller-supplied name/URI (carried
+#: in ``args`` or, for the session records, interpolated into the message). Matching on
+#: ``msg`` covers both forms because the scrub replaces the message AND clears args.
+_REFLECTION_MARKERS = (
+    "Handler called: call_tool",
+    "Handler called: read_resource",
+    "Handler called: get_prompt",
+    "Tool cache miss for",
+    "Invalid arguments for tool",
+    "Error calling tool",
+    "Error reading resource",
     "Failed to validate request",
     "Failed to validate notification",
     "Message that failed validation",
 )
-_SESSION_VALIDATION_REPLACEMENT = "mcp request/notification failed validation (details omitted)"
+_SCRUBBED_MESSAGE = "MCP request detail omitted (caller input redacted)."
+
+#: The SOURCE loggers on which those records are CREATED. Attach the filter directly to
+#: each (root covers ``mcp.shared.session``'s bare ``logging.warning``); ``fastmcp`` /
+#: ``mcp`` are kept for the WARNING+ fallback and their non-propagating Rich handlers.
+_SOURCE_LOGGERS = (
+    "",  # root — mcp.shared.session request-validation failures
+    "fastmcp",
+    "fastmcp.server.server",
+    "fastmcp.server.mixins.mcp_operations",
+    "mcp",
+    "mcp.server.lowlevel.server",
+)
 
 
 class ExternalErrorDetailFilter(logging.Filter):
-    """Drop caller-derived detail from FastMCP/MCP framework error log records."""
+    """Scrub caller-supplied name/URI from FastMCP/MCP framework log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Scrub caller input from framework/session error records (in place)."""
+        """Neutralize reflecting records in place; always emit the scrubbed record."""
         msg = record.msg if isinstance(record.msg, str) else ""
-        # mcp.shared.session records bake the caller URI/params into the message via
-        # an f-string, so replace the whole message (any logger, any level).
-        if msg.startswith(_SESSION_VALIDATION_PREFIXES):
-            record.msg = _SESSION_VALIDATION_REPLACEMENT
+        # Records that reflect the caller-supplied name/URI (any logger, any level):
+        # replace the whole message and clear the interpolated args/traceback.
+        if any(marker in msg for marker in _REFLECTION_MARKERS):
+            record.msg = _SCRUBBED_MESSAGE
             record.args = ()
             record.exc_info = None
             record.exc_text = None
             record.stack_info = None
             return True
+        # Fallback: other FastMCP/MCP framework WARNING+ records may carry
+        # caller-derived detail in their interpolated args — drop it.
         if record.levelno < logging.WARNING:
             return True
         if not record.name.startswith(_SCRUBBED_LOGGERS):
             return True
-        # The %-template is server-authored and safe; the interpolated args (pydantic
-        # error list with caller loc/input) and any traceback are not — drop them.
         record.args = ()
         record.exc_info = None
         record.exc_text = None
@@ -72,23 +97,18 @@ def _has_filter(target: logging.Logger | logging.Handler) -> bool:
 
 
 def install_external_error_filter() -> None:
-    """Attach the scrub filter to the framework loggers' OWN (non-propagating) handlers.
+    """Attach the scrub filter to every SOURCE logger (and its handlers), idempotently.
 
-    FastMCP configures the ``fastmcp`` logger with its own ``RichHandler``s and
-    ``propagate=False``, so its validation/exception records never reach the root
-    handler's filter. Attach the filter directly to those handlers (idempotently) — and
-    to the loggers themselves as a fallback for records emitted directly on them. Call
-    after the FastMCP facade is built, so the framework handlers already exist.
-
-    Also attach the filter to the ROOT logger: ``mcp.shared.session`` emits its
-    request/notification-validation-failure records with a bare ``logging.warning``
-    (root logger, record name ``"root"``), which the framework-name prefix match
-    would otherwise miss.
+    A logging filter runs only for records emitted on the logger it is attached to
+    (ancestor filters are skipped during propagation), so the filter is attached
+    directly to each originating logger — including the ROOT logger, where
+    ``mcp.shared.session`` emits its request-validation failures via a bare
+    ``logging.warning``, and FastMCP's own ``fastmcp`` logger, whose non-propagating
+    ``RichHandler``s would otherwise bypass a root-only filter. Also attach to each
+    logger's existing handlers as belt-and-braces. Call after the FastMCP facade is
+    built, so the framework handlers already exist.
     """
-    root = logging.getLogger()
-    if not _has_filter(root):
-        root.addFilter(_SHARED_FILTER)
-    for name in _SCRUBBED_LOGGERS:
+    for name in _SOURCE_LOGGERS:
         logger = logging.getLogger(name)
         if not _has_filter(logger):
             logger.addFilter(_SHARED_FILTER)
