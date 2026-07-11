@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-11
+
+### Security (defense in depth)
+
+- Caller-visible error messages and structured fields are built from fixed/validated
+  values (no exception/upstream prose) and sanitized of control/zero-width/bidi/NUL
+  code points; the local DB path, decode failures, unknown tool names, and unknown
+  resource URIs are no longer echoed or logged raw. Research use only.
+
 ## [0.3.0] - 2026-07-11
 
 ### Changed (BREAKING)
