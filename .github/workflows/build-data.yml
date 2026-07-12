@@ -21,11 +21,18 @@ jobs:
           version: "0.8.7"
       - run: uv sync --frozen
       # resolve_latest_version validates the upstream tag against a strict ISO-date
-      # grammar and raises on anything else, so the value written to GITHUB_OUTPUT
-      # is guaranteed to be shell-safe (defense in depth with the env: passing below).
+      # grammar and raises on anything else. Assign first (a non-zero exit from the
+      # resolver now aborts the step under set -euo pipefail, instead of being
+      # swallowed by a wrapping echo), then re-validate the grammar in shell before
+      # writing to GITHUB_OUTPUT, so an empty/invalid value can never be published
+      # as db-v / hpo-.sqlite.zst (defense in depth with the Python validator and
+      # the env: passing below).
       - id: ver
         run: |
-          echo "date=$(uv run python -c 'import httpx; from hpo_link.ingest.downloader import resolve_latest_version; print(resolve_latest_version(httpx.Client()))')" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          DATE="$(uv run python -c 'import httpx; from hpo_link.ingest.downloader import resolve_latest_version; print(resolve_latest_version(httpx.Client()))')"
+          [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "invalid DATE resolved from upstream tag"; exit 1; }
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
       - name: Skip if already published
         id: check
         env:

@@ -33,6 +33,14 @@ def _steps(doc: dict[str, Any]) -> list[dict[str, Any]]:
     return steps
 
 
+def _resolver_step(doc: dict[str, Any]) -> dict[str, Any]:
+    """Return the step that resolves the upstream tag into ``steps.ver.outputs.date``."""
+    for step in _steps(doc):
+        if step.get("id") == "ver":
+            return step
+    raise AssertionError("no step with id 'ver' found in build-data workflow")
+
+
 def test_build_data_workflow_parses() -> None:
     doc = _load(_BUILD_DATA)
     assert doc["jobs"], "build-data must define at least one job"
@@ -65,12 +73,58 @@ def test_no_expression_interpolated_into_run() -> None:
 
 
 def test_release_tag_flows_through_env_mapping() -> None:
-    """Any step whose script references ``$DATE`` must declare it under ``env:``."""
+    """Any consuming step whose script references ``$DATE`` must declare it under ``env:``.
+
+    The resolver step (``id: ver``) is exempt: it *defines* ``DATE`` locally from
+    the validated resolver output, it does not consume the upstream-derived
+    step-output expression, so it needs no ``env:`` mapping.
+    """
     for step in _steps(_load(_BUILD_DATA)):
+        if step.get("id") == "ver":
+            continue
         run = step.get("run", "")
         if "${DATE}" in run or "$DATE" in run:
             env = step.get("env", {})
             assert "DATE" in env, "step uses $DATE but does not map it under env:"
+
+
+def test_resolver_does_not_swallow_failure_into_echo() -> None:
+    """The resolver must not wrap the command substitution inside ``echo "date=$(...)"``.
+
+    Under ``bash -e`` a failing command substitution nested inside a successful
+    ``echo`` does NOT fail the step (the echo exits 0), so a hostile/invalid tag
+    or a raising validator would silently write an empty ``date=`` to
+    ``$GITHUB_OUTPUT`` and the release would publish ``db-v`` / ``hpo-.sqlite.zst``
+    (F-02). The resolver's exit code must be observable: assignment first, then
+    output on a separate line.
+    """
+    run = _resolver_step(_load(_BUILD_DATA))["run"]
+    assert not re.search(r'echo\s+"date=\$\(', run), (
+        "resolver swallows the substitution's exit code inside echo (F-02 bypass); "
+        "assign DATE=$(...) on its own line so a non-zero exit fails the step"
+    )
+    assert re.search(r'^\s*DATE="?\$\(', run, re.MULTILINE), (
+        "resolver must assign the resolved tag to DATE=$(...) on its own line"
+    )
+    assert re.search(r'echo\s+"date=\$DATE"\s*>>\s*"\$GITHUB_OUTPUT"', run), (
+        "resolver must echo the already-validated $DATE variable to $GITHUB_OUTPUT"
+    )
+
+
+def test_resolver_has_shell_level_empty_and_grammar_guard() -> None:
+    """The resolver run block must fail-closed on an empty or off-grammar DATE.
+
+    Defense in depth: even though ``validate_release_version`` rejects hostile
+    tags in Python, the shell must independently refuse to emit an empty or
+    non-ISO-date value, and the block must run under ``set -euo pipefail`` so an
+    unset variable or a failing command aborts the step.
+    """
+    run = _resolver_step(_load(_BUILD_DATA))["run"]
+    assert "set -euo pipefail" in run, "resolver run block must start with 'set -euo pipefail'"
+    assert re.search(r'\[\[\s+"\$DATE"\s+=~\s+\^\[0-9\]\{4\}-\[0-9\]\{2\}-\[0-9\]\{2\}\$', run), (
+        "resolver must re-validate $DATE against the strict ISO-date grammar in shell"
+    )
+    assert "exit 1" in run, "resolver must exit non-zero when $DATE fails the guard"
 
 
 def test_all_workflows_parse() -> None:
