@@ -35,6 +35,18 @@ RUN uv sync --frozen --no-dev --active --no-install-project
 
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS production
 
+
+# Runtime identity. The deploy builds from a source checkout rather than pulling a
+# registry image, so there is no immutable OCI digest to pin; stamping the exact
+# commit into the image is what lets an operator prove the running container was
+# built from the revision the router's release inventory pins, instead of trusting
+# a moving `main`. VCS_REF is unprefixed on purpose: a <SERVICE>_-prefixed name
+# would land in the pydantic settings namespace.
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.source="https://github.com/berntpopp/hpo-link" \
+      org.opencontainers.image.revision="${VCS_REF}"
+ENV VCS_REF="${VCS_REF}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
