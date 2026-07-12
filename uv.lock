@@ -566,6 +566,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-mock" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "respx" },
     { name = "ruff" },
 ]
@@ -594,6 +595,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0.0,<8.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.0,<4.0.0" },
     { name = "pytest-xdist", specifier = ">=3.6.0,<4.0.0" },
+    { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "respx", specifier = ">=0.21.0,<1.0.0" },
     { name = "ruff", specifier = ">=0.8.0,<1.0.0" },
 ]

@@ -3,16 +3,26 @@ on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
+
+# Least privilege at the top level; the publish job opts up to contents: write.
 permissions:
-  contents: write
+  contents: read
+
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: sudo apt-get update && sudo apt-get install -y zstd
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.8.7"
       - run: uv sync --frozen
+      # resolve_latest_version validates the upstream tag against a strict ISO-date
+      # grammar and raises on anything else, so the value written to GITHUB_OUTPUT
+      # is guaranteed to be shell-safe (defense in depth with the env: passing below).
       - id: ver
         run: |
           echo "date=$(uv run python -c 'import httpx; from hpo_link.ingest.downloader import resolve_latest_version; print(resolve_latest_version(httpx.Client()))')" >> "$GITHUB_OUTPUT"
@@ -20,24 +30,31 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass the resolved tag through env, never interpolate it into the script body.
+          DATE: ${{ steps.ver.outputs.date }}
         run: |
-          if gh release view "db-v${{ steps.ver.outputs.date }}" >/dev/null 2>&1; then
+          if gh release view "db-v${DATE}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-          else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - if: steps.check.outputs.exists == 'false'
         run: uv run hpo-link-data build
       - if: steps.check.outputs.exists == 'false'
         name: package
+        env:
+          DATE: ${{ steps.ver.outputs.date }}
         run: |
-          DATE=${{ steps.ver.outputs.date }}
-          zstd -19 -f data/hpo.sqlite -o "hpo-$DATE.sqlite.zst"
-          sha256sum "hpo-$DATE.sqlite.zst" | awk '{print $1}' > "hpo-$DATE.sqlite.zst.sha256"
-          uv run python scripts/make_manifest.py "$DATE"
+          zstd -19 -f data/hpo.sqlite -o "hpo-${DATE}.sqlite.zst"
+          sha256sum "hpo-${DATE}.sqlite.zst" | awk '{print $1}' > "hpo-${DATE}.sqlite.zst.sha256"
+          uv run python scripts/make_manifest.py "${DATE}"
       - if: steps.check.outputs.exists == 'false'
+        name: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATE: ${{ steps.ver.outputs.date }}
         run: |
-          gh release create "db-v${{ steps.ver.outputs.date }}" \
+          gh release create "db-v${DATE}" \
             hpo-*.sqlite.zst* manifest.json \
-            --title "HPO DB ${{ steps.ver.outputs.date }}" \
-            --notes "Prebuilt hpo-link SQLite DB for HPO ${{ steps.ver.outputs.date }}."
+            --title "HPO DB ${DATE}" \
+            --notes "Prebuilt hpo-link SQLite DB for HPO ${DATE}."

@@ -9,6 +9,7 @@ only transfers a body when the upstream release actually changed.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +33,35 @@ logger = structlog.get_logger()
 
 CACHE_FILENAME = "download_cache.json"
 _METADATA_MAX_BYTES = 64 * 1024
+
+#: HPO ships releases tagged as an ISO calendar date (e.g. ``v2026-06-06``). The
+#: resolved version is interpolated into the OBO PURL request path AND flows into
+#: a privileged ``contents: write`` release workflow (``build-data.yml``), so it
+#: is pinned to this exact closed grammar. Anything else (shell metacharacters,
+#: command substitution, path traversal, whitespace, newlines) is rejected before
+#: the value can reach a shell or a request URL.
+_RELEASE_VERSION_RE = re.compile(r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+
+
+def validate_release_version(version: str) -> str:
+    """Return *version* iff it matches the strict HPO ISO-date release grammar.
+
+    Args:
+        version: A resolved release tag with any leading ``v`` already stripped.
+
+    Returns:
+        The validated version string, unchanged.
+
+    Raises:
+        DownloadError: When *version* is not exactly ``YYYY-MM-DD``.
+    """
+    if not isinstance(version, str) or not _RELEASE_VERSION_RE.match(version):
+        # Never echo the rejected value: it is attacker-influenceable and may
+        # carry hostile text / control characters. Report the fixed grammar only.
+        raise DownloadError("release version must be an ISO date (YYYY-MM-DD)")
+    return version
+
+
 HPO_SOURCE_POLICY = DownloadPolicy(
     allowed_hosts=frozenset(
         {"purl.obolibrary.org", "github.com", "release-assets.githubusercontent.com"}
@@ -75,7 +105,14 @@ def resolve_latest_version(client: httpx.Client, *, max_bytes: int = _METADATA_M
         data: dict[str, str] = json.loads(raw)
     except (json.JSONDecodeError, TypeError) as exc:
         raise DownloadError("GitHub Releases API returned invalid JSON") from exc
-    return data["tag_name"].lstrip("v")
+    tag = data.get("tag_name")
+    if not isinstance(tag, str):
+        raise DownloadError("GitHub Releases API returned no tag_name")
+    # Strip a single leading 'v' (HPO tags are 'vYYYY-MM-DD'), then pin to the
+    # strict grammar BEFORE the value is returned to any caller — the workflow
+    # writes it to GITHUB_OUTPUT and the runtime builds a request URL from it.
+    stripped = tag[1:] if tag.startswith("v") else tag
+    return validate_release_version(stripped)
 
 
 def _cache_path(config: ServerSettings) -> Path:
