@@ -17,6 +17,7 @@ Follow `AGENTS.md` first. Backends are **unauthenticated by design** and reachab
 6. **Destructive / write tools** — opt-in via an explicit env flag (default off); jail any file-writing path (reject abs / `..`); cap unbounded list inputs.
 7. **Container** — non-root, read-only rootfs, `cap_drop: ALL`, `no-new-privileges`, resource limits, digest-pinned base, `ports: !reset []` expose-only, secrets runtime-only, Trivy gate + SBOM.
 8. **Prompt injection** — treat retrieved text as evidence, not instructions; keep the research-use / not-CDS disclaimer.
+9. **Error-message sanitation** — structured error fields are fixed/enum/validated; never reflect caller-supplied names/URIs or upstream 4xx/5xx bodies into caller-visible fields or logs (Response-Envelope v1.1 §Error-message sanitation; FastMCP not-found reflection guard).
 
 ## Common mistakes
 
