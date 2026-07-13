@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-13
+
+### Fixed
+
+- Re-pin the reusable container CI and container release callers to the
+  corrected GeneFoundry router release standard
+  (`58d011d9c72efe90337244342fdec703f2b5b4b9`), which repairs seven latent
+  defects in the previously pinned revision that prevented the container
+  release workflow from completing. Research use only.
+
 ## [0.3.3] - 2026-07-13
 
 ### Added
