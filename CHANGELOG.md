@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-13
+
+### Fixed
+
+- **Signed release evidence now states the data contract this service actually declares.**
+  The reusable release workflow hardcoded `--contract data-independent` and a fixed
+  `data_requirements: {"mode":"none"}`, so every published manifest claimed the image binds
+  to no data at all — while `container-release.json` declares `data-bound` /
+  `external-reference` against the immutable HPO database bundle (`db-v2026-06-23`,
+  `sha256:d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6`). Because the
+  evidence assembler returns early for a data-independent contract, the strongest assertion
+  in the chain — that the definition evidence binds to the exact pinned artifact — was
+  silently skipped. Re-pinning the container-release standard to
+  `86b11f7ed062ed84dfddcbd309e34da88f3dae5b` sources the contract and the exact data
+  identity from `container-release.json`, so the manifest states the real binding and the
+  assertion runs. The v0.3.4 image and its attestations are sound; only its evidence
+  understated the binding, and regenerating that evidence requires this patch re-release.
+
 ## [0.3.4] - 2026-07-13
 
 ### Fixed
