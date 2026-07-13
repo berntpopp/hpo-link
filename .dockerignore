@@ -11,9 +11,10 @@
 !.env.docker.example
 
 # VCS / CI
-.git
+.git/
 .gitignore
-.github
+.gitattributes
+.github/
 
 # Python caches and build artifacts
 __pycache__/
@@ -23,6 +24,7 @@ __pycache__/
 build/
 dist/
 .venv/
+venv/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
@@ -35,6 +37,28 @@ tests/
 docs/
 .planning/
 data/
+datasets/
+corpus/
+output/
+outputs/
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.zst
+*.zip
+*.obo
+*.owl
+*.jsonld
+*.tsv
+*.csv
+*.vcf
+*.bcf
+*.parquet
 
 # Editor / OS
 .vscode/

@@ -36,16 +36,23 @@ RUN uv sync --frozen --no-dev --active --no-install-project
 FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS production
 
 
-# Runtime identity. The deploy builds from a source checkout rather than pulling a
-# registry image, so there is no immutable OCI digest to pin; stamping the exact
-# commit into the image is what lets an operator prove the running container was
-# built from the revision the router's release inventory pins, instead of trusting
-# a moving `main`. VCS_REF is unprefixed on purpose: a <SERVICE>_-prefixed name
-# would land in the pydantic settings namespace.
-ARG VCS_REF=unknown
-LABEL org.opencontainers.image.source="https://github.com/berntpopp/hpo-link" \
-      org.opencontainers.image.revision="${VCS_REF}"
-ENV VCS_REF="${VCS_REF}"
+# Release identity is supplied by the central container-release workflow.
+ARG APP_VERSION=0.0.0
+ARG VCS_REF=0000000000000000000000000000000000000000
+ARG BUILD_DATE=1970-01-01T00:00:00Z
+LABEL org.opencontainers.image.title="HPO Link" \
+      org.opencontainers.image.description="MCP/API server for Human Phenotype Ontology research data" \
+      org.opencontainers.image.source="https://github.com/berntpopp/hpo-link" \
+      org.opencontainers.image.url="https://github.com/berntpopp/hpo-link" \
+      org.opencontainers.image.documentation="https://github.com/berntpopp/hpo-link#readme" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="GeneFoundry"
+ENV VCS_REF="${VCS_REF}" \
+    HPO_LINK_GIT_SHA="${VCS_REF}" \
+    HPO_LINK_BUILT_AT="${BUILD_DATE}"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -82,15 +89,6 @@ COPY --chown=app:app ./server.py ./mcp_server.py ./pyproject.toml ./README.md ./
 COPY --chown=app:app ./docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN /opt/venv/bin/pip install . --no-deps && chmod +x /usr/local/bin/entrypoint.sh
-
-# Stamp build provenance so get_server_capabilities/_meta can report which build
-# answered. Pass at build time, e.g.:
-#   docker build --build-arg HPO_LINK_GIT_SHA=$(git rev-parse --short HEAD) \
-#                --build-arg HPO_LINK_BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
-ARG HPO_LINK_GIT_SHA=unknown
-ARG HPO_LINK_BUILT_AT
-ENV HPO_LINK_GIT_SHA=${HPO_LINK_GIT_SHA} \
-    HPO_LINK_BUILT_AT=${HPO_LINK_BUILT_AT}
 
 USER app
 

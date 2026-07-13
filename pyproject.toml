@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hpo-link"
-version = "0.3.2"
+version = "0.3.3"
 description = "MCP/API server that grounds phenotype work in the Human Phenotype Ontology (HPO)"
 readme = "README.md"
 license = { text = "MIT" }

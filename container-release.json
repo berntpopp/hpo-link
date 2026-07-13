@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "dockerfile": "docker/Dockerfile",
+  "target": "production",
+  "service": {
+    "compose_files": [
+      "docker/docker-compose.yml",
+      "docker/docker-compose.prod.yml"
+    ],
+    "name": "hpo-link",
+    "container_port": 8000,
+    "health_path": "/health",
+    "mcp_path": "/mcp",
+    "startup_timeout_seconds": 180
+  },
+  "data": {
+    "mode": "external-reference",
+    "release_tag": "db-v2026-06-23",
+    "digest": "sha256:d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
+    "image_allowlist": [
+      "home/app/web/hpo_link/data/__init__.py",
+      "home/app/web/hpo_link/data/annotations_repository.py",
+      "home/app/web/hpo_link/data/repository.py",
+      "opt/venv/lib/python3.12/site-packages/hpo_link/data/__init__.py",
+      "opt/venv/lib/python3.12/site-packages/hpo_link/data/annotations_repository.py",
+      "opt/venv/lib/python3.12/site-packages/hpo_link/data/repository.py"
+    ]
+  },
+  "definitions": {
+    "contract": "data-bound"
+  },
+  "smoke": {
+    "profile": "immutable-bundle"
+  }
+}

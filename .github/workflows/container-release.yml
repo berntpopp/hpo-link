@@ -1,0 +1,17 @@
+name: Container Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  container-release:
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
+    uses: berntpopp/genefoundry-router/.github/workflows/_container-release.yml@2b8c1a3edaab82bbfdc8f0b33ede56140f765304 # genefoundry-router container-release standard v1

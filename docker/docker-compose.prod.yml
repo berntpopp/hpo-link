@@ -9,6 +9,11 @@
 # published on the public IP. The container is reachable only via the proxy.
 services:
   hpo-link:
+    build: !reset null
+    image: "${HPO_LINK_IMAGE:?HPO_LINK_IMAGE must be set to ghcr.io/berntpopp/hpo-link@sha256:<digest>}"
+    pull_policy: missing
+    container_name: !reset null
+    env_file: !reset []
     environment:
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
@@ -17,8 +22,12 @@ services:
     expose:
       - "8000"
     read_only: true
-    tmpfs:
+    tmpfs: !override
       - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop: !override
+      - ALL
     init: true
     mem_limit: 1g
     cpus: 1.0
