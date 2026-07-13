@@ -17,27 +17,34 @@ services:
     environment:
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
+      HPO_LINK_DATA__DATA_DIR: /data
       HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1","hpo-link.genefoundry.org"]'
+      GF_HEALTHCHECK_HOST: localhost
     ports: !reset []
     expose:
       - "8000"
+    volumes: !override
+      - hpo-data:/data
     read_only: true
     tmpfs: !override
-      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
     security_opt: !override
       - no-new-privileges:true
     cap_drop: !override
       - ALL
     init: true
-    mem_limit: 1g
-    cpus: 1.0
-    pids_limit: 256
     deploy:
       resources:
         limits:
           memory: 1g
           cpus: "1.0"
           pids: 256
+    healthcheck: !override
+      test: ["CMD", "sh", "-c", "curl -f -H \"Host: $${GF_HEALTHCHECK_HOST}\" http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: on-failure
     logging:
       driver: "json-file"
@@ -45,3 +52,13 @@ services:
         max-size: "50m"
         max-file: "5"
         labels: "service=hpo-link,environment=production"
+    networks: !override
+      - default
+
+volumes: !override
+  hpo-data:
+    name: hpo-link_hpo-data
+
+networks: !override
+  default:
+    name: hpo-link_default

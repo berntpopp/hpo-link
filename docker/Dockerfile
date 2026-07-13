@@ -62,12 +62,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HPO_LINK_PORT=8000 \
     HPO_LINK_TRANSPORT=unified \
     HPO_LINK_MCP_PATH=/mcp \
-    HPO_LINK_DATA__DATA_DIR=/app/data \
+    HPO_LINK_DATA__DATA_DIR=/data \
     # The entrypoint builds the index before the server starts. Refresh is owned
     # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
     HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
     HPO_LINK_DATA__REFRESH_ENABLED=false \
-    TMPDIR=/tmp/hpo-link
+    TMPDIR=/tmp
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -77,8 +77,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN groupadd --system app && \
     useradd --system --gid app --home /home/app --create-home app && \
-    mkdir -p /tmp/hpo-link /app/data && \
-    chown -R app:app /tmp/hpo-link /app/data /home/app
+    mkdir -p /data && \
+    chown -R app:app /data /home/app
 
 COPY --from=builder /opt/venv /opt/venv
 
@@ -137,21 +137,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HPO_LINK_PORT=8000 \
     HPO_LINK_TRANSPORT=unified \
     HPO_LINK_MCP_PATH=/mcp \
-    HPO_LINK_DATA__DATA_DIR=/app/data \
+    HPO_LINK_DATA__DATA_DIR=/data \
     # The entrypoint builds the index before the server starts. Refresh is owned
     # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
     HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
     HPO_LINK_DATA__REFRESH_ENABLED=false \
-    TMPDIR=/tmp/hpo-link
+    TMPDIR=/tmp
 WORKDIR /home/app/web
 
 USER app
 
 EXPOSE 8000
 
-# The built SQLite index lives under HPO_LINK_DATA__DATA_DIR (/app/data).
+# The built SQLite index lives under HPO_LINK_DATA__DATA_DIR (/data).
 # Mount a volume there so the index persists across container restarts.
-VOLUME ["/app/data"]
+VOLUME ["/data"]
 
 # start-period covers the entrypoint's first build (download + build).
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
