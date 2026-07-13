@@ -9,8 +9,9 @@ services:
       args:
         # Stamp build provenance into the image so get_server_capabilities/_meta
         # can report which build answered. Defaults keep an unset env harmless.
-        HPO_LINK_GIT_SHA: ${HPO_LINK_GIT_SHA:-unknown}
-        HPO_LINK_BUILT_AT: ${HPO_LINK_BUILT_AT:-}
+        APP_VERSION: ${APP_VERSION:-0.0.0}
+        VCS_REF: ${VCS_REF:-0000000000000000000000000000000000000000}
+        BUILD_DATE: ${BUILD_DATE:-1970-01-01T00:00:00Z}
     container_name: hpo-link
     # Dev/local only — loopback-bound (127.0.0.1) so copying this file to a
     # server never publishes the unauthenticated backend on the public IP
@@ -32,7 +33,7 @@ services:
       HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
-      HPO_LINK_DATA__DATA_DIR: /app/data
+      HPO_LINK_DATA__DATA_DIR: /data
       HPO_LINK_DATA__AUTO_BOOTSTRAP: "true"
       # Refresh is owned by cron (see docs/deployment.md). To refresh the running
       # container, run a host cron job:
@@ -40,7 +41,7 @@ services:
       HPO_LINK_DATA__REFRESH_ENABLED: "false"
     volumes:
       # Persist the built SQLite index across container restarts.
-      - hpo-data:/app/data
+      - hpo-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -51,20 +52,15 @@ services:
     # Container & Deployment Hardening Standard v1 (backported so running the base
     # file directly is still safe). The built SQLite index lives on the `hpo-data`
     # named volume (writable); the rootfs is read-only and scratch is an explicit,
-    # size-capped tmpfs (TMPDIR=/tmp/hpo-link in the image).
+    # size-capped tmpfs.
     read_only: true
     tmpfs:
-      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     init: true
-    # Limits in both forms: deploy.resources (honored by Compose v2) and the
-    # non-swarm keys (honored by legacy docker-compose) so they apply either way.
-    mem_limit: 1g
-    cpus: 1.0
-    pids_limit: 256
     deploy:
       resources:
         limits:
@@ -76,8 +72,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - hpo-network
 
   # Optional: a one-shot refresh runner you can invoke from host cron, e.g.
   #   17 3 * * *  docker compose -f /path/docker/docker-compose.yml run --rm refresh
@@ -89,16 +83,10 @@ services:
       target: production
     entrypoint: ["hpo-link-data", "refresh"]
     environment:
-      HPO_LINK_DATA__DATA_DIR: /app/data
+      HPO_LINK_DATA__DATA_DIR: /data
     volumes:
-      - hpo-data:/app/data
-    networks:
-      - hpo-network
+      - hpo-data:/data
 
 volumes:
   hpo-data:
     driver: local
-
-networks:
-  hpo-network:
-    driver: bridge
