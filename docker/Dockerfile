@@ -33,7 +33,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.7@sha256:1e26f9a868360eeb32500a35e05787ffff
 RUN uv sync --frozen --no-dev --active --no-install-project
 
 
-FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS production
+FROM python:3.12-slim@sha256:423ed6ab25b1921a477529254bfeeabf5855151dc2c3141699a1bfc852199fbf AS prepared
 
 
 # Release identity is supplied by the central container-release workflow.
@@ -89,6 +89,61 @@ COPY --chown=app:app ./server.py ./mcp_server.py ./pyproject.toml ./README.md ./
 COPY --chown=app:app ./docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN /opt/venv/bin/pip install . --no-deps && chmod +x /usr/local/bin/entrypoint.sh
+
+RUN rm -rf /root/.cache/pip \
+           /usr/local/lib/python*/ensurepip \
+           /usr/local/lib/python*/site-packages/pip \
+           /usr/local/lib/python*/site-packages/pip-*.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.* \
+           /opt/venv/lib/python*/site-packages/pip \
+           /opt/venv/lib/python*/site-packages/pip-*.dist-info \
+           /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.* \
+    && find / -xdev -type d -name __pycache__ -prune -exec rm -rf '{}' + \
+    && find / -xdev -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+RUN find / -xdev -perm /6000 -exec chmod a-s '{}' + \
+    && test -z "$(find / -xdev -perm /6000 -print -quit)"
+RUN actual="$(find / -xdev -type f -links +1 -printf '%i %p\n' | sort -k2,2)" \
+    && expected="$(printf '%s %s\n%s %s\n' \
+         "$(stat -c '%i' /usr/bin/perl)" /usr/bin/perl \
+         "$(stat -c '%i' /usr/bin/perl5.40.1)" /usr/bin/perl5.40.1 | sort -k2,2)" \
+    && { test "$actual" = "$expected" || { printf 'unexpected hardlinks:\n%s\n' "$actual"; exit 1; }; } \
+    && rm -f /usr/bin/perl5.40.1
+
+FROM scratch AS production
+COPY --from=prepared / /
+
+ARG APP_VERSION=0.0.0
+ARG VCS_REF=0000000000000000000000000000000000000000
+ARG BUILD_DATE=1970-01-01T00:00:00Z
+LABEL org.opencontainers.image.title="HPO Link" \
+      org.opencontainers.image.description="MCP/API server for Human Phenotype Ontology research data" \
+      org.opencontainers.image.source="https://github.com/berntpopp/hpo-link" \
+      org.opencontainers.image.url="https://github.com/berntpopp/hpo-link" \
+      org.opencontainers.image.documentation="https://github.com/berntpopp/hpo-link#readme" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="GeneFoundry"
+ENV VCS_REF="${VCS_REF}" \
+    HPO_LINK_GIT_SHA="${VCS_REF}" \
+    HPO_LINK_BUILT_AT="${BUILD_DATE}"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH="/home/app/web" \
+    HPO_LINK_HOST=0.0.0.0 \
+    HPO_LINK_PORT=8000 \
+    HPO_LINK_TRANSPORT=unified \
+    HPO_LINK_MCP_PATH=/mcp \
+    HPO_LINK_DATA__DATA_DIR=/app/data \
+    # The entrypoint builds the index before the server starts. Refresh is owned
+    # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
+    HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
+    HPO_LINK_DATA__REFRESH_ENABLED=false \
+    TMPDIR=/tmp/hpo-link
+WORKDIR /home/app/web
 
 USER app
 
