@@ -30,6 +30,6 @@
     "contract": "data-bound"
   },
   "smoke": {
-    "profile": "immutable-bundle"
+    "profile": "compose"
   }
 }

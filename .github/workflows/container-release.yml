@@ -14,4 +14,4 @@ jobs:
       contents: write
       id-token: write
       packages: write
-    uses: berntpopp/genefoundry-router/.github/workflows/_container-release.yml@58d011d9c72efe90337244342fdec703f2b5b4b9 # genefoundry-router container-release standard v1
+    uses: berntpopp/genefoundry-router/.github/workflows/_container-release.yml@35f31f3a53fd423ca4f88f4d10e13d4f23011b7a # genefoundry-router container-release standard v1
