@@ -28,7 +28,7 @@ services:
       - 'HPO_LINK_ALLOWED_HOSTS=["localhost","127.0.0.1","::1","hpo-link.genefoundry.org"]'
       - HPO_LINK_LOG_LEVEL=${LOG_LEVEL_API:-INFO}
       - HPO_LINK_LOG_FORMAT=json
-      - HPO_LINK_DATA__DATA_DIR=/app/data
+      - HPO_LINK_DATA__DATA_DIR=/data
       # Build the local SQLite index on first boot (persisted in the volume).
       - HPO_LINK_DATA__AUTO_BOOTSTRAP=true
       # No cron sidecar in the NPM deploy; HPO is a slowly-changing ontology,
@@ -47,11 +47,11 @@ services:
     restart: unless-stopped
     read_only: true
     tmpfs:
-      # TMPDIR=/tmp/hpo-link (set in the image) - download/build scratch space.
-      - /tmp/hpo-link:rw,noexec,nosuid,size=512m,mode=1777
+      # TMPDIR=/tmp (set in the image) - download/build scratch space.
+      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
     volumes:
       # Persist the built HPO SQLite database across container restarts.
-      - hpo-data:/app/data
+      - hpo-data:/data
     networks:
       - hpo_link_internal_net
       - npm_proxy_network
