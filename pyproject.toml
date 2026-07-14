@@ -93,9 +93,6 @@ line-ending = "lf"
 "tests/**/*" = ["S101", "S104", "S110", "T20", "B011", "SIM105", "SIM108"]
 "mcp_server.py" = ["T20"]
 "scripts/**/*" = ["T20"]
-# Vendored verbatim from genefoundry-router (one linter, identical in every fleet
-# repo). Do not edit the file to satisfy a local rule; the zip is length-guarded.
-"scripts/check_readme.py" = ["B905"]
 "hpo_link/ingest/cli.py" = ["T20"]
 
 [tool.ruff.lint.pydocstyle]

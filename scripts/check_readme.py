@@ -25,7 +25,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 
+OWNER = "berntpopp"
 LINE_CEILING = 200
+
+# A badge is an image-link line: [![label](img)](href). Structural, not URL-substring based.
+BADGE_LINE_RE = re.compile(r"^\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)$")
 
 REQUIRED_SECTIONS = [
     "Why",
@@ -65,15 +69,33 @@ def is_router() -> bool:
     return not (ROOT / ".github/workflows/conformance.yml").exists()
 
 
+def _workflow_badge(label: str, slug: str, workflow: str) -> str:
+    url = f"https://github.com/{OWNER}/{slug}/actions/workflows/{workflow}"
+    return f"[![{label}]({url}/badge.svg)]({url})"
+
+
 def expected_badges(slug: str) -> list[tuple[str, str]]:
-    """(label, substring that must appear in the badge line), in order."""
+    """(label, the EXACT markdown line required), in order.
+
+    Compared exactly, never by substring: a substring test would accept
+    ``https://evil.example/img.shields.io/badge/...`` and it is what CodeQL's
+    py/incomplete-url-substring-sanitization (correctly) rejects. The standard
+    fixes these four lines verbatim, so there is nothing to fuzzy-match.
+    """
     gate = "security.yml" if is_router() else "conformance.yml"
     gate_label = "Security" if is_router() else "Conformance"
     return [
-        ("Python 3.12+", "img.shields.io/badge/python-3.12"),
-        ("CI", f"/{slug}/actions/workflows/ci.yml/badge.svg"),
-        (gate_label, f"/{slug}/actions/workflows/{gate}/badge.svg"),
-        ("License: MIT", "img.shields.io/badge/license-MIT"),
+        (
+            "Python 3.12+",
+            "[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB"
+            "?logo=python&logoColor=white)](https://www.python.org/)",
+        ),
+        ("CI", _workflow_badge("CI", slug, "ci.yml")),
+        (gate_label, _workflow_badge(gate_label, slug, gate)),
+        (
+            "License: MIT",
+            "[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)",
+        ),
     ]
 
 
@@ -95,19 +117,25 @@ def check_title(lines: list[str], errors: list[str]) -> None:
 
 
 def check_badges(text: str, lines: list[str], errors: list[str]) -> None:
-    badge_lines = [ln for ln in lines if "badge.svg" in ln or "img.shields.io" in ln]
+    badge_lines = [ln.strip() for ln in lines if BADGE_LINE_RE.match(ln.strip())]
     want = expected_badges(repo_slug())
+
     if len(badge_lines) != len(want):
         errors.append(
             f"expected exactly {len(want)} badges, found {len(badge_lines)}. "
             f"Canonical row: {', '.join(label for label, _ in want)}."
         )
         return
-    for i, ((label, needle), got) in enumerate(zip(want, badge_lines), start=1):
-        if needle not in got:
+
+    # strict=True is safe: the length check above already guarantees they match.
+    for i, ((label, expected), got) in enumerate(zip(want, badge_lines, strict=True), start=1):
+        if got != expected:
             errors.append(
-                f"badge {i} should be {label!r} (expected {needle!r} in the URL); got: {got.strip()[:80]}"
+                f"badge {i} ({label}) does not match the canonical line.\n"
+                f"      expected: {expected}\n"
+                f"      found:    {got}"
             )
+
     if "?branch=" in text:
         errors.append("badge URLs must not pin ?branch= — they default to the default branch")
 
@@ -150,8 +178,11 @@ def check_facts(text: str, errors: list[str]) -> None:
 
 
 def main() -> int:
+    # This file is vendored verbatim into all 22 fleet repos, whose ruff configs differ.
+    # Write to the streams directly rather than print() so it needs no per-file lint
+    # exemption anywhere (T201), and keep zip(strict=...) explicit (B905).
     if not README.exists():
-        print("error: README.md not found", file=sys.stderr)
+        sys.stderr.write("error: README.md not found\n")
         return 1
 
     text = README.read_text(encoding="utf-8")
@@ -168,19 +199,13 @@ def main() -> int:
 
     if errors:
         klass = "router" if is_router() else "backend"
-        print(
-            f"README Standard v1 violations in {repo_slug()} ({klass}):\n",
-            file=sys.stderr,
-        )
+        sys.stderr.write(f"README Standard v1 violations in {repo_slug()} ({klass}):\n\n")
         for err in errors:
-            print(f"  - {err}", file=sys.stderr)
-        print(
-            "\nSee docs/README-STANDARD-v1.md in genefoundry-router.",
-            file=sys.stderr,
-        )
+            sys.stderr.write(f"  - {err}\n")
+        sys.stderr.write("\nSee docs/README-STANDARD-v1.md in genefoundry-router.\n")
         return 1
 
-    print(f"README Standard v1: OK ({len(lines)} lines, ceiling {LINE_CEILING})")
+    sys.stdout.write(f"README Standard v1: OK ({len(lines)} lines, ceiling {LINE_CEILING})\n")
     return 0
 
 
