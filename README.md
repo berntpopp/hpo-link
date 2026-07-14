@@ -1,156 +1,131 @@
 # hpo-link
 
-MCP/API server that grounds phenotype work in the [Human Phenotype Ontology (HPO)](https://hpo.jax.org/).
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![CI](https://github.com/berntpopp/hpo-link/actions/workflows/ci.yml/badge.svg)](https://github.com/berntpopp/hpo-link/actions/workflows/ci.yml)
+[![Conformance](https://github.com/berntpopp/hpo-link/actions/workflows/conformance.yml/badge.svg)](https://github.com/berntpopp/hpo-link/actions/workflows/conformance.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-`hpo-link` builds a local SQLite database from the HPO OBO release and HPOA
-gene/disease annotation files (served via OBO PURLs and the HPO GitHub
-releases) and serves a **read-only** MCP + REST surface for phenotype term
-lookup, the `is_a` hierarchy (ancestors/descendants via a transitive closure),
-cross-ontology mapping, and gene↔phenotype↔disease association queries. There
-is no live API — the local database is the only source, so lookups are fast
-and offline.
+An **MCP server** (Streamable HTTP or stdio) that grounds phenotype work in the
+[Human Phenotype Ontology (HPO)](https://hpo.jax.org/): term lookup, the `is_a`
+hierarchy, cross-ontology mapping, and gene↔phenotype↔disease associations, served
+read-only from a local index of the HPO release and its HPOA annotations.
 
-Every response is grounded in the local database and cites the **HPO id + HPO
-release version**. Research use only; **not** clinical decision support.
+> [!IMPORTANT]
+> Research use only. Not clinical decision support. Do not use for diagnosis,
+> treatment, triage, or patient management.
 
-## Tools
+## Why
 
-### Discovery
+HPO ships as bulk artifacts — an OBO/JSON ontology graph (`hp.json`) and a flat
+annotation table (`phenotype.hpoa`). Neither answers a question. *"Which genes are
+annotated to seizure, including its subtypes?"* needs the transitive `is_a` closure over
+a multi-parent DAG, a synonym/xref index to get from free text to `HP:0001250`, and a
+join against HPOA — plumbing every consumer otherwise rebuilds, badly.
 
-| Tool | Signature |
-|------|-----------|
-| `get_server_capabilities` | `get_server_capabilities(detail=)` — discovery surface (tools, workflows, error taxonomy, limits). |
-| `get_diagnostics` | `get_diagnostics()` — database status, loaded HPO release, counts. |
+`hpo-link` builds that once into a read-only SQLite index (closure table, FTS over
+names/synonyms/definitions, xrefs ranked by mapping predicate) and serves it as MCP
+tools. No upstream call sits in the request path, so lookups are offline and
+deterministic, and every response cites the HPO id **and** the HPO release it came from.
 
-### Phenotype term lookup
+## Quick start
 
-| Tool | Signature |
-|------|-----------|
-| `resolve_term` | `resolve_term(query, response_mode=)` — label/synonym/HP id/xref → canonical term + `match_type`. |
-| `search_terms` | `search_terms(query, limit=, include_obsolete=, response_mode=)` — FTS over name/synonyms/definition. |
-| `get_term` | `get_term(term, response_mode=)` — definition, synonyms, grouped xrefs, parents/children, obsolescence. |
-
-### Hierarchy
-
-| Tool | Signature |
-|------|-----------|
-| `get_term_ancestors` | `get_term_ancestors(term, limit=, response_mode=)` — transitive `is_a` ancestors. |
-| `get_term_descendants` | `get_term_descendants(term, limit=, response_mode=)` — transitive `is_a` descendants. |
-| `get_term_parents` | `get_term_parents(term, response_mode=)` — direct `is_a` parents. |
-| `get_term_children` | `get_term_children(term, response_mode=)` — direct `is_a` children. |
-
-### Cross-ontology mapping
-
-| Tool | Signature |
-|------|-----------|
-| `resolve_xref` | `resolve_xref(xref_id, limit=, response_mode=)` — external CURIE → HP ids, ranked by predicate. |
-| `map_cross_ontology` | `map_cross_ontology(term, prefixes=, response_mode=)` — an HP term → mappings grouped by prefix. |
-
-### Gene ↔ Phenotype ↔ Disease associations (HPOA)
-
-| Tool | Signature |
-|------|-----------|
-| `get_phenotypes_for_gene` | `get_phenotypes_for_gene(gene, response_mode=)` — HPO terms annotated to a gene. |
-| `get_genes_for_phenotype` | `get_genes_for_phenotype(term, response_mode=)` — genes annotated to an HPO term. |
-| `get_phenotypes_for_disease` | `get_phenotypes_for_disease(disease_id, response_mode=)` — HPO terms annotated to a disease. |
-| `get_diseases_for_phenotype` | `get_diseases_for_phenotype(term, response_mode=)` — diseases annotated to an HPO term. |
-| `get_genes_for_disease` | `get_genes_for_disease(disease_id, response_mode=)` — genes associated with a disease. |
-| `get_diseases_for_gene` | `get_diseases_for_gene(gene, response_mode=)` — diseases associated with a gene. |
-
-Every response carries `_meta.next_commands` (ready-to-call follow-ups). Ids are
-normalised to `HP:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard |
-full` (default `compact`).
-
-Tools are **unprefixed** here (`serverInfo.name` = `hpo-link`); the GeneFoundry
-router applies the canonical gateway **namespace token** `hpo` at mount time.
-
-## Quickstart
+Hosted — no install:
 
 ```bash
-uv sync --group dev           # install dependencies
-uv run hpo-link-data build    # download HPO (OBO + HPOA) and build the local database
-uv run hpo-link-data status   # print the loaded HPO release + counts
-uv run hpo-link-mcp           # stdio MCP server (for Claude Desktop)
-uv run hpo-link               # unified REST + MCP server on http://127.0.0.1:8000
+claude mcp add --transport http hpo-link https://hpo-link.genefoundry.org/mcp
 ```
 
-Or via `make`:
+Local (Python 3.12+, [uv](https://github.com/astral-sh/uv)):
 
 ```bash
-make install        # uv sync --group dev
-make data           # build the local HPO database
-make data-status    # print loaded release + counts
-make dev            # unified REST + MCP server
-make mcp-serve      # stdio MCP server
+uv sync --group dev   # install
+make data             # REQUIRED: download HPO + HPOA and build the local database
+make data-status      # loaded HPO release + counts
+make dev              # unified REST + MCP on http://127.0.0.1:8000 (/mcp, /health)
 ```
 
-## MCP client setup
-
-HTTP (unified server exposes `/mcp` alongside `/health`):
+There is no data until `make data` (`uv run hpo-link-data build`) has run once.
 
 ```bash
 claude mcp add --transport http hpo-link --scope user http://127.0.0.1:8000/mcp
+make mcp-serve        # stdio instead, for Claude Desktop (stdout is the protocol)
 ```
 
-stdio (Claude Desktop and similar):
+Three console scripts: `hpo-link` (unified server), `hpo-link-mcp` (stdio),
+`hpo-link-data` (`build` / `refresh` / `status`).
 
-```bash
-make mcp-serve      # runs mcp_server.py on stdio (stdout is reserved for the protocol)
-```
+## Tools
 
-## HTTP boundary configuration
+| Tool | Purpose |
+|------|---------|
+| `get_server_capabilities` | Discovery surface — tools, workflows, error taxonomy, limits |
+| `get_diagnostics` | Database status, loaded HPO release, counts |
+| `resolve_term` | Label, synonym, HP id or xref → one canonical term + `match_type` |
+| `search_terms` | Full-text search over names, synonyms and definitions |
+| `get_term` | The record — definition, synonyms, grouped xrefs, parents/children, obsolescence |
+| `get_term_ancestors` | Transitive `is_a` ancestors |
+| `get_term_descendants` | Transitive `is_a` descendants — a phenotype and all its subtypes |
+| `get_term_parents` | Direct `is_a` parents |
+| `get_term_children` | Direct `is_a` children |
+| `resolve_xref` | External CURIE (`UMLS:`, `SNOMEDCT_US:`, `ORPHA:`, …) → HP ids, ranked by predicate |
+| `map_cross_ontology` | An HP term → its mappings, grouped by target prefix |
+| `get_phenotypes_for_gene` | HPO terms annotated to a gene |
+| `get_genes_for_phenotype` | Genes annotated to an HPO term |
+| `get_phenotypes_for_disease` | HPO terms annotated to a disease |
+| `get_diseases_for_phenotype` | Diseases annotated to an HPO term |
+| `get_genes_for_disease` | Genes associated with a disease |
+| `get_diseases_for_gene` | Diseases associated with a gene |
 
-`HPO_LINK_ALLOWED_HOSTS` is a JSON list of exact Host values and defaults to
-`["localhost","127.0.0.1","::1"]`; production Compose also permits
-`hpo-link.genefoundry.org`. Write IPv6 entries bare, without brackets. Wildcard
-patterns are rejected. `HPO_LINK_ALLOWED_ORIGINS` defaults to `[]` and is the
-browser-origin admission gate: include every origin that `HPO_LINK_CORS_ORIGINS`
-is intended to serve. Requests without an Origin header remain valid.
+Every response carries `_meta.next_commands` (ready-to-call follow-ups). Ids are
+normalised to `HP:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard | full`
+(default `compact`) trades detail for tokens. Worked examples: [docs/usage.md](docs/usage.md).
 
-## Data provenance
+Leaf names are **unprefixed** per
+[Tool-Naming Standard v1](https://github.com/berntpopp/genefoundry-router/blob/main/docs/TOOL-NAMING-STANDARD-v1.md)
+(`serverInfo.name` = `hpo-link`); behind
+[genefoundry-router](https://github.com/berntpopp/genefoundry-router) the gateway applies
+the canonical namespace token `hpo`, so they surface as `hpo_<tool>` — e.g.
+`hpo_resolve_term`.
 
-The database is built from:
+## Data & provenance
 
-- **HPO ontology** (`hp.json`) — downloaded from the HPO GitHub releases via
-  the OBO PURL (`http://purl.obolibrary.org/obo/hp.json`). Contains ~19,800
-  active phenotype terms (HPO v2026-06-06). Fetched via conditional GET
-  (ETag / Last-Modified); a `304` reuses the local file.
-- **HPOA annotations** (`phenotype.hpoa`) — the HPO phenotype-to-disease
-  annotation file linking HPO terms to OMIM/Orphanet/DECIPHER diseases, and
-  gene associations derived from those annotations.
+Built from two upstream artifacts: the **HPO ontology** (`hp.json`, via the OBO PURL
+`http://purl.obolibrary.org/obo/hp.json`) and the **HPOA annotations**
+(`phenotype.hpoa`), which link HPO terms to OMIM / Orphanet / DECIPHER diseases and,
+derived from those, to genes.
 
-The build is atomic (temp file + `os.replace`) under a lock, and records
-provenance in a `meta` table (HPO release version, source validators, counts).
-`get_diagnostics` and `get_server_capabilities` report the loaded release.
+Refresh is a conditional GET (ETag / `Last-Modified`); a `304` reuses the local file, so
+`make data-refresh` is cheap and rebuilds only on a new release. Builds are atomic and
+lock-serialised, and the loaded release is reported by `get_diagnostics`. A prebuilt
+database can be pulled instead of built (`HPO_LINK_DATA__PREBUILT_DB_URL`). Details:
+[docs/data.md](docs/data.md).
 
-### Prebuilt artifact distribution
+**Data licence:** HPO is distributed under a custom licence for research and educational
+use (<https://hpo.jax.org/app/license>) — **attribution required**.
 
-To skip the build step, set `HPO_LINK_DATA__PREBUILT_DB_URL` to the URL of a
-prebuilt SQLite artifact (e.g., from a GitHub Release). The entrypoint will
-download and verify it before serving. If absent, the server builds from
-source automatically (`HPO_LINK_DATA__AUTO_BOOTSTRAP=true`).
+**Cite:** Köhler S, Gargano M, Matentzoglu N, et al. *The Human Phenotype Ontology in
+2021.* Nucleic Acids Research 2021;49(D1):D1207–D1217. doi:10.1093/nar/gkaa1043. For the
+most recent release cite instead: Gargano MA, Matentzoglu N, Coleman B, et al. *The Human
+Phenotype Ontology in 2024: phenotypes around the world.* Nucleic Acids Research
+2024;52(D1):D1333–D1346. doi:10.1093/nar/gkad1005.
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — the two planes, ingest pipeline, SQLite schema, request lifecycle.
-- [docs/usage.md](docs/usage.md) — per-tool examples and workflows.
-- [docs/deployment.md](docs/deployment.md) — Docker, environment variables, refresh.
-- [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) — contributor + agent guide.
+- [Usage](docs/usage.md) — per-tool examples, the citation contract, typical workflows.
+- [Architecture](docs/architecture.md) — the two planes, ingest pipeline, SQLite schema, request lifecycle.
+- [Data & provenance](docs/data.md) — sources, freshness, build integrity, prebuilt artifacts, licence.
+- [Configuration](docs/configuration.md) — every `HPO_LINK_*` variable and the Host/Origin/CORS allowlists.
+- [Deployment](docs/deployment.md) — Docker, refresh scheduling, health and deploy verification.
+- [AGENTS.md](AGENTS.md) — engineering conventions, invariants, definition of done.
 
-## License & citation
+## Contributing
 
-**Code:** MIT.
+See [AGENTS.md](AGENTS.md) for the invariants and conventions. `make ci-local` is the
+definition-of-done gate: format, lint, line budget, README standard, mypy, and tests.
+Write the failing test first.
 
-**Data:** HPO is distributed under a custom license for research and educational
-use. See [https://hpo.jax.org/app/license](https://hpo.jax.org/app/license)
-for details. Attribution required.
+## License
 
-**Citation:** Köhler S, Gargano M, Matentzoglu N, et al. *The Human Phenotype
-Ontology in 2021.* Nucleic Acids Research 2021;49(D1):D1207–D1217.
-doi:10.1093/nar/gkaa1043.
-
-For the most recent release cite: Gargano MA, Matentzoglu N, Coleman B, et al.
-*The Human Phenotype Ontology in 2024: phenotypes around the world.*
-Nucleic Acids Research 2024;52(D1):D1333–D1346. doi:10.1093/nar/gkad1005.
-
-Research use only; not for diagnosis, treatment, triage, or patient management.
+[MIT](LICENSE) © Bernt Popp — code only. The HPO **data** is licensed separately for
+research and educational use with required attribution
+(<https://hpo.jax.org/app/license>); see [Data & provenance](#data--provenance).
