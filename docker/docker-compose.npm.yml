@@ -7,15 +7,15 @@
 # gtex-link / mgi-link fleet pattern. First boot builds the local HPO SQLite
 # database from the OBO release into the persisted data volume.
 #
-#   docker compose -f docker/docker-compose.npm.yml --env-file .env.docker up -d --build
+#   docker compose -f docker/docker-compose.npm.yml --env-file .env.docker up -d
 name: hpo-link-npm
 
 services:
   hpo_link:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: production
+    # Deploy pulls the released, attested image; it never builds from source.
+    # Pin a digest, not a tag: there is no `latest`, and only a digest is immutable.
+    image: ${HPO_LINK_IMAGE:?Set HPO_LINK_IMAGE to ghcr.io/berntpopp/hpo-link@sha256:<digest>}
+    pull_policy: missing
     container_name: hpo-link-npm
     # NO published host ports - NPM handles all routing via the container name.
     expose:

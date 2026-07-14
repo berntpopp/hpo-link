@@ -6,6 +6,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-07-14
+
+### Changed
+
+- **The NPM deployment pulls the released image instead of building from source.**
+  `docker/docker-compose.npm.yml` carried `build:`, so a deploy rebuilt the image on the
+  server even though CI had already published an attested, digest-addressable image to
+  GHCR. It now requires `HPO_LINK_IMAGE` pinned to a digest and fails closed when it is
+  unset. Nothing else in the overlay changed: `container_name`, the Compose project name,
+  the healthcheck (including the long first-boot `start_period`), networks and volumes are
+  all preserved, so the deployed topology and the persisted HPO SQLite database are
+  untouched.
+
 ## [0.3.5] - 2026-07-13
 
 ### Fixed
