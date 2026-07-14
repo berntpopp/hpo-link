@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [0.3.6] - 2026-07-14
 
 ### Changed
@@ -16,8 +18,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the healthcheck (including the long first-boot `start_period`), networks and volumes are
   all preserved, so the deployed topology and the persisted HPO SQLite database are
   untouched.
-
-## [Unreleased]
 
 ## [0.3.5] - 2026-07-13
 
