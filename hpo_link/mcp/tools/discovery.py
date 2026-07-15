@@ -14,8 +14,8 @@ from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.capabilities import collect_tool_signatures, project_capabilities
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import after_capabilities, cmd
-from hpo_link.mcp.schemas import CAPABILITIES_SCHEMA, DIAGNOSTICS_SCHEMA
 from hpo_link.mcp.service_adapters import get_hpo_service
+from hpo_link.mcp.tools._common import ToolReturn
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -94,7 +94,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         name="get_server_capabilities",
         title="Get Server Capabilities",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=CAPABILITIES_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"discovery"},
         description=(
             "Return the hpo-link discovery surface: identity/build/HPO release, "
@@ -110,7 +110,7 @@ def register_discovery_tools(mcp: FastMCP) -> None:
             Literal["summary", "full"],
             Field(description="summary (default, light) or full (adds policy notes)."),
         ] = "summary",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             signatures = await collect_tool_signatures(mcp)
             payload = project_capabilities(detail, signatures)
@@ -127,18 +127,18 @@ def register_discovery_tools(mcp: FastMCP) -> None:
         name="get_diagnostics",
         title="Get HPO Diagnostics",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=DIAGNOSTICS_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"discovery"},
         description=(
             "Report the local HPO index status: whether the data is built, the "
             "loaded HPO and HPOA release versions, term/obsolete/closure/xref/annotation "
             "counts, when it was built, and a runtime block (request/error counts and "
             "latency percentiles p50/p95/p99). Use this to confirm freshness or diagnose "
-            "a data_unavailable error. "
+            "an upstream_unavailable error (an unbuilt/unavailable local index). "
             "Signature: get_diagnostics()."
         ),
     )
-    async def get_diagnostics() -> dict[str, Any]:
+    async def get_diagnostics() -> ToolReturn:
         async def call() -> dict[str, Any]:
             svc = get_hpo_service()
             repo = svc._repo  # intentional introspection into private attr

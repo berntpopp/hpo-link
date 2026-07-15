@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
+from fastmcp.tools.tool import ToolResult
 from pydantic import Field
+
+#: Every tool body returns the success dict OR — via run_mcp_tool's error path — a
+#: ``ToolResult`` carrying the error envelope with ``isError: true`` (issue #28 D3).
+ToolReturn = dict[str, Any] | ToolResult
 
 ResponseMode = Annotated[
     Literal["minimal", "compact", "standard", "full"],

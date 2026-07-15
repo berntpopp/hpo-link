@@ -38,6 +38,8 @@ notice/citation/HPO-release provenance triad remains declared once in the
 
 from __future__ import annotations
 
+from fastmcp.tools.tool import ToolResult
+
 from hpo_link.exceptions import NotFoundError
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 
@@ -78,13 +80,14 @@ async def test_single_item_result_key_is_preserved() -> None:
     assert result["_meta"]["unsafe_for_clinical_use"] is True
 
 
-async def test_error_envelope_is_flat_not_a_bare_exception() -> None:
-    """An exception raised through the wrapper becomes a flat in-band envelope.
+async def test_error_envelope_is_flat_and_carries_iserror() -> None:
+    """An exception raised through the wrapper becomes a ToolResult(is_error=True).
 
-    Never a bare exception, and never a nested ``error: {code, message, ...}``
-    object -- the ratified v1 contract is the flat banner: top-level
-    ``error_code``/``retryable``/``recovery_action``, with no ``isError``
-    (that is an explicit v2/future concern, out of scope here).
+    The FLAT envelope (top-level ``error_code``/``retryable``/``recovery_action``, no
+    nested ``error: {}`` object) is preserved as ``structured_content``, AND the MCP
+    protocol ``isError`` flag is set (issue #28 D3): the two used to disagree — the
+    envelope said ``success: false`` while the wire said the call succeeded. The failure
+    is now a ``ToolResult``, never a bare dict (a dict cannot set ``isError``).
     """
 
     async def call() -> dict[str, object]:
@@ -96,18 +99,21 @@ async def test_error_envelope_is_flat_not_a_bare_exception() -> None:
         context=McpErrorContext(tool_name="get_term", arguments={"term": "HP:9999999"}),
     )
 
-    assert result["success"] is False
-    assert isinstance(result["error_code"], str) and result["error_code"]
-    assert isinstance(result["message"], str) and result["message"]
-    assert isinstance(result["retryable"], bool)
-    assert isinstance(result["recovery_action"], str) and result["recovery_action"]
-    # Flat, not nested: no strict-Rules "error" object anywhere in the payload.
-    assert "error" not in result
-    assert "isError" not in result
-    assert result["_meta"]["tool"] == "get_term"
+    assert isinstance(result, ToolResult)
+    assert result.is_error is True
+    env = result.structured_content
+    assert isinstance(env, dict)
+    assert env["success"] is False
+    assert isinstance(env["error_code"], str) and env["error_code"]
+    assert isinstance(env["message"], str) and env["message"]
+    assert isinstance(env["retryable"], bool)
+    assert isinstance(env["recovery_action"], str) and env["recovery_action"]
+    # Flat, not nested: no strict-Rules "error" object anywhere in the envelope.
+    assert "error" not in env
+    assert env["_meta"]["tool"] == "get_term"
     # Fleet disclaimer standardization (2026-07-03): every error _meta carries
     # unsafe_for_clinical_use too, not just the success path.
-    assert result["_meta"]["unsafe_for_clinical_use"] is True
+    assert env["_meta"]["unsafe_for_clinical_use"] is True
 
 
 async def test_minimal_response_mode_still_carries_unsafe_for_clinical_use() -> None:
@@ -137,5 +143,9 @@ async def test_minimal_response_mode_still_carries_unsafe_for_clinical_use() -> 
             tool_name="get_term", arguments={"term": "HP:9999999"}, response_mode="minimal"
         ),
     )
-    assert err_result["_meta"]["unsafe_for_clinical_use"] is True
-    assert "next_commands" not in err_result["_meta"]
+    assert isinstance(err_result, ToolResult)
+    assert err_result.is_error is True
+    err_env = err_result.structured_content
+    assert isinstance(err_env, dict)
+    assert err_env["_meta"]["unsafe_for_clinical_use"] is True
+    assert "next_commands" not in err_env["_meta"]

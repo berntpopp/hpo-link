@@ -14,14 +14,8 @@ from hpo_link.mcp.next_commands import (
     after_descendants,
     after_parents,
 )
-from hpo_link.mcp.schemas import (
-    ANCESTORS_SCHEMA,
-    CHILDREN_SCHEMA,
-    DESCENDANTS_SCHEMA,
-    PARENTS_SCHEMA,
-)
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import ResponseMode
+from hpo_link.mcp.tools._common import ResponseMode, ToolReturn
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -49,7 +43,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         name="get_term_ancestors",
         title="Get HPO Term Ancestors",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANCESTORS_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "hierarchy", "closure"},
         description=(
             "Return all transitive is_a ancestors (broader phenotype terms) of an HPO "
@@ -66,7 +60,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_ancestors(
                 hpo_id, limit=limit, offset=offset, response_mode=response_mode
@@ -88,7 +82,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         name="get_term_descendants",
         title="Get HPO Term Descendants",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=DESCENDANTS_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "hierarchy", "closure"},
         description=(
             "Return all transitive is_a descendants (more specific phenotype terms) of an "
@@ -105,7 +99,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         limit: _ClosureLimit = 50,
         offset: _ClosureOffset = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_descendants(
                 hpo_id, limit=limit, offset=offset, response_mode=response_mode
@@ -127,7 +121,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         name="get_term_parents",
         title="Get HPO Term Parents",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=PARENTS_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "hierarchy"},
         description=(
             "Return the direct is_a parents (immediate broader phenotype terms) of an HPO "
@@ -137,7 +131,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
     )
     async def get_term_parents(
         hpo_id: HpoIdStr, response_mode: ResponseMode = "compact"
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_parents(hpo_id, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_parents(payload)
@@ -157,7 +151,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
         name="get_term_children",
         title="Get HPO Term Children",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=CHILDREN_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "hierarchy"},
         description=(
             "Return the direct is_a children (immediate more-specific phenotype terms) of "
@@ -167,7 +161,7 @@ def register_hierarchy_tools(mcp: FastMCP) -> None:
     )
     async def get_term_children(
         hpo_id: HpoIdStr, response_mode: ResponseMode = "compact"
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().term_children(hpo_id, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_children(payload)

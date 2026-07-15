@@ -18,6 +18,28 @@ from hpo_link.exceptions import DataUnavailableError
 
 _FTS_TOKEN_RE = re.compile(r"[^\s\"]+")
 
+#: The label types whose text, when it equals the query verbatim, marks a term as an
+#: EXACT match. issue #28 D1: BM25 doc-length normalisation buries a term with many
+#: synonyms + a long definition (e.g. HP:0001250 "Seizure") below its shorter, more
+#: specific children — so an exact primary-label / exact-synonym hit is boosted to the
+#: top of the ranking (still relevance-ordered within each tier) rather than left to
+#: sink. Related/broad/narrow synonyms are deliberately NOT boosted (they are not an
+#: exact identity match).
+_EXACT_LABEL_TYPES = ("primary", "exact_synonym")
+
+
+def _exact_boost_sql(id_col: str) -> str:
+    """A ``1|0`` SQL expression: does ``id_col`` have an EXACT label equal to the query?
+
+    Binds ONE parameter (the uppercased query, matched against ``term_lookup.lookup_label``,
+    which the builder stores uppercased). Placed first in ``ORDER BY`` so exact matches sort
+    ahead of partial ones.
+    """
+    return (
+        f"EXISTS (SELECT 1 FROM term_lookup tl WHERE tl.hpo_id = {id_col} "  # noqa: S608
+        "AND tl.lookup_label = ? AND tl.label_type IN ('primary', 'exact_synonym'))"
+    )
+
 
 class HpoRepository(AnnotationsMixin):
     """Read-only access to the built HPO SQLite index."""
@@ -113,13 +135,18 @@ class HpoRepository(AnnotationsMixin):
     ) -> tuple[list[dict[str, Any]], int]:
         """Full-text search over name/synonyms/definition; returns ``(rows, total)``."""
         match = self._fts_query(query)
+        exact_label = (query or "").strip().upper()
         where = "term_fts MATCH ?"
         if not include_obsolete:
             where += " AND t.is_obsolete = 0"
+        # Exact primary-label / exact-synonym matches sort ahead of partial ones (D1); within
+        # each tier the bm25 relevance order is preserved. The boost subquery's `?` is bound
+        # FIRST (it appears in the SELECT, before the WHERE MATCH `?`).
         sql = (
-            "SELECT f.hpo_id, t.name, t.definition, bm25(term_fts) AS score "  # noqa: S608
+            f"SELECT f.hpo_id, t.name, t.definition, bm25(term_fts) AS score, "  # noqa: S608
+            f"{_exact_boost_sql('f.hpo_id')} AS exact_boost "
             "FROM term_fts f JOIN term t ON t.hpo_id = f.hpo_id "
-            f"WHERE {where} ORDER BY score LIMIT ? OFFSET ?"
+            f"WHERE {where} ORDER BY exact_boost DESC, score LIMIT ? OFFSET ?"
         )
         count_sql = (
             "SELECT COUNT(*) AS n FROM term_fts f "  # noqa: S608
@@ -127,7 +154,7 @@ class HpoRepository(AnnotationsMixin):
             f"WHERE {where}"
         )
         try:
-            rows = self._conn.execute(sql, (match, limit, offset)).fetchall()
+            rows = self._conn.execute(sql, (exact_label, match, limit, offset)).fetchall()
             total = int(self._conn.execute(count_sql, (match,)).fetchone()["n"])
         except sqlite3.Error:
             return self._search_like(
@@ -149,13 +176,17 @@ class HpoRepository(AnnotationsMixin):
     ) -> tuple[list[dict[str, Any]], int]:
         """``LIKE`` fallback for pathological FTS input."""
         pattern = "%" + query.upper().replace("%", "").replace("_", "") + "%"
+        exact_label = (query or "").strip().upper()
         where = "name_upper LIKE ?"
         if not include_obsolete:
             where += " AND is_obsolete = 0"
+        # Same exact-match boost as the FTS path (D1): the boost `?` is bound first (SELECT),
+        # then the LIKE pattern (WHERE). Keeps the two search paths consistent.
         rows = self._conn.execute(
-            f"SELECT hpo_id, name, definition FROM term WHERE {where} "  # noqa: S608
-            "ORDER BY name LIMIT ? OFFSET ?",
-            (pattern, limit, offset),
+            f"SELECT hpo_id, name, definition, {_exact_boost_sql('term.hpo_id')} "  # noqa: S608
+            f"AS exact_boost FROM term WHERE {where} "
+            "ORDER BY exact_boost DESC, name LIMIT ? OFFSET ?",
+            (exact_label, pattern, limit, offset),
         ).fetchall()
         total = int(
             self._conn.execute(

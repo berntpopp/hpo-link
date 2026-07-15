@@ -49,8 +49,8 @@ HPO_USAGE_NOTES = (
 )
 
 HPO_REFERENCE_NOTES = (
-    "Error codes (7): invalid_input, not_found, ambiguous_query, data_unavailable, "
-    "rate_limited, upstream_unavailable, internal_error. match_type on "
+    "Error codes (6): invalid_input, not_found, ambiguous_query, "
+    "upstream_unavailable, rate_limited, internal. match_type on "
     "resolve_term is one of hpo_id | primary | exact_synonym | "
     "related_synonym | xref (strongest first). First-class xref prefixes: UMLS, "
     "SNOMEDCT_US, NCIT, MEDDRA, ICD-10, ICD-9, ORPHA, MONDO, DOID, EFO, MSH, "

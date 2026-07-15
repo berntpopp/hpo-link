@@ -26,16 +26,15 @@ from hpo_link.services.shaping import DEFAULT_RESPONSE_MODE, RESPONSE_MODES
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-#: Error taxonomy surfaced by every tool (see hpo_link.mcp.envelope).
+#: Error taxonomy surfaced by every tool — the CLOSED Response-Envelope Standard v1 enum
+#: (see hpo_link.mcp.envelope.ErrorCode). Must stay in lock-step with that enum.
 ERROR_CODES: list[str] = [
     "invalid_input",
     "not_found",
     "ambiguous_query",
-    "data_unavailable",
-    "rate_limited",
     "upstream_unavailable",
-    "limit_exceeded",
-    "internal_error",
+    "rate_limited",
+    "internal",
 ]
 
 #: Frozen tool surface. capabilities.TOOLS must equal the registered tool set.
@@ -242,10 +241,11 @@ def build_capabilities() -> dict[str, Any]:
             "term -> map_cross_ontology (HPO -> UMLS/SNOMED/NCIT/...)",
         ],
         "not_found_contract": (
-            "An id/label/xref with no term returns error_code 'not_found'. An "
-            "ambiguous label returns 'ambiguous_query' with candidates and "
-            "next_commands to each candidate. An obsolete HP id returns "
-            "'not_found' with replaced_by successors and next_commands to them."
+            "An id/label/xref with no term returns error_code 'not_found' (with "
+            "close-match candidates, each {hpo_id, name}, when available). An "
+            "ambiguous label returns 'ambiguous_query' with candidates (each "
+            "{hpo_id, name}) and next_commands to each. An obsolete HP id RESOLVES "
+            "(success:true) with obsolete:true and its successor in replaced_by."
         ),
         "absent_entity_contract": (
             "Malformed identifier → invalid_input (with field). A well-formed but "

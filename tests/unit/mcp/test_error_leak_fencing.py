@@ -108,7 +108,6 @@ _PROSE_MARKERS = (
     FAKE_DB_PATH,
     "/srv/secret",
     "disk I/O",
-    "Seizure",  # a candidate NAME (external free-text) must never be echoed in an error
 )
 
 
@@ -152,7 +151,13 @@ async def test_notfound_message_severed_and_codepoints_stripped() -> None:
 
 
 async def test_ambiguous_message_severed_and_candidate_name_scrubbed() -> None:
-    """AmbiguousQueryError: message fixed; a hostile candidate NAME is code-point-scrubbed."""
+    """AmbiguousQueryError: message fixed; the candidate NAME is CARRIED but code-point-scrubbed.
+
+    issue #28 D2: the candidate ``name`` is a TRUSTED, DB-sourced label (the same source
+    every other tool surfaces ``name`` from), so it is carried — an agent needs it to
+    disambiguate without N extra get_term calls. It is still code-point-scrubbed, so the
+    hostile control characters injected here are stripped while the plain label survives.
+    """
     exc = AmbiguousQueryError(
         HOSTILE_MSG,
         candidates=[{"hpo_id": "HP:0000001", "name": f"Seizure{HOSTILE_CPS}"}],
@@ -164,9 +169,8 @@ async def test_ambiguous_message_severed_and_candidate_name_scrubbed() -> None:
         assert payload["error_code"] == "ambiguous_query"
         assert payload["message"] == "The query matched multiple HPO terms; see candidates."
         _assert_prose_absent(payload["message"])
-        # candidates are rebuilt from the validated HP id ONLY — the free-text `name`
-        # (external prose) is dropped, not merely code-point-scrubbed.
-        assert payload["candidates"] == [{"hpo_id": "HP:0000001"}]
+        # the trusted DB label is carried; the injected control code points are stripped.
+        assert payload["candidates"] == [{"hpo_id": "HP:0000001", "name": "Seizure"}]
         _assert_no_prose_or_codepoints(payload)
 
 
@@ -176,7 +180,7 @@ async def test_data_unavailable_path_severed_to_fixed_message() -> None:
     result = await mcp.call_tool("resolve_term", {"query": "seizure"})
 
     for payload in _both_mirrors(result):
-        assert payload["error_code"] == "data_unavailable"
+        assert payload["error_code"] == "upstream_unavailable"
         assert payload["message"] == "The local HPO database is unavailable."
         _assert_prose_absent(payload["message"])
         _assert_no_forbidden_codepoints(payload)
@@ -189,7 +193,7 @@ async def test_get_diagnostics_db_path_error_is_severed() -> None:
 
     for payload in _both_mirrors(result):
         assert payload["success"] is False
-        assert payload["error_code"] == "data_unavailable"
+        assert payload["error_code"] == "upstream_unavailable"
         assert payload["message"] == "The local HPO database is unavailable."
         _assert_prose_absent(payload["message"])
         _assert_no_forbidden_codepoints(payload)
@@ -236,13 +240,13 @@ async def test_invalid_input_message_severed_not_echoed() -> None:
         _assert_no_forbidden_codepoints(payload)
 
 
-async def test_generic_exception_maps_to_fixed_internal_error() -> None:
-    """A generic (transport-shaped) exception → fixed internal_error, no str(exc) leak."""
+async def test_generic_exception_maps_to_fixed_internal_code() -> None:
+    """A generic (transport-shaped) exception -> fixed `internal`, no str(exc) leak."""
     mcp = _make_mcp(_RaisingService(RuntimeError(f"boom {HOSTILE_PROSE}{HOSTILE_CPS}")))
     result = await mcp.call_tool("resolve_term", {"query": "seizure"})
 
     for payload in _both_mirrors(result):
-        assert payload["error_code"] == "internal_error"
+        assert payload["error_code"] == "internal"
         assert payload["message"] == "An internal error occurred. The request was not completed."
         assert "boom" not in payload["message"]
         _assert_prose_absent(payload["message"])

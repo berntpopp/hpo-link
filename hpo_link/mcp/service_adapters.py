@@ -2,7 +2,7 @@
 
 The repository is opened against the already-built SQLite index. If the index
 is not present yet, services are built without a repository — tools then return
-``data_unavailable``. hpo-link has no live API, so there is no fallback client.
+``upstream_unavailable``. hpo-link has no live API, so there is no fallback client.
 """
 
 from __future__ import annotations

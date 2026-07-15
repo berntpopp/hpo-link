@@ -10,6 +10,20 @@ from hpo_link.exceptions import InvalidInputError
 _HP_RE = re.compile(r"(?:HP[:_])?0*(\d{1,7})$", re.IGNORECASE)
 _IRI_RE = re.compile(r"HP[_:](\d{7})$", re.IGNORECASE)
 
+# Recovery data surfaced on the invalid_input envelope (issue #28 D4: the disease_id/gene
+# validators named the field but not what a valid value looks like, unlike the exemplary
+# limit error). The classifier severs the message (it can interpolate the rejected value),
+# so `allowed_values` + `hint` — both server-authored — carry the actionable guidance.
+_DISEASE_ID_ALLOWED = ["OMIM:<mim>", "ORPHA:<id>"]
+_DISEASE_ID_HINT = (
+    "disease_id is a CURIE PREFIX:body, e.g. OMIM:106210 or ORPHA:550 "
+    "(the prefix is case-sensitive)."
+)
+_GENE_ALLOWED = ["<symbol> e.g. PAX6", "NCBIGene:<id> e.g. NCBIGene:5080", "<numeric id> e.g. 5080"]
+_GENE_HINT = (
+    "gene is a symbol (PAX6), an NCBIGene CURIE (NCBIGene:5080), or a bare numeric NCBI id (5080)."
+)
+
 
 def normalize_hpo_id(raw: str | None) -> str | None:
     if not raw:
@@ -61,22 +75,30 @@ def validate_disease_id(raw: str) -> str:
         raise InvalidInputError(
             "disease_id must be a non-empty CURIE (e.g. OMIM:106210).",
             field="disease_id",
+            allowed=_DISEASE_ID_ALLOWED,
+            hint=_DISEASE_ID_HINT,
         )
     if ":" not in s:
         raise InvalidInputError(
             f"disease_id {s!r} is not a valid CURIE — expected PREFIX:body (e.g. OMIM:106210).",
             field="disease_id",
+            allowed=_DISEASE_ID_ALLOWED,
+            hint=_DISEASE_ID_HINT,
         )
     prefix, body = s.split(":", 1)
     if not prefix:
         raise InvalidInputError(
             f"disease_id {s!r} has an empty prefix — expected PREFIX:body (e.g. OMIM:106210).",
             field="disease_id",
+            allowed=_DISEASE_ID_ALLOWED,
+            hint=_DISEASE_ID_HINT,
         )
     if not body:
         raise InvalidInputError(
             f"disease_id {s!r} has an empty body — expected PREFIX:body (e.g. OMIM:106210).",
             field="disease_id",
+            allowed=_DISEASE_ID_ALLOWED,
+            hint=_DISEASE_ID_HINT,
         )
     return f"{prefix.upper()}:{body}"
 
@@ -96,6 +118,8 @@ def validate_gene(raw: str) -> tuple[str, str]:
         raise InvalidInputError(
             "gene must be a non-empty gene symbol or NCBI id (e.g. PAX6 or NCBIGene:5080).",
             field="gene",
+            allowed=_GENE_ALLOWED,
+            hint=_GENE_HINT,
         )
     if ":" in s:
         prefix, body = s.split(":", 1)
@@ -104,11 +128,15 @@ def validate_gene(raw: str) -> tuple[str, str]:
                 f"gene CURIE prefix {prefix!r} is not supported; use NCBIGene:NNNN, "
                 "a bare symbol, or a bare numeric NCBI id.",
                 field="gene",
+                allowed=_GENE_ALLOWED,
+                hint=_GENE_HINT,
             )
         if not body or not body.isdigit():
             raise InvalidInputError(
                 f"NCBIGene CURIE body {body!r} must be all digits (e.g. NCBIGene:5080).",
                 field="gene",
+                allowed=_GENE_ALLOWED,
+                hint=_GENE_HINT,
             )
         return ("ncbi", body)
     # bare symbol or bare numeric id

@@ -22,18 +22,46 @@ jobs:
       - run: uv sync --group dev
       - name: Build & start server
         run: make docker-build && make docker-up
-      - name: Wait for health
+      - name: Wait for health + MCP readiness
         run: |
-          for i in $(seq 1 30); do
-            curl -fsS "http://127.0.0.1:${MCP_PORT}/health" && break || sleep 2
+          # NB: GitHub runs `run:` under `bash -e`. `code=$(curl ...)` takes curl's exit status,
+          # and curl exits 7 on connection-refused -- so WITHOUT the `|| echo 000` below, the very
+          # first poll against a not-yet-listening port kills the step. A poll loop that cannot
+          # poll. Keep the `|| echo 000`.
+          for i in $(seq 1 60); do
+            curl -fsS "http://127.0.0.1:${MCP_PORT}/health" >/dev/null 2>&1 && break
+            sleep 2
           done
+          # /health (the REST app) comes up before the MCP sub-app finishes binding; wait for /mcp
+          # too, so the probe's first POST does not race a not-yet-ready endpoint.
+          ready=""
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${MCP_PORT}/mcp" \
+              -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+              -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"wait","version":"0"}}}' \
+              || echo 000)
+            if [ "$code" = "200" ]; then ready=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ready" ]; then
+            echo "::error::/mcp never returned 200 within 120s (last code: ${code})"
+            docker compose -f docker/docker-compose.yml logs --no-color --tail=100 || true
+            exit 1
+          fi
       - name: Run conformance probe
         env:
           CONFORMANCE_MCP_URL: http://127.0.0.1:${{ env.MCP_PORT }}
         run: uv run pytest tests/conformance/test_transport_v1.py -v
+      - name: Run behaviour probe
+        # Behaviour Conformance v1 — the three recurring contract bugs (silent-empty filter,
+        # lying total/truncated, error an LLM cannot act on). Every probe is derived from this
+        # server's own advertised schema; there is no per-repo probe list to maintain.
+        env:
+          CONFORMANCE_MCP_URL: http://127.0.0.1:${{ env.MCP_PORT }}
+        run: uv run pytest tests/conformance/test_behaviour_v1.py -v
       - name: Logs on failure
         if: failure()
-        run: make docker-logs || docker compose -f docker/docker-compose.yml logs
+        run: docker compose -f docker/docker-compose.yml logs --no-color --tail=200 || true
       - name: Teardown
         if: always()
         run: make docker-down || true

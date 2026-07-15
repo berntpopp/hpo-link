@@ -8,14 +8,17 @@ message.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, Literal, cast
 
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 from pydantic import ValidationError as PydanticValidationError
 
 from hpo_link.exceptions import (
@@ -41,7 +44,29 @@ logger = logging.getLogger(__name__)
 # elapsed_ms] -- those three are tiered by response_mode (see _shape_meta). Static
 # provenance (research-use restriction, citation, HPO release) otherwise lives ONLY
 # in get_server_capabilities.
-_RETRYABLE = {"rate_limited", "upstream_unavailable", "data_unavailable"}
+#: The CLOSED error_code enum (Response-Envelope Standard v1, "harmonized with codes
+#: already used in the fleet"). Nothing outside this set may reach the wire — a
+#: ``McpToolError`` carrying an off-contract code is severed to ``internal`` at
+#: classification, because a type annotation is not enforced by the interpreter.
+ErrorCode = Literal[
+    "invalid_input",
+    "not_found",
+    "ambiguous_query",
+    "upstream_unavailable",
+    "rate_limited",
+    "internal",
+]
+_ERROR_CODES: frozenset[str] = frozenset(
+    {
+        "invalid_input",
+        "not_found",
+        "ambiguous_query",
+        "upstream_unavailable",
+        "rate_limited",
+        "internal",
+    }
+)
+_RETRYABLE = {"rate_limited", "upstream_unavailable"}
 
 #: Emitted on every ``_meta`` block (success and error, all response_modes) per the
 #: fleet-wide Response-Envelope Standard v1 disclaimer decision (2026-07-03).
@@ -62,10 +87,10 @@ class McpErrorContext:
 class McpToolError(Exception):
     """Raised inside a tool body to emit a specific error code/message."""
 
-    def __init__(self, *, error_code: str, message: str) -> None:
-        """Store an error code and client-safe message."""
+    def __init__(self, *, error_code: ErrorCode, message: str) -> None:
+        """Store an error code (closed enum) and client-safe message."""
         super().__init__(message)
-        self.error_code = error_code
+        self.error_code: str = error_code
         self.message = message
 
 
@@ -93,12 +118,17 @@ _PUBLIC_ERROR_MESSAGE: dict[str, str] = {
     "invalid_input": "The request contained an invalid argument; see field.",
     "not_found": "No matching HPO term was found.",
     "ambiguous_query": "The query matched multiple HPO terms; see candidates.",
-    "data_unavailable": "The local HPO database is unavailable.",
     "rate_limited": "Upstream rate limit hit. Retry shortly.",
     "upstream_unavailable": "The upstream is temporarily unavailable.",
-    "obsolete_term": "The requested HPO term is obsolete; see replaced_by.",
-    "internal_error": "An internal error occurred. The request was not completed.",
+    "internal": "An internal error occurred. The request was not completed.",
 }
+
+#: Classified messages reused across the closed enum (not error_code keys). The local
+#: SQLite index being unavailable maps to ``upstream_unavailable`` (the closed-enum home
+#: for a temporarily-unreachable data source); the obsolete-term message maps to
+#: ``not_found`` (an obsolete id resolves to no live term).
+_DB_UNAVAILABLE_MESSAGE = "The local HPO database is unavailable."
+_OBSOLETE_MESSAGE = "The requested HPO term is obsolete; see replaced_by."
 
 #: A code-point-clean identifier/argument-name token (no whitespace or punctuation that
 #: could carry prose). Anything else is redacted rather than echoed.
@@ -112,10 +142,9 @@ _HP_ID_RE = re.compile(r"^HP:\d{7}$")
 def _valid_hp_ids(items: Any) -> list[dict[str, str]]:
     """Reduce candidate / suggestion / replacement rows to grammar-validated HP-id identity.
 
-    Caller-visible structured error fields are built ONLY from validated identifiers: each
-    row is rebuilt as ``{"hpo_id": ...}`` keeping only a canonical ``HP:\\d{7}`` id, and any
-    row whose id is free-text or non-conforming is DROPPED entirely — its external ``name``
-    prose (and any other free-text sibling) is never echoed into the error envelope.
+    Structured fields built ONLY from a validated identifier (e.g. the ``next_commands``
+    recovery steps): each row is rebuilt as ``{"hpo_id": ...}`` keeping only a canonical
+    ``HP:\\d{7}`` id, and any row whose id is free-text or non-conforming is DROPPED.
     """
     out: list[dict[str, str]] = []
     for item in items or []:
@@ -126,37 +155,29 @@ def _valid_hp_ids(items: Any) -> list[dict[str, str]]:
     return out
 
 
-def build_fixed_error_envelope(
-    *,
-    error_code: str,
-    message: str,
-    recovery_action: str,
-    tool: str = "unknown",
-    response_mode: str = DEFAULT_RESPONSE_MODE,
-) -> dict[str, Any]:
-    """A flat error envelope with a FIXED server-authored message and no caller echo.
+def _valid_candidates(items: Any) -> list[dict[str, str]]:
+    """Rebuild candidate/suggestion rows as grammar-validated ``{hpo_id, name}``.
 
-    Used for failures that never bind to a tool body (an unknown tool name, an unknown
-    resource URI) so the caller-supplied name/URI is never reflected. ``tool`` is a fixed
-    label, never the caller-supplied value.
+    Unlike :func:`_valid_hp_ids`, this CARRIES the term ``name``: a candidate label is a
+    TRUSTED provenance string from the local HPO index (the same curated source every
+    other tool surfaces ``name`` from — search hits, get_term, parents/children), not
+    caller- or upstream-derived free text. The audit (issue #28 D2) flagged that dropping
+    it forced an agent into N extra ``get_term`` round trips just to read the labels the
+    server already holds. The id is still grammar-gated (a non-conforming row is dropped),
+    and the ``name`` is code-point-scrubbed via :func:`sanitize_message` here AND again by
+    the whole-envelope backstop, so no forbidden code point can ride in on the label.
     """
-    meta: dict[str, Any] = {
-        "tool": tool,
-        "request_id": _request_id(),
-        "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
-        "next_commands": [cmd("get_server_capabilities")],
-    }
-    _stamp_capabilities_version(meta)
-    return _scrub_envelope(
-        {
-            "success": False,
-            "error_code": error_code,
-            "message": sanitize_message(message),
-            "retryable": error_code in _RETRYABLE,
-            "recovery_action": recovery_action,
-            "_meta": _shape_meta(meta, response_mode),
-        }
-    )
+    out: list[dict[str, str]] = []
+    for item in items or []:
+        if isinstance(item, dict):
+            hid = item.get("hpo_id")
+            if isinstance(hid, str) and _HP_ID_RE.match(hid):
+                row: dict[str, str] = {"hpo_id": hid}
+                name = item.get("name")
+                if isinstance(name, str) and name:
+                    row["name"] = sanitize_message(name)
+                out.append(row)
+    return out
 
 
 def _safe_message(exc: BaseException) -> str:
@@ -217,9 +238,13 @@ def _classify(exc: BaseException) -> tuple[str, str]:
     code-point backstop.
     """
     if isinstance(exc, McpToolError):
-        return exc.error_code, _safe_message(exc)
+        # error_code is set inside a tool body; re-check it at RUNTIME and sever anything
+        # outside the closed enum to ``internal`` — the ``ErrorCode`` annotation is not
+        # enforced by the interpreter, and this is the one branch that echoes its code.
+        code = exc.error_code if exc.error_code in _ERROR_CODES else "internal"
+        return code, _safe_message(exc)
     if isinstance(exc, WithdrawnEntryError):  # subclasses NotFoundError — check first
-        return "not_found", _PUBLIC_ERROR_MESSAGE["obsolete_term"]
+        return "not_found", _OBSOLETE_MESSAGE
     if isinstance(exc, NotFoundError):
         return "not_found", _PUBLIC_ERROR_MESSAGE["not_found"]
     if isinstance(exc, AmbiguousQueryError):
@@ -231,16 +256,20 @@ def _classify(exc: BaseException) -> tuple[str, str]:
         # server-authored structured ``field`` (and ``allowed_values``/``hint``) instead.
         return "invalid_input", _PUBLIC_ERROR_MESSAGE["invalid_input"]
     if isinstance(exc, DataUnavailableError):
-        # SEVER: the message can embed the local SQLite path + a raw sqlite str(exc).
-        return "data_unavailable", _PUBLIC_ERROR_MESSAGE["data_unavailable"]
+        # SEVER: the message can embed the local SQLite path + a raw sqlite str(exc). The
+        # local index being unavailable is a temporarily-unreachable data source →
+        # ``upstream_unavailable`` (the closed-enum home; ``data_unavailable`` is not in it).
+        return "upstream_unavailable", _DB_UNAVAILABLE_MESSAGE
     if isinstance(exc, RateLimitError):
         return "rate_limited", _PUBLIC_ERROR_MESSAGE["rate_limited"]
     if isinstance(exc, ServiceUnavailableError | DownloadError):
         return "upstream_unavailable", _PUBLIC_ERROR_MESSAGE["upstream_unavailable"]
     if isinstance(exc, UntrustedTextLimitError):
-        # A v1.1 untrusted-text ceiling was exceeded — a typed limit error whose message
-        # carries only server-authored ints (never a generic internal_error).
-        return "limit_exceeded", _safe_message(exc)
+        # A v1.1 untrusted-text ceiling was exceeded — a server-side response-size limit
+        # whose message carries only server-authored ints. The closed error_code enum has
+        # no bespoke limit code, so it maps to ``internal`` (still an explicit typed error,
+        # never silent omission).
+        return "internal", _safe_message(exc)
     if isinstance(exc, PydanticValidationError):
         first = exc.errors()[0]
         loc = ".".join(str(p) for p in first["loc"]) or "input"
@@ -248,7 +277,7 @@ def _classify(exc: BaseException) -> tuple[str, str]:
         # never caller input) and a redacted/sanitized field name; drop the pydantic
         # ``msg`` (it can echo the rejected input value).
         return "invalid_input", f"Invalid input for `{safe_field_name(loc)}`."
-    return "internal_error", _PUBLIC_ERROR_MESSAGE["internal_error"]
+    return "internal", _PUBLIC_ERROR_MESSAGE["internal"]
 
 
 def classify_exception(exc: BaseException) -> tuple[str, str]:
@@ -264,7 +293,7 @@ def classify_exception(exc: BaseException) -> tuple[str, str]:
 def _recovery_action(error_code: str) -> str:
     if error_code in _RETRYABLE:
         return "retry_backoff"
-    if error_code in {"invalid_input", "not_found", "ambiguous_query", "limit_exceeded"}:
+    if error_code in {"invalid_input", "not_found", "ambiguous_query"}:
         return "reformulate_input"
     return "switch_tool"
 
@@ -297,12 +326,12 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
             envelope["allowed_values"] = exc.allowed
         if exc.hint is not None:
             envelope["hint"] = exc.hint
-    # candidates/suggestions/replaced_by are rebuilt from grammar-validated HP ids only —
-    # a candidate's external free-text ``name`` is never echoed (it can carry injection
-    # prose that code-point stripping would leave intact), and next_commands chain only
-    # to validated ids.
+    # candidates/suggestions/replaced_by are rebuilt from grammar-validated HP ids AND
+    # carry the term ``name`` — a TRUSTED, DB-sourced label (see _valid_candidates), so the
+    # agent can disambiguate in one call instead of N extra get_term round trips (issue #28
+    # D2). next_commands still chain only to the validated id.
     if isinstance(exc, AmbiguousQueryError) and exc.candidates:
-        candidates = _valid_hp_ids(exc.candidates)
+        candidates = _valid_candidates(exc.candidates)
         if candidates:
             envelope["candidates"] = candidates
         envelope["_meta"]["next_commands"] = [
@@ -311,13 +340,13 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
         return envelope
     if isinstance(exc, WithdrawnEntryError):
         envelope["obsolete"] = True
-        replaced_by = _valid_hp_ids(exc.replaced_by)
+        replaced_by = _valid_candidates(exc.replaced_by)
         if replaced_by:
             envelope["replaced_by"] = replaced_by
         envelope["_meta"]["next_commands"] = withdrawn_recovery(replaced_by)
         return envelope
     if isinstance(exc, NotFoundError) and exc.suggestions:
-        candidates = _valid_hp_ids(exc.suggestions)
+        candidates = _valid_candidates(exc.suggestions)
         if candidates:
             envelope["candidates"] = candidates
         steps = [cmd("get_term", term=c["hpo_id"]) for c in candidates[:3]]
@@ -332,92 +361,6 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
             context.tool_name, error_code, context.arguments
         )
     return envelope
-
-
-def build_arg_error_envelope(
-    *,
-    tool_name: str,
-    loc: str,
-    error_type: str,
-    valid_params: list[str],
-    signature: str,
-    suggestion: str | None,
-    constraints: tuple[list[str], str] | None = None,
-    response_mode: str = DEFAULT_RESPONSE_MODE,
-    elapsed_ms: int = 0,
-) -> dict[str, Any]:
-    """Standard invalid-input envelope for an argument-binding failure.
-
-    When ``constraints`` is supplied the failure is an invalid *value* on a known
-    argument, so ``allowed_values`` carries the valid range/enum (not the list of
-    argument *names*) and the message states the constraint.
-
-    The offending argument NAME (``loc``) can be entirely caller-controlled (an unknown
-    keyword argument), so it is never echoed verbatim: a known parameter name is echoed
-    code-point-clean, an unknown one is redacted and ``field`` is omitted. The whole
-    envelope passes the recursive code-point backstop before return.
-    """
-    known = set(valid_params)
-    safe_loc = safe_field_name(loc, known)
-    loc_known = safe_loc != _REDACTED_FIELD
-    safe_suggestion = sanitize_message(suggestion) if suggestion else None
-    meta: dict[str, Any] = {
-        "tool": tool_name,
-        "request_id": _request_id(),
-        "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
-        "next_commands": [cmd("get_server_capabilities")],
-        "elapsed_ms": elapsed_ms,
-    }
-    _stamp_capabilities_version(meta)
-    shaped_meta = _shape_meta(meta, response_mode)
-    if constraints is not None:
-        # constraints are only computed for a KNOWN argument (see middleware), so echoing
-        # the sanitized name is safe; ``human`` is server-authored from the field schema.
-        allowed, human = constraints
-        message = f"Invalid value for argument `{safe_loc}` of {tool_name}: {human}."
-        return _scrub_envelope(
-            {
-                "success": False,
-                "error_code": "invalid_input",
-                "message": message[:280],
-                "retryable": False,
-                "recovery_action": "reformulate_input",
-                "field": safe_loc,
-                "allowed_values": allowed,
-                "hint": signature,
-                "_meta": shaped_meta,
-            }
-        )
-    if error_type in ("missing", "missing_argument"):
-        head = (
-            f"Missing required argument `{safe_loc}` for {tool_name}."
-            if loc_known
-            else f"A required argument for {tool_name} is missing."
-        )
-    elif error_type == "unexpected_keyword_argument":
-        # Never echo an unknown, caller-controlled argument name.
-        head = f"Unrecognized argument for {tool_name}."
-    else:
-        head = (
-            f"Invalid value for argument `{safe_loc}` of {tool_name}."
-            if loc_known
-            else f"Invalid argument value for {tool_name}."
-        )
-    dym = f" Did you mean `{safe_suggestion}`?" if safe_suggestion else ""
-    message = f"{head}{dym} Valid argument names are listed in allowed_values."
-    envelope: dict[str, Any] = {
-        "success": False,
-        "error_code": "invalid_input",
-        "message": message[:280],
-        "retryable": False,
-        "recovery_action": "reformulate_input",
-        "allowed_values": valid_params,
-        "hint": signature,
-        "_meta": shaped_meta,
-    }
-    if loc_known:
-        envelope["field"] = safe_loc
-    return _scrub_envelope(envelope)
 
 
 def _stamp_capabilities_version(meta: dict[str, Any]) -> None:
@@ -456,13 +399,41 @@ def _shape_meta(meta: dict[str, Any], response_mode: str) -> dict[str, Any]:
     return {k: v for k, v in meta.items() if k != "elapsed_ms"}
 
 
+def error_result(envelope: dict[str, Any]) -> ToolResult:
+    """Wrap an error envelope so it carries BOTH the structure and MCP's ``isError``.
+
+    Response-Envelope Standard v1: *"isError: true is REQUIRED so clients surface the
+    error to the model for self-correction."* A tool that RETURNS a dict can never set it
+    (fastmcp builds the ToolResult with ``is_error`` defaulted false), so every error
+    envelope this server returned was delivered as a SUCCESSFUL call carrying
+    ``success: false`` — a client branching on ``isError``, as the protocol tells it to,
+    saw nothing wrong (issue #28 D3, the fleet's most widespread protocol violation).
+
+    Raising instead is NOT the fix: FastMCP's raise path sets ``isError`` but discards
+    ``structuredContent``, throwing away the machine-readable envelope (error_code, field,
+    allowed_values, candidates, next_commands) the model needs to self-correct. Returning a
+    ``ToolResult`` is the only shape that gives us both. The TextContent mirror is kept in
+    step with ``structured_content`` so neither caller-visible surface disagrees.
+    """
+    return ToolResult(
+        structured_content=envelope,
+        content=[TextContent(type="text", text=json.dumps(envelope))],
+        is_error=True,
+    )
+
+
 async def run_mcp_tool(
     tool_name: str,
     call: Callable[[], Awaitable[dict[str, Any]]],
     *,
     context: McpErrorContext | None = None,
-) -> dict[str, Any]:
-    """Execute a tool body, returning the result dict or a structured error dict."""
+) -> dict[str, Any] | ToolResult:
+    """Execute a tool body.
+
+    Returns the result dict on success, or — on failure — a ``ToolResult`` carrying the
+    structured error envelope AND ``isError: true`` (never a bare dict, which cannot set
+    the protocol flag; never a raise, which would discard the envelope).
+    """
     ctx = context or McpErrorContext(tool_name=tool_name)
     start = time.perf_counter()
     try:
@@ -495,4 +466,5 @@ async def run_mcp_tool(
             envelope["error_code"],
             exc.__class__.__name__,
         )
-        return envelope
+        # Return a ToolResult (never a bare dict) so the error envelope carries isError:true.
+        return error_result(_scrub_envelope(envelope))
