@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
+from fastmcp.tools.tool import ToolResult
 from pydantic import Field
+
+#: Every tool body returns the success dict OR — via run_mcp_tool's error path — a
+#: ``ToolResult`` carrying the error envelope with ``isError: true`` (issue #28 D3).
+ToolReturn = dict[str, Any] | ToolResult
 
 ResponseMode = Annotated[
     Literal["minimal", "compact", "standard", "full"],
@@ -48,9 +53,10 @@ FieldsArg = Annotated[
     list[str] | None,
     Field(
         description=(
-            "Sparse fieldset: return ONLY these top-level keys (dot into a grouped "
-            "object, e.g. 'xrefs.UMLS'). Identity anchors (hpo_id, name, hpo_version) are "
-            "always included. Omit for the full payload."
+            "Sparse fieldset: return ONLY these top-level keys (for map_cross_ontology, dot "
+            "into the grouped object, e.g. 'mappings.UMLS'). Identity anchors (hpo_id, name, "
+            "hpo_version) are always included. An unrecognised field is rejected with "
+            "invalid_input. Omit for the full payload."
         ),
         examples=[["synonyms", "definition"], ["parents"]],
     ),

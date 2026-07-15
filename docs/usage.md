@@ -28,7 +28,8 @@ Call `get_server_capabilities` first in a cold session, or read the
 `hpo://capabilities` / `hpo://tools` resources. `get_diagnostics` reports the
 loaded `hpo_version` / `hpoa_version` and real row counts
 (`terms`, `obsolete`, `closure`, `xref`, `disease_phenotype`, `gene_phenotype`,
-`gene_disease`) so you can confirm freshness or diagnose a `data_unavailable`.
+`gene_disease`) so you can confirm freshness or diagnose an `upstream_unavailable`
+(an unbuilt/unavailable local index).
 
 ## Resolve a term
 

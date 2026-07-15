@@ -81,13 +81,13 @@ def test_snapshot_tracks_errors_by_code() -> None:
     metrics.reset()
 
 
-def test_record_failure_without_code_is_internal_error() -> None:
-    """A failure recorded without an explicit code is bucketed as internal_error."""
+def test_record_failure_without_code_is_internal() -> None:
+    """A failure recorded without an explicit code is bucketed as the closed-enum `internal`."""
     from hpo_link.mcp import metrics
 
     metrics.reset()
     metrics.record("x", 1, ok=False)
-    assert metrics.snapshot()["errors_by_code"] == {"internal_error": 1}
+    assert metrics.snapshot()["errors_by_code"] == {"internal": 1}
     metrics.reset()
 
 

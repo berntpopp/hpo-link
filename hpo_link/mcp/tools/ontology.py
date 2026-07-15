@@ -9,9 +9,8 @@ from pydantic import Field
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import after_get_term, after_resolve_term, after_search
-from hpo_link.mcp.schemas import RESOLVE_TERM_SCHEMA, SEARCH_SCHEMA, TERM_SCHEMA
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode
+from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode, ToolReturn
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -35,21 +34,19 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         name="resolve_term",
         title="Resolve HPO Term",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=RESOLVE_TERM_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "resolve"},
         description=(
             "Resolve a phenotype label, synonym, HP id (HP:0000118), or external "
             "cross-reference CURIE (UMLS:C0000737, SNOMEDCT_US:263681008, ...) to the "
             "canonical HPO term {hpo_id, name, match_type}. An ambiguous label returns "
-            "ambiguous_query with candidates; an obsolete HP id returns not_found with "
-            "its successor in replaced_by. This is the recommended first step — "
-            "resolve any query to a canonical HP id before calling get_term. "
-            "Signature: resolve_term(query, response_mode=)."
+            "ambiguous_query with candidates (each {hpo_id, name}); an obsolete HP id "
+            "resolves with success:true, obsolete:true, and its successor in replaced_by. "
+            "This is the recommended first step — resolve any query to a canonical HP id "
+            "before calling get_term. Signature: resolve_term(query, response_mode=)."
         ),
     )
-    async def resolve_term(
-        query: QueryStr, response_mode: ResponseMode = "compact"
-    ) -> dict[str, Any]:
+    async def resolve_term(query: QueryStr, response_mode: ResponseMode = "compact") -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().resolve_term(query, response_mode=response_mode)
             payload.setdefault("_meta", {})["next_commands"] = after_resolve_term(payload)
@@ -69,7 +66,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         name="search_terms",
         title="Search HPO Terms",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=SEARCH_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "search"},
         description=(
             "Full-text search over HPO phenotype term names, synonyms, and definitions "
@@ -92,7 +89,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             bool, Field(description="Include obsolete terms (default false).")
         ] = False,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().search_terms(
                 query,
@@ -118,7 +115,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         name="get_term",
         title="Get HPO Term",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=TERM_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo"},
         description=(
             "Return an HPO phenotype term record: definition, synonyms (exact/related/"
@@ -135,7 +132,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         hpo_id: HpoIdStr,
         response_mode: ResponseMode = "compact",
         fields: FieldsArg = None,
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().get_term(hpo_id, response_mode=response_mode, fields=fields)
             payload.setdefault("_meta", {})["next_commands"] = after_get_term(payload)

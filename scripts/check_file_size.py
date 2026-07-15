@@ -13,6 +13,9 @@ from pathlib import Path
 MAX_LINES = 500
 ROOTS = ("hpo_link", "tests")
 EXTRA_FILES = ("server.py", "mcp_server.py")
+#: Directories whose Python files are VENDORED byte-identical from the router repo
+#: (the shared MCP conformance/behaviour gate) and must not be split to fit the budget.
+EXEMPT_DIRS = ("tests/conformance",)
 
 
 def main() -> int:
@@ -24,6 +27,9 @@ def main() -> int:
         paths.extend((repo / root).rglob("*.py"))
     for path in paths:
         if not path.exists():
+            continue
+        rel_posix = path.relative_to(repo).as_posix()
+        if any(rel_posix.startswith(f"{d}/") for d in EXEMPT_DIRS):
             continue
         lines = path.read_text(encoding="utf-8").count("\n") + 1
         if lines > MAX_LINES:

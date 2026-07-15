@@ -1,13 +1,14 @@
 """next_commands coverage gate (assessment C.4 — Discoverability -> 10).
 
 The single best discoverability feature is the _meta.next_commands rail. This
-locks the invariant that EVERY error path — all 7 error codes — still hands the
-client a ready-to-call recovery step, so a failure never dead-ends.
+locks the invariant that EVERY error path — every code in the closed enum — still
+hands the client a ready-to-call recovery step, so a failure never dead-ends.
 """
 
 from __future__ import annotations
 
 import pytest
+from fastmcp.tools.tool import ToolResult
 
 from hpo_link.exceptions import (
     AmbiguousQueryError,
@@ -19,21 +20,25 @@ from hpo_link.exceptions import (
 )
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 
-# (expected_error_code, exception instance) — one per code in the 7-code taxonomy.
+# (id, expected_error_code, exception) — one row per closed-enum code, plus a second
+# exception that also maps onto upstream_unavailable (DataUnavailableError → the local
+# index being unavailable) to prove the remap.
 CASES = [
-    ("invalid_input", InvalidInputError("bad input", field="term")),
-    ("not_found", NotFoundError("no such term")),
-    ("ambiguous_query", AmbiguousQueryError("ambiguous")),
-    ("data_unavailable", DataUnavailableError("index not built")),
-    ("rate_limited", RateLimitError("slow down")),
-    ("upstream_unavailable", ServiceUnavailableError("upstream down")),
-    ("internal_error", RuntimeError("boom")),
+    ("invalid_input", "invalid_input", InvalidInputError("bad input", field="term")),
+    ("not_found", "not_found", NotFoundError("no such term")),
+    ("ambiguous_query", "ambiguous_query", AmbiguousQueryError("ambiguous")),
+    ("data_unavailable_remap", "upstream_unavailable", DataUnavailableError("index not built")),
+    ("rate_limited", "rate_limited", RateLimitError("slow down")),
+    ("upstream_unavailable", "upstream_unavailable", ServiceUnavailableError("upstream down")),
+    ("internal", "internal", RuntimeError("boom")),
 ]
 
 
-@pytest.mark.parametrize("expected_code,exc", CASES, ids=[c[0] for c in CASES])
+@pytest.mark.parametrize(
+    "expected_code,exc", [(c[1], c[2]) for c in CASES], ids=[c[0] for c in CASES]
+)
 async def test_every_error_code_populates_next_commands(expected_code: str, exc: Exception) -> None:
-    """Each of the 7 error codes returns a non-empty _meta.next_commands rail."""
+    """Each closed-enum error code returns a non-empty _meta.next_commands rail."""
 
     async def call() -> dict[str, object]:
         raise exc
@@ -43,9 +48,13 @@ async def test_every_error_code_populates_next_commands(expected_code: str, exc:
         call,
         context=McpErrorContext("resolve_term", arguments={"query": "kidney cyst"}),
     )
-    assert result["success"] is False
-    assert result["error_code"] == expected_code
-    steps = result["_meta"]["next_commands"]
+    assert isinstance(result, ToolResult)
+    assert result.is_error is True
+    env = result.structured_content
+    assert isinstance(env, dict)
+    assert env["success"] is False
+    assert env["error_code"] == expected_code
+    steps = env["_meta"]["next_commands"]
     assert steps, f"{expected_code} produced no next_commands"
     assert all("tool" in s for s in steps), f"{expected_code} step missing a tool"
 

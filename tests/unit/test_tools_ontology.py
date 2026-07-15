@@ -14,10 +14,20 @@ Fixture-world facts (from mini_hp.json):
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
+from fastmcp.tools.tool import ToolResult
 
 from hpo_link.mcp.service_adapters import reset_services, set_hpo_service
+
+
+def _err_env(result: Any) -> dict[str, Any]:
+    """An error result is now a ToolResult(is_error=True); read its flat envelope."""
+    assert isinstance(result, ToolResult)
+    assert result.is_error is True
+    assert isinstance(result.structured_content, dict)
+    return result.structured_content
 
 
 @pytest.fixture(autouse=True)
@@ -85,9 +95,10 @@ async def test_resolve_term_not_found(live_hpo_service) -> None:
         call,
         context=McpErrorContext("resolve_term", arguments={"query": "HP:9999999"}),
     )
-    assert result["success"] is False
-    assert result["error_code"] == "not_found"
-    assert "_meta" in result
+    env = _err_env(result)
+    assert env["success"] is False
+    assert env["error_code"] == "not_found"
+    assert "_meta" in env
 
 
 async def test_resolve_term_empty_query(live_hpo_service) -> None:
@@ -103,8 +114,9 @@ async def test_resolve_term_empty_query(live_hpo_service) -> None:
         call,
         context=McpErrorContext("resolve_term", arguments={"query": ""}),
     )
-    assert result["success"] is False
-    assert result["error_code"] == "invalid_input"
+    env = _err_env(result)
+    assert env["success"] is False
+    assert env["error_code"] == "invalid_input"
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 Cron is the recommended refresh mechanism (see docs/deployment.md), so the
 in-process scheduler is OFF by default. ``bootstrap_data`` builds the index on
 first start if absent — non-fatal: the server still starts and tools report
-``data_unavailable`` until the build lands.
+``upstream_unavailable`` until the build lands.
 
 The frozen ingest builder (``ensure_database`` / ``rebuild``) is imported lazily
 inside function bodies so this module stays importable (and the app boots) even
@@ -49,7 +49,7 @@ async def bootstrap_data(config: HPODataConfig, logger: Any) -> None:
         logger.info("hpo_data_ready", db=path.name)
     except Exception as exc:
         # Broad + non-fatal: any failure (BadGzipFile, UnicodeDecodeError, OSError, ...)
-        # leaves the server up with tools reporting data_unavailable. Log only the
+        # leaves the server up with tools reporting upstream_unavailable. Log only the
         # exception CLASS — str(exc) can carry a path / decoded upstream bytes.
         logger.warning("hpo_data_bootstrap_failed", error_type=type(exc).__name__)
 

@@ -11,6 +11,19 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+#: gene -> disease rows, LEFT JOINed to the disease label (issue #28 D3: the audit found
+#: get_diseases_for_gene returned bare disease CURIEs with no disease_name in any mode). The
+#: name lives in the HPOA-sourced disease_phenotype table keyed by database_id; a disease with
+#: no phenotype annotations resolves to a NULL name (dropped in compact, kept as null in
+#: standard/full). Only the WHERE clause differs between the symbol and ncbi lookups.
+_DISEASES_FOR_GENE_SELECT = (
+    "SELECT gd.ncbi_gene_id, gd.gene_symbol, gd.association_type, "
+    "gd.disease_id, dn.disease_name, gd.source "
+    "FROM gene_disease gd "
+    "LEFT JOIN (SELECT database_id, disease_name FROM disease_phenotype GROUP BY database_id) "
+    "dn ON dn.database_id = gd.disease_id "
+)
+
 
 class AnnotationsMixin:
     """Mixin that adds annotation queries to :class:`HpoRepository`.
@@ -253,14 +266,13 @@ class AnnotationsMixin:
 
         Returns:
             List of dicts with keys ``ncbi_gene_id``, ``gene_symbol``,
-            ``association_type``, ``disease_id``, ``source``.
+            ``association_type``, ``disease_id``, ``disease_name`` (from HPOA, may be
+            ``None`` when the disease has no phenotype annotations), ``source``.
         """
         if kind == "symbol":
             rows = self._conn.execute(
-                "SELECT gd.ncbi_gene_id, gd.gene_symbol, gd.association_type, "
-                "gd.disease_id, gd.source "
-                "FROM gene_disease gd "
-                "WHERE gd.gene_symbol_upper = ? ORDER BY gd.disease_id LIMIT ? OFFSET ?",
+                _DISEASES_FOR_GENE_SELECT
+                + "WHERE gd.gene_symbol_upper = ? ORDER BY gd.disease_id LIMIT ? OFFSET ?",
                 (value.upper(), limit, offset),
             ).fetchall()
         else:
@@ -268,10 +280,8 @@ class AnnotationsMixin:
             ncbi_bare = value.removeprefix("NCBIGene:")
             ncbi_prefixed = f"NCBIGene:{ncbi_bare}"
             rows = self._conn.execute(
-                "SELECT gd.ncbi_gene_id, gd.gene_symbol, gd.association_type, "
-                "gd.disease_id, gd.source "
-                "FROM gene_disease gd "
-                "WHERE gd.ncbi_gene_id IN (?, ?) ORDER BY gd.disease_id LIMIT ? OFFSET ?",
+                _DISEASES_FOR_GENE_SELECT
+                + "WHERE gd.ncbi_gene_id IN (?, ?) ORDER BY gd.disease_id LIMIT ? OFFSET ?",
                 (ncbi_bare, ncbi_prefixed, limit, offset),
             ).fetchall()
         return [dict(r) for r in rows]

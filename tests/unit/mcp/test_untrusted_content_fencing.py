@@ -171,10 +171,12 @@ async def test_field_projection_does_not_unwrap_fenced_definition(hostile_mcp: A
 
 
 async def test_search_over_object_ceiling_maps_to_typed_limit_error() -> None:
-    """Breaching the untrusted-object ceiling yields a typed limit_exceeded envelope.
+    """Breaching the untrusted-object ceiling yields an explicit error envelope.
 
-    Response-Envelope v1.1 forbids silent omission on a limit breach, and the
-    envelope must not degrade it to a generic internal_error.
+    Response-Envelope v1.1 forbids silent omission on a limit breach — the call must
+    ERROR, not silently truncate. The CLOSED error_code enum has no bespoke limit code,
+    so a server-side response-size ceiling maps to ``internal`` (still a typed, isError
+    envelope — never a zero-row success).
     """
 
     class _FloodRepo(_HostileRepo):
@@ -194,8 +196,9 @@ async def test_search_over_object_ceiling_maps_to_typed_limit_error() -> None:
 
         mcp = create_hpo_mcp()
         result = await mcp.call_tool("search_terms", {"query": "x", "response_mode": "full"})
+        assert result.is_error is True
         payload = result.structured_content
         assert payload["success"] is False
-        assert payload["error_code"] == "limit_exceeded"
+        assert payload["error_code"] == "internal"
     finally:
         reset_services()

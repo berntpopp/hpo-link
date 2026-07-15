@@ -25,6 +25,9 @@ def create_hpo_mcp() -> FastMCP:
         version=__version__,
         instructions=HPO_SERVER_INSTRUCTIONS,
         mask_error_details=True,
+        # B2 amplifier: no INPUT schema contains a $ref, so keeping schemas non-dereferenced
+        # is free and trims the discovery surface (Tool-Surface-Budget Standard v1).
+        dereference_schemas=False,
     )
     # FastMCP configures its own non-propagating RichHandlers, which bypass the root
     # handler's scrub filter — attach the filter to them now that they exist, so FastMCP's

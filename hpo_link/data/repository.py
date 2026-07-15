@@ -18,6 +18,28 @@ from hpo_link.exceptions import DataUnavailableError
 
 _FTS_TOKEN_RE = re.compile(r"[^\s\"]+")
 
+#: The label types whose text, when it equals the query verbatim, marks a term as an
+#: EXACT match. issue #28 D1: BM25 doc-length normalisation buries a term with many
+#: synonyms + a long definition (e.g. HP:0001250 "Seizure") below its shorter, more
+#: specific children — so an exact primary-label / exact-synonym hit is boosted to the
+#: top of the ranking (still relevance-ordered within each tier) rather than left to
+#: sink. Related/broad/narrow synonyms are deliberately NOT boosted (they are not an
+#: exact identity match).
+_EXACT_LABEL_TYPES = ("primary", "exact_synonym")
+
+
+def _exact_boost_sql(id_col: str) -> str:
+    """A ``1|0`` SQL expression: does ``id_col`` have an EXACT label equal to the query?
+
+    Binds ONE parameter (the uppercased query, matched against ``term_lookup.lookup_label``,
+    which the builder stores uppercased). Placed first in ``ORDER BY`` so exact matches sort
+    ahead of partial ones.
+    """
+    return (
+        f"EXISTS (SELECT 1 FROM term_lookup tl WHERE tl.hpo_id = {id_col} "  # noqa: S608
+        "AND tl.lookup_label = ? AND tl.label_type IN ('primary', 'exact_synonym'))"
+    )
+
 
 class HpoRepository(AnnotationsMixin):
     """Read-only access to the built HPO SQLite index."""
@@ -42,6 +64,9 @@ class HpoRepository(AnnotationsMixin):
         except sqlite3.Error as exc:  # pragma: no cover - rare OS-level failure
             raise DataUnavailableError("The local HPO database could not be opened.") from exc
         self._conn.row_factory = sqlite3.Row
+        # Caches for the xref-prefix vocabulary (the DB is read-only, so it never changes).
+        self._xref_prefixes: list[str] | None = None
+        self._xref_prefix_map: dict[str, str] | None = None
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
@@ -113,13 +138,18 @@ class HpoRepository(AnnotationsMixin):
     ) -> tuple[list[dict[str, Any]], int]:
         """Full-text search over name/synonyms/definition; returns ``(rows, total)``."""
         match = self._fts_query(query)
+        exact_label = (query or "").strip().upper()
         where = "term_fts MATCH ?"
         if not include_obsolete:
             where += " AND t.is_obsolete = 0"
+        # Exact primary-label / exact-synonym matches sort ahead of partial ones (D1); within
+        # each tier the bm25 relevance order is preserved. The boost subquery's `?` is bound
+        # FIRST (it appears in the SELECT, before the WHERE MATCH `?`).
         sql = (
-            "SELECT f.hpo_id, t.name, t.definition, bm25(term_fts) AS score "  # noqa: S608
+            f"SELECT f.hpo_id, t.name, t.definition, bm25(term_fts) AS score, "  # noqa: S608
+            f"{_exact_boost_sql('f.hpo_id')} AS exact_boost "
             "FROM term_fts f JOIN term t ON t.hpo_id = f.hpo_id "
-            f"WHERE {where} ORDER BY score LIMIT ? OFFSET ?"
+            f"WHERE {where} ORDER BY exact_boost DESC, score LIMIT ? OFFSET ?"
         )
         count_sql = (
             "SELECT COUNT(*) AS n FROM term_fts f "  # noqa: S608
@@ -127,7 +157,7 @@ class HpoRepository(AnnotationsMixin):
             f"WHERE {where}"
         )
         try:
-            rows = self._conn.execute(sql, (match, limit, offset)).fetchall()
+            rows = self._conn.execute(sql, (exact_label, match, limit, offset)).fetchall()
             total = int(self._conn.execute(count_sql, (match,)).fetchone()["n"])
         except sqlite3.Error:
             return self._search_like(
@@ -149,13 +179,17 @@ class HpoRepository(AnnotationsMixin):
     ) -> tuple[list[dict[str, Any]], int]:
         """``LIKE`` fallback for pathological FTS input."""
         pattern = "%" + query.upper().replace("%", "").replace("_", "") + "%"
+        exact_label = (query or "").strip().upper()
         where = "name_upper LIKE ?"
         if not include_obsolete:
             where += " AND is_obsolete = 0"
+        # Same exact-match boost as the FTS path (D1): the boost `?` is bound first (SELECT),
+        # then the LIKE pattern (WHERE). Keeps the two search paths consistent.
         rows = self._conn.execute(
-            f"SELECT hpo_id, name, definition FROM term WHERE {where} "  # noqa: S608
-            "ORDER BY name LIMIT ? OFFSET ?",
-            (pattern, limit, offset),
+            f"SELECT hpo_id, name, definition, {_exact_boost_sql('term.hpo_id')} "  # noqa: S608
+            f"AS exact_boost FROM term WHERE {where} "
+            "ORDER BY exact_boost DESC, name LIMIT ? OFFSET ?",
+            (exact_label, pattern, limit, offset),
         ).fetchall()
         total = int(
             self._conn.execute(
@@ -234,14 +268,41 @@ class HpoRepository(AnnotationsMixin):
 
     # -- cross-references ------------------------------------------------------
 
+    def distinct_xref_prefixes(self) -> list[str]:
+        """The xref namespace prefixes present in the DB, in their ACTUAL case.
+
+        The vocabulary is release-dependent but closed and knowable (issue #28 review): it
+        is derived from the data, never hardcoded, so it stays correct across HPO releases.
+        Cached — the DB is read-only.
+        """
+        if self._xref_prefixes is None:
+            rows = self._conn.execute("SELECT DISTINCT prefix FROM xref ORDER BY prefix").fetchall()
+            self._xref_prefixes = [r["prefix"] for r in rows]
+        return self._xref_prefixes
+
+    def canonical_xref_prefix(self, prefix: str) -> str | None:
+        """Map a caller-supplied prefix to the DB's actual-case prefix, or ``None`` if unknown.
+
+        Case-insensitive on input (accepts ``umls``/``UMLS``/``Umls``) but returns the DB's
+        stored case (e.g. ``Fyler``, ``SNOMEDCT_US``) — the ``xref`` table stores mixed-case
+        prefixes, so uppercasing the filter (the old bug) matched none of ``Fyler``/``ICD-10``.
+        """
+        if self._xref_prefix_map is None:
+            self._xref_prefix_map = {p.upper(): p for p in self.distinct_xref_prefixes()}
+        return self._xref_prefix_map.get((prefix or "").strip().upper())
+
     def xrefs_for(self, hpo_id: str, prefixes: list[str] | None = None) -> list[dict[str, Any]]:
-        """Cross-references for ``hpo_id``, optionally filtered by prefix."""
+        """Cross-references for ``hpo_id``, optionally filtered by prefix.
+
+        ``prefixes`` are matched in their ACTUAL DB case (the caller is expected to have
+        canonicalised them via :meth:`canonical_xref_prefix`); they are NOT uppercased here.
+        """
         sql = "SELECT x.prefix, x.object_id, x.origin FROM xref x WHERE x.hpo_id = ?"
         params: list[Any] = [hpo_id]
         if prefixes:
             placeholders = ", ".join("?" for _ in prefixes)
             sql += f" AND x.prefix IN ({placeholders})"
-            params.extend(p.upper() for p in prefixes)
+            params.extend(prefixes)
         sql += " ORDER BY x.prefix, x.object_id"
         rows = self._conn.execute(sql, tuple(params)).fetchall()
         return [
@@ -249,30 +310,52 @@ class HpoRepository(AnnotationsMixin):
             for r in rows
         ]
 
+    def _xref_match(self, xref_id: str) -> tuple[str, list[Any]] | None:
+        """Return ``(WHERE-fragment, params)`` matching an xref by object id, namespace-aware.
+
+        A CURIE (``PREFIX:body``) matches ONLY within that namespace (canonicalised
+        case-insensitively). An UNKNOWN namespace returns ``None`` — the object id alone must
+        never span namespaces, which would fabricate a mapping (issue #28 review: a foreign
+        prefix on a real UMLS object id returned the UMLS term). A bare object id (no ``:``)
+        matches across all namespaces.
+        """
+        if ":" in xref_id:
+            prefix, obj = xref_id.split(":", 1)
+            canonical = self.canonical_xref_prefix(prefix)
+            if canonical is None:
+                return None
+            return "x.object_id_upper = ? AND x.prefix = ?", [obj.upper(), canonical]
+        return "x.object_id_upper = ?", [xref_id.upper()]
+
     def hpo_for_xref(self, xref_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
         """HPO terms cross-referencing ``xref_id`` (one row per distinct HP id).
 
-        ``xref_id`` may be a bare object id (``C0151888``) or a CURIE
-        (``UMLS:C0151888``); the prefix is stripped before matching because
-        the ``xref`` table stores only the id part in ``object_id_upper``.
+        ``xref_id`` may be a bare object id (``C0151888``) or a CURIE (``UMLS:C0151888``). A
+        CURIE is matched WITHIN its namespace; an unrecognised namespace matches nothing.
         """
-        obj_upper = _xref_object_upper(xref_id)
+        match = self._xref_match(xref_id)
+        if match is None:
+            return []
+        where, params = match
         rows = self._conn.execute(
-            "SELECT DISTINCT x.hpo_id, t.name FROM xref x "
-            "JOIN term t ON t.hpo_id = x.hpo_id "
-            "WHERE x.object_id_upper = ? ORDER BY t.name LIMIT ? OFFSET ?",
-            (obj_upper, limit, offset),
+            "SELECT DISTINCT x.hpo_id, t.name FROM xref x "  # noqa: S608 - fixed fragment
+            f"JOIN term t ON t.hpo_id = x.hpo_id WHERE {where} "
+            "ORDER BY t.name LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
         return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
     def count_hpo_for_xref(self, xref_id: str) -> int:
         """Total distinct HPO terms mapping to ``xref_id`` (for pagination totals)."""
-        obj_upper = _xref_object_upper(xref_id)
+        match = self._xref_match(xref_id)
+        if match is None:
+            return 0
+        where, params = match
         return int(
             self._conn.execute(
-                "SELECT COUNT(*) AS n FROM "
-                "(SELECT DISTINCT x.hpo_id FROM xref x WHERE x.object_id_upper = ?)",
-                (obj_upper,),
+                "SELECT COUNT(*) AS n FROM "  # noqa: S608 - fixed fragment
+                f"(SELECT DISTINCT x.hpo_id FROM xref x WHERE {where})",
+                tuple(params),
             ).fetchone()["n"]
         )
 
@@ -310,17 +393,3 @@ def _json_or(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):  # pragma: no cover - defensive
         return default
-
-
-def _xref_object_upper(xref_id: str) -> str:
-    """Return the uppercased object-id portion of a CURIE or bare id.
-
-    The ``xref`` table stores only the object id part in ``object_id_upper``
-    (e.g. ``"C0151888"`` for ``UMLS:C0151888``).  This helper strips any
-    ``PREFIX:`` from the input before uppercasing so callers can pass either
-    a bare id or a full CURIE.
-    """
-    if ":" in xref_id:
-        _, obj = xref_id.split(":", 1)
-        return obj.upper()
-    return xref_id.upper()

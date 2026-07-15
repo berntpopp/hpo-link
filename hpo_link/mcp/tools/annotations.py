@@ -9,9 +9,8 @@ from pydantic import Field
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import cmd
-from hpo_link.mcp.schemas import ANNOTATION_SCHEMA
 from hpo_link.mcp.service_adapters import get_annotation_service
-from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode
+from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode, ToolReturn
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -35,7 +34,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_phenotypes_for_gene",
         title="Get HPO Phenotypes for Gene",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "gene"},
         description=(
             "Return the HPO phenotype terms annotated to a gene (symbol or NCBI id). "
@@ -51,7 +50,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_phenotypes_for_gene(
                 gene, limit=limit, offset=offset, response_mode=response_mode
@@ -77,7 +76,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_genes_for_phenotype",
         title="Get Genes for HPO Phenotype",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "gene"},
         description=(
             "Return the genes annotated to an HPO phenotype term, optionally expanded "
@@ -104,7 +103,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_genes_for_phenotype(
                 hpo_id,
@@ -133,7 +132,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_phenotypes_for_disease",
         title="Get HPO Phenotypes for Disease",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "disease"},
         description=(
             "Return the HPO phenotype terms annotated to a disease CURIE "
@@ -151,7 +150,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_phenotypes_for_disease(
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
@@ -175,7 +174,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_diseases_for_phenotype",
         title="Get Diseases for HPO Phenotype",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "disease"},
         description=(
             "Return diseases annotated to an HPO phenotype term, optionally expanded "
@@ -202,7 +201,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_diseases_for_phenotype(
                 hpo_id,
@@ -231,7 +230,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_genes_for_disease",
         title="Get Genes for Disease",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "gene", "disease"},
         description=(
             "Return genes associated with a disease CURIE (e.g. OMIM:106210, ORPHA:550). "
@@ -247,7 +246,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_genes_for_disease(
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
@@ -271,7 +270,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         name="get_diseases_for_gene",
         title="Get Diseases for Gene",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=ANNOTATION_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "annotation", "gene", "disease"},
         description=(
             "Return diseases associated with a gene (symbol or NCBI id). "
@@ -287,7 +286,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_annotation_service().get_diseases_for_gene(
                 gene, limit=limit, offset=offset, response_mode=response_mode

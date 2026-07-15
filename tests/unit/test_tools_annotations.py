@@ -10,10 +10,21 @@ Fixture-world facts (from mini fixtures):
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
+from fastmcp.tools.tool import ToolResult
 
 from hpo_link.mcp.service_adapters import reset_services, set_annotation_service, set_hpo_service
+
+
+def _envelope(result: Any) -> dict[str, Any]:
+    """Read the flat envelope whether run_mcp_tool returned a dict or an error ToolResult."""
+    if isinstance(result, ToolResult):
+        assert isinstance(result.structured_content, dict)
+        return result.structured_content
+    assert isinstance(result, dict)
+    return result
 
 
 @pytest.fixture(autouse=True)
@@ -154,11 +165,12 @@ async def test_get_genes_for_phenotype_no_descendants(live_annotation_service) -
         context=McpErrorContext("get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     # Either not_found (no direct annotations) or success with PAX6 absent
-    if result["success"]:
-        gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
+    env = _envelope(result)
+    if env["success"]:
+        gene_symbols = [g["gene_symbol"] for g in env.get("genes", []) if "gene_symbol" in g]
         assert "PAX6" not in gene_symbols
     else:
-        assert result["error_code"] in ("not_found", "data_unavailable")
+        assert env["error_code"] in ("not_found", "upstream_unavailable")
 
 
 # ---------------------------------------------------------------------------

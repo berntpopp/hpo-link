@@ -6,6 +6,80 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-15
+
+MCP contract-hardening (issue #28 — a fleet audit reproduced five confirmed defects
+twice each against the live public endpoint; a Codex review of PR #29 found two more live
+silent-empty / false-mapping defects). Against the hardened Behaviour Conformance v1 gate
+(router `791363c`, which now sees that a grouped payload with no count field is still a
+collection), the fixed server is **CONFORMANT — 187 pass / 0 fail / 0 UNGATED /
+2 inconclusive**, and `map_cross_ontology` is now actually exercised (no longer skipped).
+Tool surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
+
+### Fixed
+
+- **Every error envelope now sets the MCP `isError: true` protocol flag (D3, the fleet's
+  most widespread violation).** A returned dict can never set it, so every `success:false`
+  envelope was delivered to the model as a *successful* call — a client branching on
+  `isError`, as the protocol tells it to, saw nothing wrong. All 32 gate failures were this
+  one bug. Fixed at the single envelope-construction chokepoint: `run_mcp_tool` now returns
+  `ToolResult(structured_content=envelope, is_error=True)` on the error path (never a bare
+  dict; never a `raise`, which would discard the structured envelope), and the three
+  argument-binding error builders in the middleware set `is_error=True` too.
+- **`search_terms` now ranks an exact primary-label / exact-synonym match on page 1 (D1).**
+  BM25 document-length normalisation buried the exact term (e.g. HP:0001250 "Seizure", with
+  many synonyms and a long definition) below its shorter, more-specific children; an agent
+  taking the top hit annotated a proband with an over-specific/wrong HPO term. Both search
+  paths now boost an exact `primary`/`exact_synonym` match above partial ones (relevance
+  order preserved within each tier). "Seizure" now ranks #1 of 343.
+- **Resolver candidates carry their `name` (D2).** `resolve_term` returned `ambiguous_query`
+  / `not_found` candidates as bare HP ids with no label, at every response mode — forcing N
+  extra `get_term` round trips to disambiguate. Candidates now carry `{hpo_id, name}`; the
+  label is a trusted, DB-sourced provenance string (the same source every other tool
+  surfaces `name` from) and is still code-point-scrubbed, so no injection vector is
+  reintroduced.
+- **`get_diseases_for_gene` now carries `disease_name` (D3/#3).** It returned bare disease
+  CURIEs in every mode; the name is now LEFT-JOINed from the HPOA disease table.
+- **Malformed `disease_id` / `gene` errors carry `allowed_values` and `hint` (D4/#4),** so
+  the model learns what a valid value looks like without a capabilities round trip.
+- **`resolve_term`'s obsolete-id documentation now matches its behaviour (D5):** an obsolete
+  HP id resolves with `success:true`, `obsolete:true`, and its successor in `replaced_by`
+  (the description previously promised `not_found`).
+- **`map_cross_ontology` no longer silently zeroes on an unrecognised `prefixes`/`fields`
+  value (PR #29 review).** An unknown prefix returned `mappings:{}` with `success:true`
+  (a silent-empty), AND the filter uppercased the value while the DB stores mixed-case
+  prefixes (`Fyler`, `ICD-10`) — so even a valid `prefixes=['Fyler']` matched nothing. Both
+  `prefixes` and `fields` are now validated against the data-derived vocabulary and rejected
+  with `invalid_input` (naming the valid values); a known prefix is canonicalised
+  case-insensitively to its actual DB case, never uppercased. The same field-projection guard
+  applies to `get_term`.
+- **`resolve_xref` no longer fabricates a cross-ontology mapping from a foreign namespace
+  (PR #29 review).** It matched only the object id and ignored the namespace, so
+  `resolve_xref('__NONSENSE__:C0036572')` returned the real `UMLS:C0036572` term. A CURIE is
+  now matched *within* its namespace; an unknown namespace is rejected with `invalid_input`,
+  and `resolve_term`'s xref-resolution step no longer resolves a foreign-namespace CURIE.
+
+### Changed
+
+- **`error_code` is now the closed Response-Envelope v1 enum** (`invalid_input`, `not_found`,
+  `ambiguous_query`, `upstream_unavailable`, `rate_limited`, `internal`). `data_unavailable`
+  → `upstream_unavailable`, `internal_error` → `internal`, and the untrusted-text ceiling
+  breach → `internal`. `McpToolError` is typed to the enum and its code is re-checked at
+  runtime (severed to `internal` if off-contract). Capabilities/discovery prose updated to
+  match.
+- **`outputSchema` is suppressed on every tool** (`output_schema=None`) and
+  `FastMCP(dereference_schemas=False)` — the discovery surface drops ~40% with no loss of
+  `structuredContent` (every tool returns a dict envelope). `outputSchema` is optional in
+  MCP and no model reads it.
+
+### Added
+
+- Vendored the Behaviour Conformance v1 gate (`tests/conformance/behaviour.py` +
+  `test_behaviour_v1.py`, byte-identical from router `feat/mcp-contract-hardening-v1` at
+  `791363c`) and wired the "Run behaviour probe" step into
+  `.github/workflows/conformance.yml`. `tests/conformance/` is exempt from the per-file line
+  budget (vendored files must stay byte-identical).
+
 ## [0.3.6] - 2026-07-14
 
 ### Changed

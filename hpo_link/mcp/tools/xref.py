@@ -9,9 +9,8 @@ from pydantic import Field
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
 from hpo_link.mcp.next_commands import after_cross_ontology, after_resolve_xref
-from hpo_link.mcp.schemas import CROSS_ONTOLOGY_SCHEMA, RESOLVE_XREF_SCHEMA
 from hpo_link.mcp.service_adapters import get_hpo_service
-from hpo_link.mcp.tools._common import FieldsArg, ResponseMode, XrefIdStr
+from hpo_link.mcp.tools._common import FieldsArg, ResponseMode, ToolReturn, XrefIdStr
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -35,7 +34,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
         name="resolve_xref",
         title="Resolve HPO Cross-Reference",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=RESOLVE_XREF_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "xref", "resolve"},
         description=(
             "Resolve an external cross-reference CURIE (UMLS/SNOMEDCT_US/NCIT/MEDDRA/"
@@ -53,7 +52,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
             int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
         ] = 0,
         response_mode: ResponseMode = "compact",
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().resolve_xref(
                 xref_id, limit=limit, offset=offset, response_mode=response_mode
@@ -75,7 +74,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
         name="map_cross_ontology",
         title="Map HPO Cross-Ontology",
         annotations=READ_ONLY_OPEN_WORLD,
-        output_schema=CROSS_ONTOLOGY_SCHEMA,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
         tags={"hpo", "xref"},
         description=(
             "List an HPO term's cross-references to other ontologies/vocabularies, "
@@ -96,7 +95,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
         ] = None,
         response_mode: ResponseMode = "compact",
         fields: FieldsArg = None,
-    ) -> dict[str, Any]:
+    ) -> ToolReturn:
         async def call() -> dict[str, Any]:
             payload = get_hpo_service().map_cross_ontology(
                 hpo_id, prefixes=prefixes, response_mode=response_mode, fields=fields

@@ -33,6 +33,7 @@ from mcp.types import (
 )
 from pydantic import ValidationError as PydanticValidationError
 
+from hpo_link.mcp.arg_errors import build_arg_error_envelope, build_fixed_error_envelope
 from hpo_link.mcp.arg_help import (
     describe_constraints,
     describe_type_expectation,
@@ -40,11 +41,7 @@ from hpo_link.mcp.arg_help import (
     normalize_alias_args,
     tool_signature,
 )
-from hpo_link.mcp.envelope import (
-    build_arg_error_envelope,
-    build_fixed_error_envelope,
-    safe_field_name,
-)
+from hpo_link.mcp.envelope import safe_field_name
 
 #: Fixed, name-free frames for reflection surfaces that bypass the tool error envelope.
 _UNKNOWN_TOOL_MESSAGE = "The requested tool is not available. Call get_server_capabilities."
@@ -168,6 +165,7 @@ class ArgValidationMiddleware(Middleware):
         return ToolResult(
             structured_content=envelope,
             content=[TextContent(type="text", text=json.dumps(envelope))],
+            is_error=True,
         )
 
     def _generic_error_result(
@@ -193,6 +191,7 @@ class ArgValidationMiddleware(Middleware):
         return ToolResult(
             structured_content=envelope,
             content=[TextContent(type="text", text=json.dumps(envelope))],
+            is_error=True,
         )
 
     @staticmethod
@@ -204,6 +203,7 @@ class ArgValidationMiddleware(Middleware):
         return ToolResult(
             structured_content=envelope,
             content=[TextContent(type="text", text=json.dumps(envelope))],
+            is_error=True,
         )
 
     async def on_read_resource(

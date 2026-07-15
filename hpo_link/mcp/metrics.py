@@ -55,7 +55,9 @@ class _Metrics:
             if not ok:
                 self._errors += 1
                 tally["errors"] += 1
-                code = error_code or "internal_error"
+                # Bucket an uncoded failure under the closed-enum catch-all (matches the
+                # error envelope's classifier default; get_diagnostics surfaces this map).
+                code = error_code or "internal"
                 self._errors_by_code[code] = self._errors_by_code.get(code, 0) + 1
 
     def snapshot(self) -> dict[str, Any]:
