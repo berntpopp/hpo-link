@@ -216,3 +216,167 @@ async def test_bad_gene_error_carries_allowed_values_and_hint() -> None:
     assert env.get("field") == "gene"
     assert env.get("allowed_values"), "the error must state what a valid gene looks like"
     assert env.get("hint"), "the error must carry a call hint"
+
+
+# --------------------------------------------------------------------------- Round 2
+# Codex review of PR #29 found two more live silent-empty / false-mapping defects, and the
+# hardened gate now exercises map_cross_ontology (a grouped payload with no count field is
+# still a collection). These lock the fixes.
+
+from hpo_link.exceptions import InvalidInputError  # noqa: E402
+from hpo_link.services.hpo_service import HpoService  # noqa: E402
+
+
+def _mixed_case_xref_db(path: Path) -> None:
+    """A minimal index with a MIXED-CASE xref prefix ('Fyler'), as the live DB has."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE term (
+            hpo_id TEXT PRIMARY KEY, name TEXT, name_upper TEXT, definition TEXT,
+            is_obsolete INTEGER DEFAULT 0, replaced_by TEXT, consider TEXT,
+            alt_ids TEXT, synonyms TEXT, subsets TEXT, comments TEXT
+        );
+        CREATE TABLE xref (
+            hpo_id TEXT, prefix TEXT, object_id TEXT, object_id_upper TEXT, origin TEXT
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO term (hpo_id,name,name_upper,definition,is_obsolete) VALUES (?,?,?,?,0)",
+        ("HP:0000042", "Test term", "TEST TERM", "d"),
+    )
+    conn.execute(
+        "INSERT INTO xref VALUES (?,?,?,?,?)",
+        ("HP:0000042", "Fyler", "706500", "706500", "obo_xref"),
+    )
+    conn.execute(
+        "INSERT INTO xref VALUES (?,?,?,?,?)",
+        ("HP:0000042", "UMLS", "C0000768", "C0000768", "obo_xref"),
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_repo_canonical_xref_prefix_is_case_insensitive_but_returns_db_case(tmp_path: Path) -> None:
+    db = tmp_path / "xref.sqlite"
+    _mixed_case_xref_db(db)
+    repo = HpoRepository(db)
+    try:
+        assert set(repo.distinct_xref_prefixes()) == {"Fyler", "UMLS"}
+        assert repo.canonical_xref_prefix("fyler") == "Fyler"  # NOT uppercased to FYLER
+        assert repo.canonical_xref_prefix("FYLER") == "Fyler"
+        assert repo.canonical_xref_prefix("umls") == "UMLS"
+        assert repo.canonical_xref_prefix("__nonsense__") is None
+    finally:
+        repo.close()
+
+
+def test_repo_xrefs_for_matches_a_mixed_case_prefix(tmp_path: Path) -> None:
+    """xrefs_for(['Fyler']) must return the Fyler row (it was uppercased to FYLER, matching none)."""
+    db = tmp_path / "xref.sqlite"
+    _mixed_case_xref_db(db)
+    repo = HpoRepository(db)
+    try:
+        rows = repo.xrefs_for("HP:0000042", ["Fyler"])
+        assert [r["prefix"] for r in rows] == ["Fyler"]
+    finally:
+        repo.close()
+
+
+def test_repo_hpo_for_xref_rejects_a_foreign_namespace(tmp_path: Path) -> None:
+    """A CURIE must match ONLY within its namespace; an unknown namespace matches nothing."""
+    db = tmp_path / "xref.sqlite"
+    _mixed_case_xref_db(db)
+    repo = HpoRepository(db)
+    try:
+        assert repo.hpo_for_xref("UMLS:C0000768", limit=5) == [
+            {"hpo_id": "HP:0000042", "name": "Test term"}
+        ]
+        # same object id under a DIFFERENT (real) namespace must NOT match the UMLS row
+        assert repo.hpo_for_xref("Fyler:C0000768", limit=5) == []
+        # an UNKNOWN namespace must match nothing (no bare-object fallback -> no fabricated map)
+        assert repo.hpo_for_xref("__NONSENSE__:C0000768", limit=5) == []
+        assert repo.count_hpo_for_xref("__NONSENSE__:C0000768") == 0
+        # a BARE object id (no namespace) still matches across prefixes
+        assert repo.hpo_for_xref("C0000768", limit=5) == [
+            {"hpo_id": "HP:0000042", "name": "Test term"}
+        ]
+    finally:
+        repo.close()
+
+
+def _svc(built_test_db: Path) -> HpoService:
+    return HpoService(HpoRepository(built_test_db))
+
+
+def test_map_cross_ontology_rejects_an_unknown_prefix(built_test_db: Path) -> None:
+    """prefixes=['__NONSENSE__'] must raise invalid_input, never return mappings:{} success:true."""
+    import pytest
+
+    svc = _svc(built_test_db)
+    with pytest.raises(InvalidInputError) as exc:
+        svc.map_cross_ontology("HP:0000479", prefixes=["__NONSENSE__"])
+    assert exc.value.field == "prefixes"
+    assert exc.value.allowed  # names the valid vocabulary
+
+
+def test_map_cross_ontology_accepts_a_case_insensitive_prefix(built_test_db: Path) -> None:
+    """A known prefix in any case resolves to the DB canonical and returns its mappings."""
+    svc = _svc(built_test_db)
+    out = svc.map_cross_ontology("HP:0000479", prefixes=["umls"])
+    assert out["mappings"], "a known prefix must return its mappings, not an empty group"
+
+
+def test_map_cross_ontology_rejects_an_unknown_field(built_test_db: Path) -> None:
+    """fields=['__bogus__'] must raise invalid_input, never silently zero the payload."""
+    import pytest
+
+    svc = _svc(built_test_db)
+    with pytest.raises(InvalidInputError) as exc:
+        svc.map_cross_ontology("HP:0000479", fields=["__bogus__"])
+    assert exc.value.field == "fields"
+
+
+def test_get_term_rejects_an_unknown_field(built_test_db: Path) -> None:
+    """The same projection class on get_term must also reject an unknown field."""
+    import pytest
+
+    svc = _svc(built_test_db)
+    with pytest.raises(InvalidInputError) as exc:
+        svc.get_term("HP:0000479", fields=["__bogus__"])
+    assert exc.value.field == "fields"
+
+
+def test_get_term_accepts_a_valid_but_empty_field(built_test_db: Path) -> None:
+    """A legitimate field that happens to be empty for this term must NOT be rejected."""
+    svc = _svc(built_test_db)
+    out = svc.get_term("HP:0000479", fields=["comments"])
+    assert out["hpo_id"] == "HP:0000479"  # anchors retained, no error
+
+
+def test_resolve_xref_rejects_an_unknown_namespace(built_test_db: Path) -> None:
+    """resolve_xref('__NONSENSE__:C...') must raise invalid_input, not fabricate a mapping."""
+    import pytest
+
+    svc = _svc(built_test_db)
+    with pytest.raises(InvalidInputError) as exc:
+        svc.resolve_xref("__NONSENSE__:C0151888")
+    assert exc.value.field == "xref_id"
+
+
+def test_resolve_xref_accepts_a_known_namespace(built_test_db: Path) -> None:
+    svc = _svc(built_test_db)
+    out = svc.resolve_xref("UMLS:C0151888")
+    assert out["total"] >= 1 and out["matches"]
+
+
+def test_resolve_term_does_not_fabricate_a_mapping_for_a_foreign_namespace(
+    built_test_db: Path,
+) -> None:
+    """resolve_term('__NONSENSE__:C0151888') must NOT resolve via a bare-object xref match."""
+    import pytest
+
+    svc = _svc(built_test_db)
+    with pytest.raises((NotFoundError, InvalidInputError)):
+        svc.resolve_term("__NONSENSE__:C0151888")

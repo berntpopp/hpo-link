@@ -64,6 +64,9 @@ class HpoRepository(AnnotationsMixin):
         except sqlite3.Error as exc:  # pragma: no cover - rare OS-level failure
             raise DataUnavailableError("The local HPO database could not be opened.") from exc
         self._conn.row_factory = sqlite3.Row
+        # Caches for the xref-prefix vocabulary (the DB is read-only, so it never changes).
+        self._xref_prefixes: list[str] | None = None
+        self._xref_prefix_map: dict[str, str] | None = None
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""
@@ -265,14 +268,41 @@ class HpoRepository(AnnotationsMixin):
 
     # -- cross-references ------------------------------------------------------
 
+    def distinct_xref_prefixes(self) -> list[str]:
+        """The xref namespace prefixes present in the DB, in their ACTUAL case.
+
+        The vocabulary is release-dependent but closed and knowable (issue #28 review): it
+        is derived from the data, never hardcoded, so it stays correct across HPO releases.
+        Cached — the DB is read-only.
+        """
+        if self._xref_prefixes is None:
+            rows = self._conn.execute("SELECT DISTINCT prefix FROM xref ORDER BY prefix").fetchall()
+            self._xref_prefixes = [r["prefix"] for r in rows]
+        return self._xref_prefixes
+
+    def canonical_xref_prefix(self, prefix: str) -> str | None:
+        """Map a caller-supplied prefix to the DB's actual-case prefix, or ``None`` if unknown.
+
+        Case-insensitive on input (accepts ``umls``/``UMLS``/``Umls``) but returns the DB's
+        stored case (e.g. ``Fyler``, ``SNOMEDCT_US``) — the ``xref`` table stores mixed-case
+        prefixes, so uppercasing the filter (the old bug) matched none of ``Fyler``/``ICD-10``.
+        """
+        if self._xref_prefix_map is None:
+            self._xref_prefix_map = {p.upper(): p for p in self.distinct_xref_prefixes()}
+        return self._xref_prefix_map.get((prefix or "").strip().upper())
+
     def xrefs_for(self, hpo_id: str, prefixes: list[str] | None = None) -> list[dict[str, Any]]:
-        """Cross-references for ``hpo_id``, optionally filtered by prefix."""
+        """Cross-references for ``hpo_id``, optionally filtered by prefix.
+
+        ``prefixes`` are matched in their ACTUAL DB case (the caller is expected to have
+        canonicalised them via :meth:`canonical_xref_prefix`); they are NOT uppercased here.
+        """
         sql = "SELECT x.prefix, x.object_id, x.origin FROM xref x WHERE x.hpo_id = ?"
         params: list[Any] = [hpo_id]
         if prefixes:
             placeholders = ", ".join("?" for _ in prefixes)
             sql += f" AND x.prefix IN ({placeholders})"
-            params.extend(p.upper() for p in prefixes)
+            params.extend(prefixes)
         sql += " ORDER BY x.prefix, x.object_id"
         rows = self._conn.execute(sql, tuple(params)).fetchall()
         return [
@@ -280,30 +310,52 @@ class HpoRepository(AnnotationsMixin):
             for r in rows
         ]
 
+    def _xref_match(self, xref_id: str) -> tuple[str, list[Any]] | None:
+        """Return ``(WHERE-fragment, params)`` matching an xref by object id, namespace-aware.
+
+        A CURIE (``PREFIX:body``) matches ONLY within that namespace (canonicalised
+        case-insensitively). An UNKNOWN namespace returns ``None`` — the object id alone must
+        never span namespaces, which would fabricate a mapping (issue #28 review: a foreign
+        prefix on a real UMLS object id returned the UMLS term). A bare object id (no ``:``)
+        matches across all namespaces.
+        """
+        if ":" in xref_id:
+            prefix, obj = xref_id.split(":", 1)
+            canonical = self.canonical_xref_prefix(prefix)
+            if canonical is None:
+                return None
+            return "x.object_id_upper = ? AND x.prefix = ?", [obj.upper(), canonical]
+        return "x.object_id_upper = ?", [xref_id.upper()]
+
     def hpo_for_xref(self, xref_id: str, *, limit: int, offset: int = 0) -> list[dict[str, Any]]:
         """HPO terms cross-referencing ``xref_id`` (one row per distinct HP id).
 
-        ``xref_id`` may be a bare object id (``C0151888``) or a CURIE
-        (``UMLS:C0151888``); the prefix is stripped before matching because
-        the ``xref`` table stores only the id part in ``object_id_upper``.
+        ``xref_id`` may be a bare object id (``C0151888``) or a CURIE (``UMLS:C0151888``). A
+        CURIE is matched WITHIN its namespace; an unrecognised namespace matches nothing.
         """
-        obj_upper = _xref_object_upper(xref_id)
+        match = self._xref_match(xref_id)
+        if match is None:
+            return []
+        where, params = match
         rows = self._conn.execute(
-            "SELECT DISTINCT x.hpo_id, t.name FROM xref x "
-            "JOIN term t ON t.hpo_id = x.hpo_id "
-            "WHERE x.object_id_upper = ? ORDER BY t.name LIMIT ? OFFSET ?",
-            (obj_upper, limit, offset),
+            "SELECT DISTINCT x.hpo_id, t.name FROM xref x "  # noqa: S608 - fixed fragment
+            f"JOIN term t ON t.hpo_id = x.hpo_id WHERE {where} "
+            "ORDER BY t.name LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
         return [{"hpo_id": r["hpo_id"], "name": r["name"]} for r in rows]
 
     def count_hpo_for_xref(self, xref_id: str) -> int:
         """Total distinct HPO terms mapping to ``xref_id`` (for pagination totals)."""
-        obj_upper = _xref_object_upper(xref_id)
+        match = self._xref_match(xref_id)
+        if match is None:
+            return 0
+        where, params = match
         return int(
             self._conn.execute(
-                "SELECT COUNT(*) AS n FROM "
-                "(SELECT DISTINCT x.hpo_id FROM xref x WHERE x.object_id_upper = ?)",
-                (obj_upper,),
+                "SELECT COUNT(*) AS n FROM "  # noqa: S608 - fixed fragment
+                f"(SELECT DISTINCT x.hpo_id FROM xref x WHERE {where})",
+                tuple(params),
             ).fetchone()["n"]
         )
 
@@ -341,17 +393,3 @@ def _json_or(value: Any, default: Any) -> Any:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):  # pragma: no cover - defensive
         return default
-
-
-def _xref_object_upper(xref_id: str) -> str:
-    """Return the uppercased object-id portion of a CURIE or bare id.
-
-    The ``xref`` table stores only the object id part in ``object_id_upper``
-    (e.g. ``"C0151888"`` for ``UMLS:C0151888``).  This helper strips any
-    ``PREFIX:`` from the input before uppercasing so callers can pass either
-    a bare id or a full CURIE.
-    """
-    if ":" in xref_id:
-        _, obj = xref_id.split(":", 1)
-        return obj.upper()
-    return xref_id.upper()

@@ -26,6 +26,31 @@ from hpo_link.services.shaping import (
 
 _MAX_LIMIT = 1000
 
+#: Stable projectable-field vocabularies for the two tools that accept ``fields=`` (issue #28
+#: review — an unrecognised field must be rejected, not silently zero the payload). These are
+#: the full field set, NOT the response-mode-shaped payload, so a valid-but-empty field
+#: (e.g. ``comments`` dropped in compact mode) is still accepted.
+_TERM_FIELDS: frozenset[str] = frozenset(
+    {
+        "hpo_id",
+        "name",
+        "definition",
+        "synonyms",
+        "alt_ids",
+        "subsets",
+        "comments",
+        "obsolete",
+        "replaced_by",
+        "parents",
+        "children",
+        "hpo_version",
+        "recommended_citation",
+    }
+)
+_CROSS_ONTOLOGY_FIELDS: frozenset[str] = frozenset(
+    {"hpo_id", "name", "mappings", "hpo_version", "recommended_citation"}
+)
+
 #: Hard ceiling on ``search_terms`` page size (mirrors the ``le=200`` tool bound in
 #: ``mcp/tools/ontology.py`` and ``max_search_limit`` in capabilities). A full-mode
 #: page can therefore emit up to 200 fenced ``untrusted_text`` definitions, so the
@@ -200,7 +225,7 @@ class HpoService:
             **self._version_fields(response_mode),
         }
         shaped, fenced_by_field = shape_term(payload, response_mode)
-        projected = select_fields(shaped, fields)
+        projected = select_fields(shaped, fields, known=_TERM_FIELDS)
         # Enforce limits over only the fenced objects that survive sparse-field
         # projection — a projected-out field must not count toward the ceiling.
         emitted = [obj for key, objs in fenced_by_field.items() if key in projected for obj in objs]
@@ -333,6 +358,19 @@ class HpoService:
             raise InvalidInputError(
                 "xref_id must be a non-empty CURIE like UMLS:C0151888.", field="xref_id"
             )
+        # A CURIE with an UNKNOWN namespace must be rejected, not silently matched on the bare
+        # object id across every namespace (issue #28 review: '__NONSENSE__:C0036572' returned
+        # the real UMLS:C0036572 term — a fabricated cross-ontology mapping). A bare object id
+        # (no ':') is still accepted and matched across namespaces.
+        if ":" in raw:
+            prefix = raw.split(":", 1)[0]
+            if self._db.canonical_xref_prefix(prefix) is None:
+                raise InvalidInputError(
+                    f"xref_id namespace {prefix!r} is not a known cross-reference vocabulary.",
+                    field="xref_id",
+                    allowed=self._db.distinct_xref_prefixes(),
+                    hint="xref_id is a CURIE PREFIX:local, e.g. UMLS:C0151888.",
+                )
         limit = max(1, min(limit, _MAX_LIMIT))
         offset = max(0, offset)
         total = self._db.count_hpo_for_xref(raw)
@@ -362,8 +400,23 @@ class HpoService:
         """
         hpo_id = self._resolve_to_id(term)
         record = self._db.get_term(hpo_id)
-        normalized = [p.strip().upper() for p in prefixes if p.strip()] if prefixes else None
-        xrefs = self._db.xrefs_for(hpo_id, normalized)
+        # Validate + canonicalise the prefix filter against the data-derived vocabulary. An
+        # unknown prefix is REJECTED (never silently matched to nothing), and a known one is
+        # mapped to its actual DB case (no uppercasing — the DB stores 'Fyler', 'ICD-10', ...).
+        canonical_prefixes: list[str] | None = None
+        if prefixes:
+            canonical_prefixes = []
+            for prefix in prefixes:
+                canonical = self._db.canonical_xref_prefix(prefix)
+                if canonical is None:
+                    raise InvalidInputError(
+                        f"prefix {prefix!r} is not a known cross-reference vocabulary.",
+                        field="prefixes",
+                        allowed=self._db.distinct_xref_prefixes(),
+                        hint="prefixes are xref vocabularies, e.g. ['UMLS', 'SNOMEDCT_US'].",
+                    )
+                canonical_prefixes.append(canonical)
+        xrefs = self._db.xrefs_for(hpo_id, canonical_prefixes)
         mappings: dict[str, list[dict[str, Any]]] = {}
         for xref in xrefs:
             bucket = mappings.setdefault(xref["prefix"], [])
@@ -374,4 +427,4 @@ class HpoService:
             "mappings": mappings,
             **self._version_fields(response_mode),
         }
-        return select_fields(payload, fields)
+        return select_fields(payload, fields, known=_CROSS_ONTOLOGY_FIELDS)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hpo_link.exceptions import InvalidInputError
 from hpo_link.mcp.untrusted_content import UntrustedText, fence_untrusted_text
 
 RESPONSE_MODES: list[str] = ["minimal", "compact", "standard", "full"]
@@ -142,14 +143,26 @@ def shape_term(
     return out, fenced_by_field
 
 
-def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str, Any]:
+def select_fields(
+    payload: dict[str, Any],
+    fields: list[str] | None,
+    *,
+    known: frozenset[str] | set[str] | None = None,
+) -> dict[str, Any]:
     """Project a payload to a caller-requested sparse fieldset.
 
     Identity/grounding anchors (``hpo_id``, ``name``, ``hpo_version``, plus the
     preserved ``_meta``/``success``) are always retained. Supports top-level keys
-    and ONE level of dotting into a grouped object -- e.g. ``"xrefs.UMLS"`` keeps
-    only the UMLS group under ``xrefs``. Unknown fields are skipped (open-world).
-    Returns the payload unchanged when ``fields`` is falsy.
+    and ONE level of dotting into a grouped object -- e.g. ``"mappings.UMLS"`` keeps
+    only the UMLS group under ``mappings``. Returns the payload unchanged when
+    ``fields`` is falsy.
+
+    When ``known`` is supplied it is the tool's STABLE projectable vocabulary: a field
+    whose top-level key is neither an anchor nor in ``known`` is rejected with
+    ``invalid_input`` rather than silently skipped (issue #28 review — an unrecognised
+    field used to zero the payload with ``success: true``, a silent-empty). ``known`` is the
+    full vocabulary, not the response-mode-shaped payload, so a valid-but-empty field
+    (e.g. ``comments`` dropped in compact mode) is accepted, not rejected.
 
     A fenced ``untrusted_text`` object is treated as an OPAQUE leaf: a dotted
     projection like ``definition.text`` MUST NOT descend into the wrapper and return
@@ -158,6 +171,16 @@ def select_fields(payload: dict[str, Any], fields: list[str] | None) -> dict[str
     """
     if not fields:
         return payload
+    if known is not None:
+        for field in fields:
+            top = field.partition(".")[0]
+            if top not in known and top not in _FIELD_ANCHORS:
+                raise InvalidInputError(
+                    f"field {top!r} is not a projectable field.",
+                    field="fields",
+                    allowed=sorted(set(known) | {"hpo_id", "name"}),
+                    hint="fields selects top-level keys; omit it for the full payload.",
+                )
     out: dict[str, Any] = {k: v for k, v in payload.items() if k in _FIELD_ANCHORS}
     for field in fields:
         top, _, sub = field.partition(".")

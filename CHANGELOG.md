@@ -9,9 +9,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [0.4.0] - 2026-07-15
 
 MCP contract-hardening (issue #28 — a fleet audit reproduced five confirmed defects
-twice each against the live public endpoint). Behaviour Conformance v1 gate: **145 pass /
-32 fail / 0 UNGATED before → 177 pass / 0 fail / 0 UNGATED (CONFORMANT) after**. Tool
-surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
+twice each against the live public endpoint; a Codex review of PR #29 found two more live
+silent-empty / false-mapping defects). Against the hardened Behaviour Conformance v1 gate
+(router `791363c`, which now sees that a grouped payload with no count field is still a
+collection), the fixed server is **CONFORMANT — 187 pass / 0 fail / 0 UNGATED /
+2 inconclusive**, and `map_cross_ontology` is now actually exercised (no longer skipped).
+Tool surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
 
 ### Fixed
 
@@ -42,6 +45,19 @@ surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
 - **`resolve_term`'s obsolete-id documentation now matches its behaviour (D5):** an obsolete
   HP id resolves with `success:true`, `obsolete:true`, and its successor in `replaced_by`
   (the description previously promised `not_found`).
+- **`map_cross_ontology` no longer silently zeroes on an unrecognised `prefixes`/`fields`
+  value (PR #29 review).** An unknown prefix returned `mappings:{}` with `success:true`
+  (a silent-empty), AND the filter uppercased the value while the DB stores mixed-case
+  prefixes (`Fyler`, `ICD-10`) — so even a valid `prefixes=['Fyler']` matched nothing. Both
+  `prefixes` and `fields` are now validated against the data-derived vocabulary and rejected
+  with `invalid_input` (naming the valid values); a known prefix is canonicalised
+  case-insensitively to its actual DB case, never uppercased. The same field-projection guard
+  applies to `get_term`.
+- **`resolve_xref` no longer fabricates a cross-ontology mapping from a foreign namespace
+  (PR #29 review).** It matched only the object id and ignored the namespace, so
+  `resolve_xref('__NONSENSE__:C0036572')` returned the real `UMLS:C0036572` term. A CURIE is
+  now matched *within* its namespace; an unknown namespace is rejected with `invalid_input`,
+  and `resolve_term`'s xref-resolution step no longer resolves a foreign-namespace CURIE.
 
 ### Changed
 
@@ -59,9 +75,10 @@ surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
 ### Added
 
 - Vendored the Behaviour Conformance v1 gate (`tests/conformance/behaviour.py` +
-  `test_behaviour_v1.py`, byte-identical from the router repo) and wired the "Run behaviour
-  probe" step into `.github/workflows/conformance.yml`. `tests/conformance/` is exempt from
-  the per-file line budget (vendored files must stay byte-identical).
+  `test_behaviour_v1.py`, byte-identical from router `feat/mcp-contract-hardening-v1` at
+  `791363c`) and wired the "Run behaviour probe" step into
+  `.github/workflows/conformance.yml`. `tests/conformance/` is exempt from the per-file line
+  budget (vendored files must stay byte-identical).
 
 ## [0.3.6] - 2026-07-14
 
