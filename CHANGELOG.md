@@ -6,12 +6,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-
-- Re-vendored the behaviour conformance gate from genefoundry-router `56db958`
-  (`docs/conformance/behaviour.py` blob `c69801687`) so live MCP contract checks
-  treat not-found example probes as inconclusive and keep empty auxiliary objects from hiding counted rows.
-
 ## [0.4.0] - 2026-07-15
 
 MCP contract-hardening (issue #28 — a fleet audit reproduced five confirmed defects
@@ -21,6 +15,14 @@ silent-empty / false-mapping defects). Against the hardened Behaviour Conformanc
 collection), the fixed server is **CONFORMANT — 187 pass / 0 fail / 0 UNGATED /
 2 inconclusive**, and `map_cross_ontology` is now actually exercised (no longer skipped).
 Tool surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
+
+### Security
+
+- **Production materializes HPO data in a hardened init sidecar (issue #23).** The sidecar
+  downloads one reviewed immutable bundle, verifies its compressed digest, canonical expanded
+  tree hash, and database metadata, then atomically selects it. The serving process waits for
+  that success, mounts the reference read-only, and has no bootstrap, refresh, egress, or data
+  write path.
 
 ### Fixed
 
@@ -66,6 +68,10 @@ Tool surface: **8,894t → 5,342t** (outputSchema 39% → 0%), `doc%` stays 100.
   and `resolve_term`'s xref-resolution step no longer resolves a foreign-namespace CURIE.
 
 ### Changed
+
+- Re-vendored the behaviour conformance gate from genefoundry-router `56db958`
+  (`docs/conformance/behaviour.py` blob `c69801687`) so live MCP contract checks
+  treat not-found example probes as inconclusive and keep empty auxiliary objects from hiding counted rows.
 
 - **`error_code` is now the closed Response-Envelope v1 enum** (`invalid_input`, `not_found`,
   `ambiguous_query`, `upstream_unavailable`, `rate_limited`, `internal`). `data_unavailable`

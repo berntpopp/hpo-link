@@ -11,7 +11,18 @@
     "container_port": 8000,
     "health_path": "/health",
     "mcp_path": "/mcp",
-    "startup_timeout_seconds": 180
+    "startup_timeout_seconds": 300,
+    "auxiliary": [
+      {
+        "name": "hpo-data-init",
+        "role": "init",
+        "egress": "approved-networks",
+        "writable_targets": [
+          "/data",
+          "/tmp"
+        ]
+      }
+    ]
   },
   "data": {
     "mode": "external-reference",
@@ -30,6 +41,6 @@
     "contract": "data-bound"
   },
   "smoke": {
-    "profile": "compose"
+    "profile": "immutable-bundle"
   }
 }

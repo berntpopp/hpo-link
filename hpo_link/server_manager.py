@@ -100,13 +100,8 @@ class UnifiedServerManager:
         self._configure_stdio_environment()
         if self.logger:
             self.logger.info("Starting stdio MCP server")
-        from hpo_link.config import settings
-        from hpo_link.logging_config import configure_logging
         from hpo_link.mcp.facade import create_hpo_mcp
-        from hpo_link.services.refresh import bootstrap_data
 
-        # Bootstrap the index before serving (stdio has no FastAPI lifespan).
-        await bootstrap_data(settings.data, self.logger or configure_logging())
         mcp = create_hpo_mcp()
         # show_banner=False is critical: stray stdout bytes corrupt JSON-RPC framing.
         await mcp.run_async(transport="stdio", show_banner=False)

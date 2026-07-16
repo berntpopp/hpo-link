@@ -10,10 +10,11 @@ releases served on the OBO PURLs, is the only data source.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from hpo_link import __version__
@@ -21,6 +22,77 @@ from hpo_link import __version__
 # Project root: <repo>/hpo_link/config.py -> <repo>
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _DEFAULT_DATA_DIR = _PROJECT_ROOT / "data"
+_IMMUTABLE_TAG_FORBIDDEN = frozenset({"latest", "main", "master", "head", "stable", "current"})
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+class ImmutableDataRequirement(BaseModel):
+    """One exact HPO bundle that an init sidecar may materialize.
+
+    This separate frozen model is intentionally not a general release-discovery
+    configuration.  The serving app receives only the selected database path;
+    the init process receives an immutable URL plus the independent digest it
+    must verify before a snapshot becomes current.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    reference_root: Path
+    release_tag: str
+    bundle_url: AnyHttpUrl
+    compressed_sha256: str
+    expanded_tree_sha256: str
+    schema_version: int
+    hpo_version: str
+    hpoa_version: str
+    max_compressed_bytes: int
+    max_expanded_bytes: int
+
+    @model_validator(mode="after")
+    def validate_immutable_pin(self) -> ImmutableDataRequirement:
+        """Reject mutable, incomplete, or mismatched bundle identities."""
+        if not self.release_tag or self.release_tag.lower() in _IMMUTABLE_TAG_FORBIDDEN:
+            raise ValueError("immutable data release_tag must not be mutable")
+        if self.bundle_url.scheme != "https":
+            raise ValueError("immutable data bundle_url must use HTTPS")
+        if not _SHA256_RE.fullmatch(self.compressed_sha256):
+            raise ValueError("immutable data compressed_sha256 must be lowercase SHA-256")
+        if not _SHA256_RE.fullmatch(self.expanded_tree_sha256):
+            raise ValueError("immutable data expanded_tree_sha256 must be lowercase SHA-256")
+        if (
+            self.schema_version <= 0
+            or self.max_compressed_bytes <= 0
+            or self.max_expanded_bytes <= 0
+        ):
+            raise ValueError("immutable data schema and byte limits must be positive")
+        bundle_path = self.bundle_url.path
+        if bundle_path is None:
+            raise ValueError("immutable data bundle_url must contain an asset path")
+        asset = bundle_path.rsplit("/", maxsplit=1)[-1]
+        if not bundle_path.endswith(f"/{self.release_tag}/{asset}") or not asset.endswith(
+            ".sqlite.zst"
+        ):
+            raise ValueError("immutable data bundle_url must name an asset under release_tag")
+        return self
+
+
+def _default_immutable_data_requirement() -> ImmutableDataRequirement:
+    """Return the reviewed HPO reference bundle identity for production materialization."""
+    return ImmutableDataRequirement(
+        reference_root=Path("/data"),
+        release_tag="db-v2026-06-23",
+        bundle_url=AnyHttpUrl(
+            "https://github.com/berntpopp/hpo-link/releases/download/"
+            "db-v2026-06-23/hpo-2026-06-23.sqlite.zst"
+        ),
+        compressed_sha256="d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
+        expanded_tree_sha256="f98176204ac9b70d4451efab7fcafa4756e1aac2f14b64a5f2c5ec0d574ebee3",
+        schema_version=1,
+        hpo_version="2026-06-23",
+        hpoa_version="2026-06-23",
+        max_compressed_bytes=128 * 1024 * 1024,
+        max_expanded_bytes=512 * 1024 * 1024,
+    )
 
 
 class HPODataConfig(BaseModel):
@@ -198,6 +270,10 @@ class ServerSettings(BaseSettings):
     data: HPODataConfig = Field(
         default_factory=HPODataConfig,
         description="Local data store configuration.",
+    )
+    immutable_data: ImmutableDataRequirement = Field(
+        default_factory=_default_immutable_data_requirement,
+        description="Exact immutable HPO bundle materialized only by the init sidecar.",
     )
 
     @field_validator("mcp_path")

@@ -152,11 +152,10 @@ async def test_start_http_only_server_serves_without_mcp(
 # ---------------------------------------------------------------------------
 
 
-async def test_start_stdio_server_bootstraps_then_runs(
+async def test_start_stdio_server_runs_without_data_bootstrap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """stdio mode hardens the env, bootstraps data, then runs banner-free stdio."""
-    from hpo_link.config import settings
+    """stdio mode hardens its environment but never materializes reference data."""
 
     fake_mcp = MagicMock()
     fake_mcp.run_async = AsyncMock()
@@ -168,31 +167,31 @@ async def test_start_stdio_server_bootstraps_then_runs(
     mgr = UnifiedServerManager(logger=logger)
     await mgr.start_stdio_server()
 
-    boot_mock.assert_awaited_once_with(settings.data, logger)
+    boot_mock.assert_not_awaited()
     fake_mcp.run_async.assert_awaited_once_with(transport="stdio", show_banner=False)
     # Env hardening must have run.
     assert os.environ["HPO_LINK_TRANSPORT"] == "stdio"
     assert os.environ["FASTMCP_DISABLE_BANNER"] == "1"
 
 
-async def test_start_stdio_server_uses_configured_logger_when_none(
+async def test_start_stdio_server_needs_no_bootstrap_logger_when_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With no injected logger, bootstrap uses a freshly configured logger."""
-    from hpo_link.config import settings
+    """No logger is configured solely for a removed bootstrap operation."""
 
     fake_mcp = MagicMock()
     fake_mcp.run_async = AsyncMock()
     boot_mock = AsyncMock()
-    fallback_logger = MagicMock(name="configured")
+    configure_logging = MagicMock(name="configure_logging")
     monkeypatch.setattr("hpo_link.mcp.facade.create_hpo_mcp", lambda: fake_mcp)
     monkeypatch.setattr("hpo_link.services.refresh.bootstrap_data", boot_mock)
-    monkeypatch.setattr("hpo_link.logging_config.configure_logging", lambda: fallback_logger)
+    monkeypatch.setattr("hpo_link.logging_config.configure_logging", configure_logging)
 
     mgr = UnifiedServerManager()  # logger is None
     await mgr.start_stdio_server()
 
-    boot_mock.assert_awaited_once_with(settings.data, fallback_logger)
+    boot_mock.assert_not_awaited()
+    configure_logging.assert_not_called()
     fake_mcp.run_async.assert_awaited_once()
 
 

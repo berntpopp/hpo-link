@@ -8,6 +8,13 @@
 # would NOT drop the base "<host>:8000" mapping and the endpoint would stay
 # published on the public IP. The container is reachable only via the proxy.
 services:
+  hpo-data-init:
+    build: !reset null
+    image: "${HPO_LINK_IMAGE:?HPO_LINK_IMAGE must be set to ghcr.io/berntpopp/hpo-link@sha256:<digest>}"
+    pull_policy: missing
+    volumes: !override
+      - hpo-reference:/data
+
   hpo-link:
     build: !reset null
     image: "${HPO_LINK_IMAGE:?HPO_LINK_IMAGE must be set to ghcr.io/berntpopp/hpo-link@sha256:<digest>}"
@@ -18,16 +25,19 @@ services:
       HPO_LINK_LOG_LEVEL: INFO
       HPO_LINK_LOG_FORMAT: json
       HPO_LINK_DATA__DATA_DIR: /data
+      HPO_LINK_DATA__DB_FILENAME: current/hpo.sqlite
+      HPO_LINK_DATA__AUTO_BOOTSTRAP: "false"
+      HPO_LINK_DATA__REFRESH_ENABLED: "false"
       HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1","hpo-link.genefoundry.org"]'
       GF_HEALTHCHECK_HOST: localhost
     ports: !reset []
     expose:
       - "8000"
     volumes: !override
-      - hpo-data:/data
+      - hpo-reference:/data:ro
     read_only: true
     tmpfs: !override
-      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     security_opt: !override
       - no-new-privileges:true
     cap_drop: !override
@@ -56,8 +66,8 @@ services:
       - default
 
 volumes: !override
-  hpo-data:
-    name: hpo-link_hpo-data
+  hpo-reference:
+    name: hpo-link_hpo-reference
 
 networks: !override
   default:

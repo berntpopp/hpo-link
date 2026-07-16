@@ -26,17 +26,28 @@ only; `stdio` is the Claude Desktop transport (`mcp_server.py`). `structlog` wri
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `HPO_LINK_DATA__DATA_DIR` | `<project>/data` | Database + cache directory. |
-| `HPO_LINK_DATA__DB_FILENAME` | `hpo.sqlite` | SQLite filename. |
+| `HPO_LINK_DATA__DB_FILENAME` | `hpo.sqlite` | SQLite filename; production sets `current/hpo.sqlite`. |
 | `HPO_LINK_DATA__ONTOLOGY_EDITION` | `hp.json` | HPO ontology edition to download. |
 | `HPO_LINK_DATA__DOWNLOAD_TIMEOUT` | `300` | Seconds. |
-| `HPO_LINK_DATA__AUTO_BOOTSTRAP` | `true` | Build the database on first use if absent. |
-| `HPO_LINK_DATA__PREFER_PREBUILT` | `true` | Prefer a prebuilt SQLite artifact if available. |
-| `HPO_LINK_DATA__PREBUILT_DB_URL` | _(unset)_ | URL of a prebuilt SQLite artifact to download. |
-| `HPO_LINK_DATA__REFRESH_ENABLED` | `false` | In-process periodic refresh. |
+| `HPO_LINK_DATA__AUTO_BOOTSTRAP` | `true` | Local authoring helper only; production sets `false` and never bootstraps in-process. |
+| `HPO_LINK_DATA__PREFER_PREBUILT` | `true` | Local authoring helper only; not a production deployment input. |
+| `HPO_LINK_DATA__PREBUILT_DB_URL` | _(unset)_ | Local authoring helper only; production uses the reviewed immutable bundle pin. |
+| `HPO_LINK_DATA__REFRESH_ENABLED` | `false` | Local authoring helper only; serving paths never schedule refresh. |
 | `HPO_LINK_DATA__REFRESH_INTERVAL_HOURS` | `168` | Refresh cadence (weekly). |
 | `HPO_LINK_DATA__BUILD_LOCK_TIMEOUT` | `900` | Seconds to wait for the build lock. |
 
 See [Data & provenance](data.md) for what these knobs actually do to the database.
+
+## Immutable deployment data (`HPO_LINK_IMMUTABLE_DATA__*`)
+
+Production Compose supplies these values only to `hpo-data-init`, never to the
+request-facing application. They identify one exact HTTPS GitHub Release asset
+(`release_tag`, `bundle_url`, compressed digest, canonical expanded-tree digest,
+schema/HPO/HPOA identities, and byte ceilings). The sidecar verifies and
+atomically selects it under `/data/current`; the app mounts `/data` read-only
+and opens `current/hpo.sqlite` with SQLite immutable read semantics. Treat the
+reviewed values in `container-release.json` and Compose as one release tuple;
+do not substitute `latest` or an unverified URL.
 
 ## HTTP boundary (Host / Origin / CORS)
 
