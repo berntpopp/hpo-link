@@ -92,11 +92,14 @@ mcp_server.py      stdio transport (Claude Desktop)
    `hpo.sqlite` (atomic). Provenance (HPO release, source validators, counts)
    is written to the single-row `meta` table.
 
-**Prebuilt artifact model:** for production or Docker deployments, a prebuilt
-SQLite database can be distributed as a GitHub Release artifact. Set
-`HPO_LINK_DATA__PREBUILT_DB_URL` to the artifact URL; the entrypoint downloads
-and verifies it rather than building from source. When absent,
-`HPO_LINK_DATA__AUTO_BOOTSTRAP=true` triggers a build on first use.
+**Immutable artifact model:** production Docker deployments use the exact,
+pinned GitHub Release bundle configured in `immutable_data`. The `hpo-data-init`
+init sidecar is the only production downloader: it verifies the compressed
+artifact and the expanded SQLite tree, atomically publishes `/data/current`,
+and exits successfully before the application starts. The application mounts
+that named volume read-only and never bootstraps or refreshes data in process.
+Local `hpo-link-data build` and `refresh` commands remain authoring tools, not
+serving startup paths.
 
 ## Definition of done
 

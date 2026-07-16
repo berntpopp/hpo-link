@@ -10,8 +10,8 @@ exceptions.
 ```
 config / constants / identifiers
 ingest/  downloader → lock → parser → builder (schema.sql) → cli
-data/    repository (read-only SQLite)
-services/ hpo_service, annotation_service, shaping, pagination, refresh
+data/    repository (read-only immutable SQLite)
+services/ hpo_service, annotation_service, shaping, pagination
 ```
 
 ### Ingest pipeline
@@ -59,13 +59,15 @@ ranked for resolution:
 
 ### Services
 
-`HpoRepository` opens the database read-only (`file:…?mode=ro`) and exposes the
+`HpoRepository` opens the selected database read-only and immutable
+(`file:…?mode=ro&immutable=1`) and exposes the
 row-level queries. `HpoService` composes them into tool payloads (plain
 dicts), resolving a `term` argument that may be an HP id, a label/synonym, or
 an external xref. `AnnotationService` wraps the annotation repository.
 `shaping.py` projects payloads to the requested `response_mode`;
-`pagination.py` adds the truncation block. `refresh.py` bootstraps the
-database at startup and can run a periodic refresh.
+`pagination.py` adds the truncation block. The deployment init sidecar
+materializes the reference data before any server process starts; server start
+paths never bootstrap or refresh it.
 
 ## MCP plane (`mcp/`)
 

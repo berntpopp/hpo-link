@@ -10,10 +10,11 @@ make docker-logs
 make docker-down
 ```
 
-The container runs the unified server (FastAPI `/health` + MCP `/mcp`). On
-first start it bootstraps the HPO database into the data volume (unless one is
-already present). Mount a persistent volume at the data directory so the
-database survives restarts.
+The container runs the unified server (FastAPI `/health` + MCP `/mcp`). A
+separate non-root `hpo-data-init` service first fetches and verifies the exact
+HPO release pin into the `hpo-reference` named volume. The application waits
+for successful completion, mounts that volume read-only, and serves only
+`/data/current/hpo.sqlite`; it never downloads, builds, or refreshes HPO data.
 
 Production overlays live in `docker/`: `docker-compose.prod.yml` and
 `docker-compose.npm.yml` (Nginx Proxy Manager). Both add
@@ -32,21 +33,14 @@ bite a first deployment:
 - `HPO_LINK_ALLOWED_ORIGINS` must include every origin `HPO_LINK_CORS_ORIGINS` is
   intended to serve, or a browser request is rejected before CORS applies.
 
-## Data refresh
+## Data promotion
 
-Two options, mutually compatible:
-
-- **In-process:** set `HPO_LINK_DATA__REFRESH_ENABLED=true`. The server checks
-  for a new HPO release on the configured interval and atomically rebuilds.
-- **External cron:** keep refresh disabled and run `make data-refresh`
-  (`hpo-link-data refresh`) on a schedule. It conditionally downloads (304 →
-  no-op) and rebuilds only when the release changed.
-
-`make data-status` (`hpo-link-data status`) prints the loaded HPO release
-and counts — use it as a readiness/freshness check.
-
-To serve a prebuilt database instead of building one, see
-[Data & provenance → prebuilt artifact distribution](data.md#prebuilt-artifact-distribution).
+Data freshness is a release-promotion concern, not a runtime setting. Publish
+and review a new immutable data artifact, update its tag and digests in the
+repository release tuple, release a new application image, and redeploy. The
+running application has no bootstrap, prebuilt-URL, or refresh configuration.
+For local authoring only, `make data-status` and `make data-refresh` inspect or
+rebuild a developer-owned SQLite database.
 
 ## Health
 

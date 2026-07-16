@@ -26,16 +26,15 @@ make data-refresh   # uv run hpo-link-data refresh — conditional rebuild (cron
 `hpo-link-data status` is the operator's freshness check, distinct from the
 `get_diagnostics` tool.
 
-## Freshness
+## Local authoring freshness
 
 Downloads use a **conditional GET** (`If-None-Match` / `If-Modified-Since`, cached in
 `download_cache.json`); a `304` reuses the local file, so `refresh` is cheap and a
 no-op when the upstream release has not changed.
 
-Two refresh strategies, mutually compatible — see [Deployment](deployment.md#data-refresh):
-
-- **In-process:** `HPO_LINK_DATA__REFRESH_ENABLED=true` (off by default).
-- **External cron:** keep it off and schedule `make data-refresh`.
+`make data-refresh` is for a reviewed local data-authoring workflow. It is not
+a serving-time operation and deployed applications never run an in-process
+scheduler or a cron-driven refresh.
 
 ## Build integrity
 
@@ -47,16 +46,21 @@ release version, source validators, counts, build time — is written to a singl
 See [Architecture → ingest pipeline](architecture.md#ingest-pipeline) for the stage
 breakdown and the SQLite schema.
 
-## Prebuilt artifact distribution
+## Production immutable artifact
 
-To skip the build step, set `HPO_LINK_DATA__PREBUILT_DB_URL` to the URL of a prebuilt
-SQLite artifact (for example a GitHub Release asset). The entrypoint downloads and
-**verifies** it before serving. `HPO_LINK_DATA__PREFER_PREBUILT` (default `true`)
-controls whether that path is preferred when both are possible.
+Production uses the exact `db-v2026-06-23` GitHub Release asset and compressed
+SHA-256 declared in `container-release.json`. The non-root `hpo-data-init`
+sidecar is the only process allowed to fetch it. It bounds the download,
+verifies the committed compressed digest, verifies the canonical expanded-tree
+digest and HPO metadata, then atomically selects `/data/current` in the named
+reference volume. The request-facing app starts only after that sidecar exits
+successfully, mounts the same volume read-only, and opens
+`current/hpo.sqlite` in SQLite immutable mode.
 
-If no prebuilt URL is set, the server builds from source on first use
-(`HPO_LINK_DATA__AUTO_BOOTSTRAP=true`). In Docker, mount a persistent volume at the data
-directory so the database survives restarts.
+Changing data is a reviewed promotion: publish a new immutable data release,
+update the release tuple and deployment image, then redeploy. Do not set
+`PREBUILT_DB_URL`, `AUTO_BOOTSTRAP`, or a mutable release selector in a running
+deployment.
 
 ## Licence
 

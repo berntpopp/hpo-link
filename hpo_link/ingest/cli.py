@@ -24,6 +24,15 @@ app = typer.Typer(
 )
 
 
+@app.command("materialize-data")
+def materialize_data() -> None:
+    """Download and atomically select the exact configured immutable HPO bundle."""
+    from hpo_link.immutable_data import materialize_immutable_data
+
+    selected = materialize_immutable_data(get_config().immutable_data)
+    print(f"Materialized immutable HPO data: {selected.name}")
+
+
 def get_config() -> ServerSettings:
     """Return fresh server settings (data store) for the ingest CLI.
 

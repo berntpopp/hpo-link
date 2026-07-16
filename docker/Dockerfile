@@ -63,9 +63,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HPO_LINK_TRANSPORT=unified \
     HPO_LINK_MCP_PATH=/mcp \
     HPO_LINK_DATA__DATA_DIR=/data \
-    # The entrypoint builds the index before the server starts. Refresh is owned
-    # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
-    HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
     HPO_LINK_DATA__REFRESH_ENABLED=false \
     TMPDIR=/tmp
 
@@ -138,9 +135,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HPO_LINK_TRANSPORT=unified \
     HPO_LINK_MCP_PATH=/mcp \
     HPO_LINK_DATA__DATA_DIR=/data \
-    # The entrypoint builds the index before the server starts. Refresh is owned
-    # by cron (see docs/deployment.md), so the in-app scheduler stays OFF.
-    HPO_LINK_DATA__AUTO_BOOTSTRAP=true \
     HPO_LINK_DATA__REFRESH_ENABLED=false \
     TMPDIR=/tmp
 WORKDIR /home/app/web
@@ -153,8 +147,8 @@ EXPOSE 8000
 # Mount a volume there so the index persists across container restarts.
 VOLUME ["/data"]
 
-# start-period covers the entrypoint's first build (download + build).
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+# The init sidecar materializes reference data before the application starts.
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
     CMD curl -f http://127.0.0.1:8000/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["/usr/local/bin/entrypoint.sh"]

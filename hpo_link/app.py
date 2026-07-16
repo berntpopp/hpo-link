@@ -1,4 +1,4 @@
-"""FastAPI host for hpo-link (thin: health + service info + data bootstrap)."""
+"""FastAPI host for hpo-link (thin: health + service info)."""
 
 from __future__ import annotations
 
@@ -12,11 +12,6 @@ from hpo_link import __version__
 from hpo_link.buildinfo import build_info
 from hpo_link.config import settings
 from hpo_link.logging_config import configure_logging
-from hpo_link.services.refresh import (
-    bootstrap_data,
-    start_refresh_scheduler,
-    stop_refresh_scheduler,
-)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -24,15 +19,12 @@ if TYPE_CHECKING:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-    """Bootstrap the HPO index and (optionally) start the refresh scheduler."""
+    """Log application lifetime; immutable data is prepared by the init sidecar."""
     logger = configure_logging()
     logger.info("hpo-link starting", host=settings.host, port=settings.port)
-    await bootstrap_data(settings.data, logger)
-    refresh_task = start_refresh_scheduler(settings.data, logger)
     try:
         yield
     finally:
-        await stop_refresh_scheduler(refresh_task)
         logger.info("hpo-link shutting down")
 
 

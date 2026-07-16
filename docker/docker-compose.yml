@@ -1,61 +1,36 @@
 name: hpo-link
 
 services:
-  hpo-link:
-    build:
+  # The only authoritative-data writer. It verifies one exact GitHub Release
+  # bundle into a named volume and exits before the request-facing app starts.
+  hpo-data-init:
+    build: &build
       context: ..
       dockerfile: docker/Dockerfile
       target: production
       args:
-        # Stamp build provenance into the image so get_server_capabilities/_meta
-        # can report which build answered. Defaults keep an unset env harmless.
         APP_VERSION: ${APP_VERSION:-0.0.0}
         VCS_REF: ${VCS_REF:-0000000000000000000000000000000000000000}
         BUILD_DATE: ${BUILD_DATE:-1970-01-01T00:00:00Z}
-    container_name: hpo-link
-    # Dev/local only — loopback-bound (127.0.0.1) so copying this file to a
-    # server never publishes the unauthenticated backend on the public IP
-    # (Docker would otherwise bind 0.0.0.0 and bypass the host firewall).
-    # Production fronts the container with a reverse proxy via the prod/npm
-    # overlays (ports: !reset []). Backends are unauthenticated by design.
-    ports:
-      - "127.0.0.1:${HPO_LINK_HOST_PORT:-8000}:8000"
-    env_file:
-      - path: ../.env
-        required: false
-      - path: ../.env.docker
-        required: false
+    image: hpo-link:latest
+    command: ["hpo-link-data", "materialize-data"]
     environment:
-      HPO_LINK_HOST: 0.0.0.0
-      HPO_LINK_PORT: 8000
-      HPO_LINK_TRANSPORT: unified
-      HPO_LINK_MCP_PATH: /mcp
-      HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
-      HPO_LINK_LOG_LEVEL: INFO
-      HPO_LINK_LOG_FORMAT: json
-      HPO_LINK_DATA__DATA_DIR: /data
-      HPO_LINK_DATA__AUTO_BOOTSTRAP: "true"
-      # Refresh is owned by cron (see docs/deployment.md). To refresh the running
-      # container, run a host cron job:
-      #   docker compose -f docker/docker-compose.yml exec hpo-link hpo-link-data refresh
-      HPO_LINK_DATA__REFRESH_ENABLED: "false"
+      HPO_LINK_IMMUTABLE_DATA__REFERENCE_ROOT: /data
+      HPO_LINK_IMMUTABLE_DATA__RELEASE_TAG: db-v2026-06-23
+      HPO_LINK_IMMUTABLE_DATA__BUNDLE_URL: https://github.com/berntpopp/hpo-link/releases/download/db-v2026-06-23/hpo-2026-06-23.sqlite.zst
+      HPO_LINK_IMMUTABLE_DATA__COMPRESSED_SHA256: d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6
+      HPO_LINK_IMMUTABLE_DATA__EXPANDED_TREE_SHA256: f98176204ac9b70d4451efab7fcafa4756e1aac2f14b64a5f2c5ec0d574ebee3
+      HPO_LINK_IMMUTABLE_DATA__SCHEMA_VERSION: "1"
+      HPO_LINK_IMMUTABLE_DATA__HPO_VERSION: "2026-06-23"
+      HPO_LINK_IMMUTABLE_DATA__HPOA_VERSION: "2026-06-23"
+      HPO_LINK_IMMUTABLE_DATA__MAX_COMPRESSED_BYTES: "134217728"
+      HPO_LINK_IMMUTABLE_DATA__MAX_EXPANDED_BYTES: "536870912"
     volumes:
-      # Persist the built SQLite index across container restarts.
-      - hpo-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://127.0.0.1:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    restart: unless-stopped
-    # Container & Deployment Hardening Standard v1 (backported so running the base
-    # file directly is still safe). The built SQLite index lives on the `hpo-data`
-    # named volume (writable); the rootfs is read-only and scratch is an explicit,
-    # size-capped tmpfs.
+      - hpo-reference:/data
+    restart: "no"
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=512m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -73,20 +48,63 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Optional: a one-shot refresh runner you can invoke from host cron, e.g.
-  #   17 3 * * *  docker compose -f /path/docker/docker-compose.yml run --rm refresh
-  refresh:
-    profiles: ["tools"]
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: production
-    entrypoint: ["hpo-link-data", "refresh"]
+  hpo-link:
+    build: *build
+    image: hpo-link:latest
+    container_name: hpo-link
+    # Development only: direct access is loopback-bound. Production drops this
+    # mapping and reaches the unauthenticated backend only through its proxy.
+    ports:
+      - "127.0.0.1:${HPO_LINK_HOST_PORT:-8000}:8000"
+    depends_on:
+      hpo-data-init:
+        condition: service_completed_successfully
+    env_file:
+      - path: ../.env
+        required: false
+      - path: ../.env.docker
+        required: false
     environment:
+      HPO_LINK_HOST: 0.0.0.0
+      HPO_LINK_PORT: 8000
+      HPO_LINK_TRANSPORT: unified
+      HPO_LINK_MCP_PATH: /mcp
+      HPO_LINK_ALLOWED_HOSTS: '["localhost","127.0.0.1","::1"]'
+      HPO_LINK_LOG_LEVEL: INFO
+      HPO_LINK_LOG_FORMAT: json
       HPO_LINK_DATA__DATA_DIR: /data
+      HPO_LINK_DATA__DB_FILENAME: current/hpo.sqlite
+      HPO_LINK_DATA__AUTO_BOOTSTRAP: "false"
+      HPO_LINK_DATA__REFRESH_ENABLED: "false"
+    # The app cannot alter the selected reference snapshot.
     volumes:
-      - hpo-data:/data
+      - hpo-reference:/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Host: localhost", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    init: true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+          pids: 256
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
-  hpo-data:
-    driver: local
+  hpo-reference:

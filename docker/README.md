@@ -7,22 +7,13 @@ make docker-logs        # follow logs
 make docker-down        # stop
 ```
 
-The entrypoint downloads the HPO ontology and builds the local SQLite database
-before the server starts. The database is persisted in the `hpo-data` named
-volume across restarts.
+`hpo-data-init` is a hardened one-shot writer. It verifies the exact immutable
+HPO release into the `hpo-reference` named volume, then exits. `hpo-link`
+waits for that success condition and mounts the volume read-only; its default
+command only serves HTTP/MCP. Promote data through a reviewed release-pin
+change and redeploy — never by scheduling a refresh inside the running stack.
 
-## Refresh
-
-The in-app scheduler is **off**; refresh is owned by cron. To refresh the
-running stack's data, run the one-shot `refresh` service (under the `tools`
-profile) from host cron:
-
-```cron
-17 3 * * *  docker compose -f /opt/hpo-link/docker/docker-compose.yml run --rm refresh
-```
-
-See [`../docs/deployment.md`](../docs/deployment.md) for crontab / systemd timer
-options on bare-metal installs.
+See [`../docs/deployment.md`](../docs/deployment.md) for the deployment contract.
 
 ## Ports
 

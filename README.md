@@ -52,7 +52,8 @@ make mcp-serve        # stdio instead, for Claude Desktop (stdout is the protoco
 ```
 
 Three console scripts: `hpo-link` (unified server), `hpo-link-mcp` (stdio),
-`hpo-link-data` (`build` / `refresh` / `status`).
+`hpo-link-data` (`build` / `refresh` / `status` for data authoring, and
+`materialize-data` for the hardened deployment init sidecar).
 
 ## Tools
 
@@ -94,11 +95,11 @@ Built from two upstream artifacts: the **HPO ontology** (`hp.json`, via the OBO 
 (`phenotype.hpoa`), which link HPO terms to OMIM / Orphanet / DECIPHER diseases and,
 derived from those, to genes.
 
-Refresh is a conditional GET (ETag / `Last-Modified`); a `304` reuses the local file, so
-`make data-refresh` is cheap and rebuilds only on a new release. Builds are atomic and
-lock-serialised, and the loaded release is reported by `get_diagnostics`. A prebuilt
-database can be pulled instead of built (`HPO_LINK_DATA__PREBUILT_DB_URL`). Details:
-[docs/data.md](docs/data.md).
+Local data authoring can refresh from upstream with conditional GET (ETag /
+`Last-Modified`), but deployed servers do not. Production uses the immutable,
+digest-pinned release declared in `container-release.json`: `hpo-data-init`
+materializes it before the application starts, then the application reads the
+selected snapshot only. Details: [docs/data.md](docs/data.md).
 
 **Data licence:** HPO is distributed under a custom licence for research and educational
 use (<https://hpo.jax.org/app/license>) — **attribution required**.
@@ -115,7 +116,7 @@ Phenotype Ontology in 2024: phenotypes around the world.* Nucleic Acids Research
 - [Architecture](docs/architecture.md) — the two planes, ingest pipeline, SQLite schema, request lifecycle.
 - [Data & provenance](docs/data.md) — sources, freshness, build integrity, prebuilt artifacts, licence.
 - [Configuration](docs/configuration.md) — every `HPO_LINK_*` variable and the Host/Origin/CORS allowlists.
-- [Deployment](docs/deployment.md) — Docker, refresh scheduling, health and deploy verification.
+- [Deployment](docs/deployment.md) — Docker init sidecar, health and deploy verification.
 - [AGENTS.md](AGENTS.md) — engineering conventions, invariants, definition of done.
 
 ## Contributing

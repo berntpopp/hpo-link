@@ -57,7 +57,7 @@ class HpoRepository(AnnotationsMixin):
             )
         try:
             self._conn = sqlite3.connect(
-                f"file:{self._path}?mode=ro",
+                f"file:{self._path}?mode=ro&immutable=1",
                 uri=True,
                 check_same_thread=False,
             )
