@@ -1,6 +1,6 @@
 # Usage
 
-All tools are read-only and return a JSON envelope: `{success, ...payload,
+The tool examples below are read-only and use a JSON envelope: `{success, ...payload,
 _meta}` on success, or `{success: false, error_code, message, retryable,
 recovery_action, _meta}` on error. `_meta.next_commands` lists ready-to-call
 follow-ups — follow them rather than guessing. `response_mode` ∈ `minimal |
