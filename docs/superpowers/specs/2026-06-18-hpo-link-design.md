@@ -1,5 +1,8 @@
 # hpo-link — Design Specification
 
+> Historical record — this document records the approved 2026-06-18 design. Current behavior is
+> defined by implemented code, standards, release evidence, and tests.
+
 **Status:** Approved (design) — pending implementation plan
 **Date:** 2026-06-18
 **Author:** Senior MCP engineer (Claude) with B. Popp
