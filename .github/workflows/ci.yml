@@ -15,9 +15,23 @@ permissions:
 
 jobs:
   quality:
-    name: Format, lint, typecheck, tests, and coverage
+    name: Format, lint, typecheck, tests, and coverage (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 is the `requires-python` floor; 3.14 is the interpreter the container
+        # actually ships (docker/Dockerfile). Testing only 3.14 left the declared floor
+        # an unverified claim; testing only 3.12 shipped an untested interpreter.
+        python-version: ["3.12", "3.14"]
+
+    # uv resolves its interpreter from `.python-version` before PATH, so the matrix
+    # alone would not reliably move it. UV_PYTHON makes each leg run the interpreter
+    # it is named after by statement rather than by PATH accident.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
       - name: Checkout
@@ -26,7 +40,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -44,5 +58,5 @@ jobs:
       # Coverage gate runs only on push to main to avoid a second full test run on
       # every PR iteration (concurrency-cancel + this split are the compute savers).
       - name: Coverage gate
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && matrix.python-version == '3.14'
         run: make test-cov
