@@ -6,6 +6,52 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-30
+
+Maintenance release. No runtime behaviour change; the MCP tool surface, response
+envelopes and data pipeline are untouched.
+
+### Added
+
+- **Dependabot coverage — this repository had none.** There was no
+  `.github/dependabot.yml`, so "0 open Dependabot PRs" reported the absence of a
+  watcher rather than health: only Dependabot's config-free *security* updates ever
+  landed here (that is where the lone `mcp` bump came from), while routine updates to
+  Python dependencies, GitHub Actions and the digest-pinned container base were never
+  proposed at all. Adds the fleet-standard four-ecosystem config — `uv` at `/`,
+  `github-actions` at `/`, `docker` and `docker-compose` at `/docker` — on the shared
+  weekly Monday Europe/Berlin schedule with staggered windows and a 5-PR limit.
+
+### Changed
+
+- **Lint policy is now pinned with `select` instead of `extend-select`.** ruff 0.16
+  grows the implicit default rule set from 59 rules to 413, which under `extend-select`
+  would have silently added ~350 rules this project never opted into. The rule list is
+  unchanged and already supersets ruff's pre-0.16 default (`E4`/`E7`/`E9` + `F`), so the
+  enforced policy is byte-identical — it is simply now decided here rather than upstream.
+- **Swept the accumulated lockfile drift** (30 packages): `fastapi` 0.137.2 → 0.141.1,
+  `uvicorn` 0.49.0 → 0.52.0, `mcp` 1.28.1 → 1.29.0, `fastmcp` 3.4.4 → 3.4.5, `mypy`
+  2.1.0 → 2.3.0, `ruff` 0.15.18 → 0.16.0, `pytest` 9.1.0 → 9.1.1, `coverage` 7.14.1 →
+  7.15.2, `typer` 0.26.7 → 0.27.0, `websockets` 16.0 → 17.0, `certifi` 2026.6.17 →
+  2026.7.22, plus transitive updates. `pyproject` floors are deliberately
+  minimum-supported bounds with upper caps and are left as they are.
+- **Refreshed the `python:3.12-slim` base digest** to the current manifest list, picking
+  up the Debian security rebuilds the un-watched pin had missed. Stays on the 3.12 line
+  on purpose: `requires-python` is `>=3.12`, CI pins python-version `3.12`, and
+  `container-release.json` hard-codes `opt/venv/lib/python3.12/...` paths.
+- **Bumped the SHA-pinned GitHub Actions**: `actions/checkout` v7.0.0 → v7.0.1,
+  `actions/setup-python` v6.3.0 → v7.0.0, `astral-sh/setup-uv` v8.2.0 → v9.0.0.
+
+### Fixed
+
+- **CodeQL was pinned to a tag object, not a commit.** `github/codeql-action@ed410739…`
+  with a `# v4` comment is the annotated tag object for the *moving* `v4` tag; it
+  dereferences to release **v4.35.3**. Dependabot cannot track a tag-object SHA, so the
+  pin was both stale and invisible to tooling, and the `# v4` comment hid that. Repinned
+  `init` and `analyze` to the real commit `f205ea1c…` = **v4.37.4**.
+- **`CITATION.cff` reported version 0.3.6** while the project was at 0.4.0 — two releases
+  behind. Synced to 0.4.1 with the correct `date-released`.
+
 ## [0.4.0] - 2026-07-15
 
 MCP contract-hardening (issue #28 — a fleet audit reproduced five confirmed defects
