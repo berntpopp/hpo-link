@@ -37,6 +37,7 @@
       "opt/venv/lib/python3.14/site-packages/hpo_link/data/repository.py"
     ]
   },
+  "data_identity_contract": "unadopted",
   "definitions": {
     "contract": "data-bound"
   },
