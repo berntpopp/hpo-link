@@ -6,6 +6,63 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-30
+
+The container base moves to Python 3.14, together with the one file that has to
+move with it. No runtime behaviour change; the MCP tool surface, response
+envelopes and data pipeline are untouched.
+
+### Changed
+
+- **`docker/Dockerfile` is on `python:3.14-slim`** (`57cd7c3a`→`cea0e604`) in
+  both the `builder` and `prepared` stages, and **`container-release.json`'s
+  `data.image_allowlist` moves with it.** [0.4.1] stayed on 3.12 precisely
+  because these are coupled, and they are: the base bump relocates the venv from
+  `/opt/venv/lib/python3.12/…` to `…/python3.14/…`, so the three interpreter-
+  versioned allowlist entries match nothing, the router's OCI content inspector
+  sees three unexplained files under a `data/` directory, and the container gate
+  rejects the image. That is why the Dockerfile-only Dependabot PR (#35) was red,
+  and sibling `mgi-link` hit the same wall live.
+
+  Verified against the actually built image rather than assumed, by running the
+  router's own `container_release.py inspect-oci` over the real OCI layout: the
+  3.12 allowlist returns `policy_violation` naming exactly those three denied
+  paths; the 3.14 allowlist returns `pass` with all six entries matched.
+- **CI now tests on the interpreter the image ships** —
+  `.github/workflows/ci.yml` `python-version` `3.12`→`3.14`. The suite is green
+  on 3.14 and on the declared 3.12 floor alike (555 tests, both).
+- Added the `Programming Language :: Python :: 3.14` classifier.
+
+### Notes
+
+- **`requires-python` stays `>=3.12`, and with it ruff's `target-version =
+  "py312"` and mypy's `python_version = "3.12"`.** Raising the floor to `>=3.14`
+  is currently blocked *by the fleet's own container gate*, not by this package.
+  The router's `_container-ci.yml` runs the caller repo's `uv lock --check` /
+  `uv version` under a pinned `actions/setup-python` 3.12 and a pinned
+  `astral-sh/setup-uv` 0.8.7, and uv 0.8.7's managed-download index offers no
+  stable 3.14 — only `3.14.0rc1`, which does not satisfy `>=3.14`. A lock
+  declaring `>=3.14` therefore fails with
+  `No interpreter found for Python >=3.14`, observed on a real CI run of the
+  sibling hgnc-link migration before its floor was reverted.
+
+  Sibling `orphanet-link` appears to contradict this, but its `pyproject.toml`
+  says `>=3.14` while its `uv.lock` still says `>=3.12` — the lock was never
+  re-resolved, and uv 0.8.7's `uv lock --check` does not flag that drift. Its
+  gate is green by accident and will turn red the next time anyone runs
+  `uv lock` there. That state is deliberately not copied here.
+
+  The three settings also have to agree with each other: at `py314` ruff
+  rewrites `except (A, B):` to PEP 758 `except A, B:` and flags `UP043` on
+  `AsyncGenerator[None, None]`, both of which are errors on 3.12 — so a `py314`
+  target alongside a `>=3.12` floor would make the floor a lie.
+
+  Once the router's container-CI pins move to a Python and a uv that know stable
+  3.14, the floor and both tool targets can be raised in one commit.
+- `uv.lock`'s only change is this package's own version stamp. No dependency
+  version moved, and every compiled dependency (`uvloop`, `watchfiles`) already
+  ships a cp314 wheel.
+
 ## [0.4.1] - 2026-07-30
 
 Maintenance release. No runtime behaviour change; the MCP tool surface, response

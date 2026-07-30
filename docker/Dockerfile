@@ -3,7 +3,7 @@
 
 # Base image pinned by digest (manifest-list) for byte-reproducible rebuilds —
 # Container & Deployment Hardening Standard v1, rule 2. Bump via Renovate/Dependabot.
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS builder
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -33,7 +33,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.7@sha256:1e26f9a868360eeb32500a35e05787ffff
 RUN uv sync --frozen --no-dev --active --no-install-project
 
 
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS prepared
+FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS prepared
 
 
 # Release identity is supplied by the central container-release workflow.
