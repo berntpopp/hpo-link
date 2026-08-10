@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-10
+
+Consolidated Dependabot maintenance release. No MCP, API or data-pipeline
+behaviour change.
+
+### Security
+
+- Updated locked `cryptography` to 50.0.0, closing CVE-2026-69247 without
+  weakening the container vulnerability gate.
+
+### Changed
+
+- Updated Uvicorn to 0.52.1, Typer to 0.27.1, FastMCP to 3.4.6 and Ruff to
+  the current 0.16.x release.
+- Updated both CodeQL phases together to v4.37.6 and both reusable container
+  workflows to reviewed router v0.7.4.
+
 ## [0.4.2] - 2026-07-30
 
 The container base moves to Python 3.14, together with the one file that has to
