@@ -40,4 +40,4 @@ jobs:
   container-ci:
     permissions:
       contents: read
-    uses: berntpopp/genefoundry-router/.github/workflows/_container-ci.yml@915356ac10bb3542f379db612a14b140e3c81078 # genefoundry-router container-release standard v1
+    uses: berntpopp/genefoundry-router/.github/workflows/_container-ci.yml@59050ea9d2851335286c73787f3b7769e1014062 # genefoundry-router container-release standard v1
