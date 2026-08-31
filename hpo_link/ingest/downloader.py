@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 CACHE_FILENAME = "download_cache.json"
-_METADATA_MAX_BYTES = 64 * 1024
+_METADATA_MAX_BYTES = 128 * 1024
 
 #: HPO ships releases tagged as an ISO calendar date (e.g. ``v2026-06-06``). The
 #: resolved version is interpolated into the OBO PURL request path AND flows into

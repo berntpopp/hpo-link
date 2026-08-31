@@ -125,7 +125,7 @@ class HPODataConfig(BaseModel):
         ),
     )
     max_manifest_bytes: int = Field(
-        default=64 * 1024,
+        default=128 * 1024,
         ge=1,
         description=(
             "GitHub metadata cap; manifest measured 550 bytes on 2026-07-10. "
