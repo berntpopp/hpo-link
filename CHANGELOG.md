@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-08-31
+
+- Upgraded the prepared image's OpenSSL packages with APT's `--only-upgrade`
+  mode, remediating CVE-2026-14456 without broadening the package set.
+
 ## [0.4.4] - 2026-08-31
 
 - Raised bounded HPO release metadata parsing to 128 KiB and refreshed the

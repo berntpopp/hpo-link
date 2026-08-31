@@ -66,9 +66,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     HPO_LINK_DATA__REFRESH_ENABLED=false \
     TMPDIR=/tmp
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
+RUN apt-get update \
+    && apt-get install -y --only-upgrade --no-install-recommends \
+        openssl \
+        libssl3t64 \
+        openssl-provider-legacy \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
