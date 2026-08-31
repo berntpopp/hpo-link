@@ -78,6 +78,7 @@ def test_production_compose_has_a_hardened_writer_and_read_only_reader() -> None
 
     _assert_hardened_init(init)
     _assert_reader(app, "hpo-data-init")
+    assert app["restart"] == "unless-stopped"
     assert init["networks"] == {"default": None}
     assert app["networks"] == {"default": None}
     assert app["image"] == _IMAGE
