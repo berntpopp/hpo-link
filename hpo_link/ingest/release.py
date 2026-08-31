@@ -33,7 +33,7 @@ from hpo_link.ingest.download_security import (
 logger = structlog.get_logger()
 
 _GH_RELEASES_URL = "https://api.github.com/repos/{owner_repo}/releases"
-_DEFAULT_MANIFEST_BYTES = 64 * 1024
+_DEFAULT_MANIFEST_BYTES = 128 * 1024
 _DEFAULT_BUNDLE_BYTES = 128 * 1024 * 1024
 _DEFAULT_DATABASE_BYTES = 512 * 1024 * 1024
 _GITHUB_API_POLICY = DownloadPolicy(allowed_hosts=frozenset({"api.github.com"}), max_redirects=0)

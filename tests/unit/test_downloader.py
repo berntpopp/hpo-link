@@ -54,6 +54,55 @@ def test_resolve_latest_version() -> None:
         assert resolve_latest_version(c) == "2026-06-06"
 
 
+def test_data_config_uses_the_shared_128_kib_metadata_ceiling() -> None:
+    """Resolver and immutable-release manifests share one documented safe default."""
+    from hpo_link.config import HPODataConfig
+
+    assert HPODataConfig().max_manifest_bytes == 131072
+
+
+@pytest.mark.parametrize("size", [131071, 131072])
+@respx.mock
+def test_resolve_latest_version_accepts_metadata_at_the_128_kib_boundary(size: int) -> None:
+    """The metadata ceiling admits a complete body at or below 128 KiB."""
+    body = b'{"tag_name":"v2026-06-23"}'
+    response = body + (b" " * (size - len(body)))
+    respx.get(GITHUB_RELEASES_LATEST_URL).mock(
+        return_value=httpx.Response(200, stream=httpx.ByteStream(response))
+    )
+
+    with httpx.Client() as client:
+        assert resolve_latest_version(client) == "2026-06-23"
+
+
+@respx.mock
+def test_resolve_latest_version_rejects_metadata_larger_than_128_kib() -> None:
+    """The streamed ceiling rejects the first byte beyond the exact 128 KiB limit."""
+    body = b'{"tag_name":"v2026-06-23"}'
+    response = body + (b" " * (131073 - len(body)))
+    respx.get(GITHUB_RELEASES_LATEST_URL).mock(
+        return_value=httpx.Response(200, stream=httpx.ByteStream(response))
+    )
+
+    with httpx.Client() as client, pytest.raises(DownloadError, match="exceeded 131072 bytes"):
+        resolve_latest_version(client)
+
+
+@respx.mock
+def test_resolve_latest_version_rejects_oversized_content_length_before_reading() -> None:
+    """A declared over-limit metadata body is rejected before parsing or streaming."""
+    respx.get(GITHUB_RELEASES_LATEST_URL).mock(
+        return_value=httpx.Response(
+            200,
+            headers={"Content-Length": "131073"},
+            content=b'{"tag_name":"v2026-06-23"}',
+        )
+    )
+
+    with httpx.Client() as client, pytest.raises(DownloadError, match="Content-Length 131073"):
+        resolve_latest_version(client)
+
+
 def test_validate_release_version_accepts_iso_date() -> None:
     assert validate_release_version("2026-06-06") == "2026-06-06"
 

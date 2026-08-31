@@ -127,6 +127,16 @@ def test_resolver_has_shell_level_empty_and_grammar_guard() -> None:
     assert "exit 1" in run, "resolver must exit non-zero when $DATE fails the guard"
 
 
+def test_existing_legacy_release_is_verified_before_a_noop() -> None:
+    """A release lookup alone is never evidence that the historical bundle is safe."""
+    check = next(step for step in _steps(_load(_BUILD_DATA)) if step.get("id") == "check")
+    run = check["run"]
+    assert "gh release download" in run
+    assert "verify_legacy_release" in run
+    assert "legacy_verified_noop" in run
+    assert "gh release view" not in run or "--json" in run
+
+
 def test_all_workflows_parse() -> None:
     """Every workflow file (both extensions Actions loads) must be valid YAML."""
     files = (*_WORKFLOW_DIR.glob("*.yml"), *_WORKFLOW_DIR.glob("*.yaml"))

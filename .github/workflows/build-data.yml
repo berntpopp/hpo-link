@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y zstd
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.8.7"
       - run: uv sync --frozen
@@ -40,11 +40,33 @@ jobs:
           # Pass the resolved tag through env, never interpolate it into the script body.
           DATE: ${{ steps.ver.outputs.date }}
         run: |
-          if gh release view "db-v${DATE}" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+          if ! gh release view "db-v${DATE}" >/dev/null 2>&1; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          # db-v2026-06-23 predates the standard SHA256SUMS/attestation
+          # contract. It is the sole historical release permitted to no-op,
+          # and only after byte-level verification of every audited invariant.
+          if [[ "$DATE" != "2026-06-23" ]]; then
+            echo "existing release needs full standard identity verification" >&2
+            exit 1
+          fi
+          release_dir="$(mktemp -d)"
+          trap 'rm -rf "$release_dir"' EXIT
+          assets="$(gh release view "db-v${DATE}" --json assets --jq '[.assets[].name] | sort | join(",")')"
+          [[ "$assets" == "hpo-2026-06-23.sqlite.zst,hpo-2026-06-23.sqlite.zst.sha256,manifest.json" ]] || {
+            echo "legacy release identity mismatch" >&2
+            exit 1
+          }
+          gh release download "db-v${DATE}" --dir "$release_dir" \
+            --pattern 'hpo-2026-06-23.sqlite.zst' \
+            --pattern 'hpo-2026-06-23.sqlite.zst.sha256' \
+            --pattern manifest.json
+          RELEASE_DIR="$release_dir" uv run python -c \
+            'import os; from pathlib import Path; from hpo_link.ingest.release_identity import verify_legacy_release; print(verify_legacy_release(Path(os.environ["RELEASE_DIR"])))' \
+            | grep -qx 'legacy_verified_noop'
+          echo "exists=true" >> "$GITHUB_OUTPUT"
       - if: steps.check.outputs.exists == 'false'
         run: uv run hpo-link-data build
       - if: steps.check.outputs.exists == 'false'

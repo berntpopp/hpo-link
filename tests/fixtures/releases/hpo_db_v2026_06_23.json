@@ -1,0 +1,29 @@
+{
+  "tag": "db-v2026-06-23",
+  "assets": [
+    "hpo-2026-06-23.sqlite.zst",
+    "hpo-2026-06-23.sqlite.zst.sha256",
+    "manifest.json"
+  ],
+  "bundle_sha256": "d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
+  "checksum": "d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6\n",
+  "manifest": {
+    "hpo_version": "2026-06-23",
+    "hpoa_version": "2026-06-23",
+    "schema_version": 1,
+    "sqlite_zst": "hpo-2026-06-23.sqlite.zst",
+    "sha256": "d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
+    "sqlite_bytes": 136249344,
+    "zst_bytes": 19083660,
+    "counts": {
+      "term_count": 20413,
+      "obsolete_count": 577,
+      "closure_count": 222576,
+      "xref_count": 18063,
+      "disease_phenotype_count": 285598,
+      "gene_phenotype_count": 332599,
+      "gene_disease_count": 15944
+    },
+    "built_utc": "2026-06-29T07:57:34.147457+00:00"
+  }
+}
