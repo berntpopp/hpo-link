@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y zstd
@@ -75,8 +77,18 @@ jobs:
           DATE: ${{ steps.ver.outputs.date }}
         run: |
           zstd -19 -f data/hpo.sqlite -o "hpo-${DATE}.sqlite.zst"
-          sha256sum "hpo-${DATE}.sqlite.zst" | awk '{print $1}' > "hpo-${DATE}.sqlite.zst.sha256"
+          sha256sum "hpo-${DATE}.sqlite.zst" > SHA256SUMS
+          awk '{print $1}' SHA256SUMS > "hpo-${DATE}.sqlite.zst.sha256"
           uv run python scripts/make_manifest.py "${DATE}"
+      - if: steps.check.outputs.exists == 'false'
+        name: attest release assets
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-path: |
+            hpo-*.sqlite.zst
+            hpo-*.sqlite.zst.sha256
+            SHA256SUMS
+            manifest.json
       - if: steps.check.outputs.exists == 'false'
         name: publish
         env:
@@ -84,6 +96,6 @@ jobs:
           DATE: ${{ steps.ver.outputs.date }}
         run: |
           gh release create "db-v${DATE}" \
-            hpo-*.sqlite.zst* manifest.json \
+            hpo-*.sqlite.zst* SHA256SUMS manifest.json \
             --title "HPO DB ${DATE}" \
             --notes "Prebuilt hpo-link SQLite DB for HPO ${DATE}."
