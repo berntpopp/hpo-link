@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-31
+
+- Raised bounded HPO release metadata parsing to 128 KiB and refreshed the
+  pinned Python base, runtime dependencies, and immutable CI action families.
+
 ## [0.4.3] - 2026-08-10
 
 Consolidated Dependabot maintenance release. No MCP, API or data-pipeline
