@@ -137,6 +137,21 @@ def test_existing_legacy_release_is_verified_before_a_noop() -> None:
     assert "gh release view" not in run or "--json" in run
 
 
+def test_future_releases_publish_the_modern_identity_bundle_and_attestation() -> None:
+    """Only the audited legacy tag may lack the standard release identity assets."""
+    doc = _load(_BUILD_DATA)
+    job = next(iter(doc["jobs"].values()))
+    assert job["permissions"].get("attestations") == "write"
+    assert job["permissions"].get("id-token") == "write"
+    package = next(step for step in _steps(doc) if step.get("name") == "package")["run"]
+    assert "SHA256SUMS" in package
+    publish = next(step for step in _steps(doc) if step.get("name") == "publish")
+    assert "SHA256SUMS" in publish["run"]
+    attest = next(step for step in _steps(doc) if step.get("name") == "attest release assets")
+    assert _SHA_PIN_RE.search(attest["uses"])
+    assert "SHA256SUMS" in attest["with"]["subject-path"]
+
+
 def test_all_workflows_parse() -> None:
     """Every workflow file (both extensions Actions loads) must be valid YAML."""
     files = (*_WORKFLOW_DIR.glob("*.yml"), *_WORKFLOW_DIR.glob("*.yaml"))
