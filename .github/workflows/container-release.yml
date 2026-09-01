@@ -3,7 +3,7 @@ name: Container Release
 on:
   push:
     tags:
-      - "v*"
+      - "v*.*.*"
 
 permissions: {}
 
