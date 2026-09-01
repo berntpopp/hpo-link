@@ -37,12 +37,25 @@ def test_release_gate_rejects_tags_outside_central_stable_semver_contract() -> N
     workflow = _workflow()
     gate = workflow["jobs"]["validate-tag"]
     gate_run = gate["steps"][0]["run"]
-    stable_ref = re.compile(r"^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$")
+    component = r"(?:0|[1-9][0-9]{0,63})"
+    stable_ref = re.compile(rf"^refs/tags/v{component}\.{component}\.{component}$")
 
-    for tag in ("v1.2", "v1.2.3-rc.1", "v1.2.3+build", "v1.two.3"):
+    for tag in (
+        "v1.2",
+        "v1.2.3-rc.1",
+        "v1.2.3+build",
+        "v1.two.3",
+        "v01.2.3",
+        "v1.02.3",
+        "v1.2.03",
+        f"v{'1' * 65}.2.3",
+    ):
         assert stable_ref.fullmatch(f"refs/tags/{tag}") is None
 
+    for tag in ("v0.0.0", "v1.2.3", f"v{'1' * 64}.2.3"):
+        assert stable_ref.fullmatch(f"refs/tags/{tag}") is not None
+
     assert '"$EVENT_REF"' in gate_run
-    assert "refs/tags/v[0-9]+\\.[0-9]+\\.[0-9]+" in gate_run
+    assert gate_run.count("(0|[1-9][0-9]{0,63})") == 3
     assert "exit 1" in gate_run
     assert workflow["jobs"]["container-release"]["needs"] == "validate-tag"
