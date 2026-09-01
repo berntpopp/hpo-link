@@ -22,6 +22,30 @@ Production overlays live in `docker/`: `docker-compose.prod.yml` and
 design and must be reachable **only** through the reverse proxy / the GeneFoundry
 router, never published directly.
 
+## Fleet deploy contract
+
+`docker/docker-compose.npm.yml` is the file the fleet controller
+(`strato_v6_docker_npm`) actually deploys and validates. Every service there
+(`hpo-data-init`, `hpo_link`) declares `user: "999:999"` numerically — this
+image's own uid:gid from `docker/Dockerfile`, never copied from a sibling
+`-link` repo — because the controller's runtime observer proves the effective
+uid from `/proc` and rejects anything non-numeric or root. Conversely `user`
+must **not** appear in the release Compose files listed in
+`container-release.json` (`docker-compose.yml`, `docker-compose.prod.yml`):
+the shared release gate forbids it there. Both rules are enforced by
+`tests/unit/test_compose_hardening.py`. To self-check a rendered overlay
+against the controller's own projection before deploying:
+
+```bash
+docker compose -f docker/docker-compose.npm.yml config --format json > /tmp/hpo-link-rendered.json
+cd <strato_v6_docker_npm checkout> && uv run python -c "
+import sys, json; sys.path.insert(0, 'scripts')
+from utils.deployment_preflight import canonical_projection
+p = canonical_projection(json.load(open('/tmp/hpo-link-rendered.json')), project='hpo-link')
+for n, s in p['services'].items(): print(n, 'user=', s.get('user'))
+print('PROJECTION OK')"
+```
+
 ## Configuration
 
 Every environment variable — server, data, and the exact Host/Origin/CORS allowlist

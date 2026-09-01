@@ -4,12 +4,35 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 _IMAGE = "ghcr.io/berntpopp/hpo-link@sha256:" + "a" * 64
+
+_NUMERIC_USER = re.compile(r"^[1-9][0-9]*:[1-9][0-9]*$")
+
+
+class _TagTolerantLoader(yaml.SafeLoader):
+    """SafeLoader that tolerates Compose's custom merge tags (!reset, !override)."""
+
+
+_TagTolerantLoader.add_multi_constructor(
+    "!",
+    lambda loader, suffix, node: (
+        loader.construct_scalar(node) if isinstance(node, yaml.ScalarNode) else None
+    ),
+)
+
+
+def _load_compose_yaml(path: Path) -> dict[str, Any]:
+    # _TagTolerantLoader subclasses yaml.SafeLoader (no arbitrary object construction);
+    # ruff cannot see that through the subclass indirection.
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=_TagTolerantLoader)  # noqa: S506
 
 
 def _render(*files: str, npm: bool = False) -> dict[str, Any]:
@@ -111,3 +134,31 @@ def test_release_contract_declares_the_immutable_bundle_init_role() -> None:
             "writable_targets": ["/data", "/tmp"],  # noqa: S108
         }
     ]
+
+
+def test_npm_overlay_declares_numeric_user_for_every_service() -> None:
+    """The fleet controller's runtime observer proves the effective container uid from
+    /proc, so the deployed NPM overlay must declare a numeric non-root `user` for
+    every service; this image's own value (999:999, from docker/Dockerfile) is
+    shared by both services since the sidecar runs the same application image."""
+    compose = _load_compose_yaml(ROOT / "docker" / "docker-compose.npm.yml")
+    for name, service in compose["services"].items():
+        user = service.get("user")
+        assert user is not None, f"{name} must declare a numeric user in the NPM overlay"
+        assert _NUMERIC_USER.match(str(user)), (
+            f"{name} declares user={user!r}; the deploy contract requires "
+            "'<uid>:<gid>' with both non-root and numeric"
+        )
+
+
+def test_release_compose_files_never_declare_user() -> None:
+    """The release Compose files feed the shared release gate
+    (`container_release.py validate-compose`), which forbids `user` there entirely."""
+    release_config = json.loads((ROOT / "container-release.json").read_text(encoding="utf-8"))
+    for rel_path in release_config["service"]["compose_files"]:
+        compose = _load_compose_yaml(ROOT / rel_path)
+        for name, service in compose["services"].items():
+            assert "user" not in service, (
+                f"{name} in {rel_path} declares 'user'; the release Compose gate "
+                "(container_release.py validate-compose) forbids it there"
+            )

@@ -101,6 +101,25 @@ that named volume read-only and never bootstraps or refreshes data in process.
 Local `hpo-link-data build` and `refresh` commands remain authoring tools, not
 serving startup paths.
 
+**Fleet deploy contract:** `docker/docker-compose.npm.yml` is the file the fleet
+controller (`strato_v6_docker_npm`) deploys and validates, and every service in
+it (`hpo-data-init`, `hpo_link`) declares `user: "999:999"` numerically — this
+image's own value from `docker/Dockerfile` (`useradd --system --gid app`
+resolves to uid:gid `999:999` in the built image; verify with `docker run --rm
+--entrypoint id <image>` rather than assuming it from a sibling repo). `user`
+must **not** appear in the Compose files listed in `container-release.json`
+(`docker-compose.yml`, `docker-compose.prod.yml`) — the shared release gate
+(`container_release.py validate-compose`) forbids it there. Both rules are
+enforced by `tests/unit/test_compose_hardening.py::test_npm_overlay_declares_numeric_user_for_every_service`
+and `::test_release_compose_files_never_declare_user`. Release checklist for a
+deploy-contract-only change: bump `pyproject.toml` PATCH, `uv lock`,
+`CHANGELOG.md` heading `## [x.y.z] - YYYY-MM-DD`, `CITATION.cff` `version:`
+(`date-released` tracks the newest `CHANGELOG.md` date — see
+`tests/unit/test_release_identity.py` / `test_release.py`), tag `vx.y.z`, then
+approve the `release` environment gate via `gh api
+repos/berntpopp/hpo-link/actions/runs/<id>/pending_deployments` (it can gate
+twice; `status: waiting` is the gate, not a slow build).
+
 ## Definition of done
 
 `make ci-local` must be green:
