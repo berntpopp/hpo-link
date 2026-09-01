@@ -2,6 +2,7 @@
   "schema_version": 1,
   "dockerfile": "docker/Dockerfile",
   "target": "production",
+  "platform": "linux/amd64",
   "service": {
     "compose_files": [
       "docker/docker-compose.yml",
