@@ -111,7 +111,16 @@ must **not** appear in the Compose files listed in `container-release.json`
 (`docker-compose.yml`, `docker-compose.prod.yml`) — the shared release gate
 (`container_release.py validate-compose`) forbids it there. Both rules are
 enforced by `tests/unit/test_compose_hardening.py::test_npm_overlay_declares_numeric_user_for_every_service`
-and `::test_release_compose_files_never_declare_user`. Release checklist for a
+and `::test_release_compose_files_never_declare_user`. `container-release.json`
+also declares `service.deployed_compose_files:
+["docker/docker-compose.npm.yml"]` — the exact file the controller deploys.
+Both reusable-workflow pins (`.github/workflows/container-ci.yml`,
+`.github/workflows/container-release.yml`) must track the same
+`genefoundry-router` revision: the shared `_container-release.yml` workflow
+runs `container_release.py validate-deployed-overlay` against the declared
+file before every release, and `_container-ci.yml` loads the same
+`ReleaseConfig` schema from its own pin to validate this JSON, so an older
+pin there rejects new fields. Release checklist for a
 deploy-contract-only change: bump `pyproject.toml` PATCH, `uv lock`,
 `CHANGELOG.md` heading `## [x.y.z] - YYYY-MM-DD`, `CITATION.cff` `version:`
 (`date-released` tracks the newest `CHANGELOG.md` date — see

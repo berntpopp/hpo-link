@@ -23,6 +23,9 @@
           "/tmp"
         ]
       }
+    ],
+    "deployed_compose_files": [
+      "docker/docker-compose.npm.yml"
     ]
   },
   "data": {
