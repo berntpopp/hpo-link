@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-09-18
+
+- Consolidated Dependabot dependencies, GitHub Actions pins, and security updates.
+- Adopted pre-built HPO database release `db-v2026-09-01`.
+- Upgraded Debian base packages in container build for security hardening.
+
 ## [0.4.6] - 2026-09-02
 
 - Deploy: declare the image's numeric uid:gid in docker/docker-compose.npm.yml so the fleet
