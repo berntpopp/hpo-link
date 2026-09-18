@@ -30,8 +30,8 @@
   },
   "data": {
     "mode": "external-reference",
-    "release_tag": "db-v2026-06-23",
-    "digest": "sha256:d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
+    "release_tag": "db-v2026-09-01",
+    "digest": "sha256:be9e693abf9eabb06ad501e360084cc3fb039eef90ffe02912bfe83256af3999",
     "image_allowlist": [
       "home/app/web/hpo_link/data/__init__.py",
       "home/app/web/hpo_link/data/annotations_repository.py",
