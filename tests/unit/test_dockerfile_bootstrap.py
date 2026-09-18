@@ -24,11 +24,8 @@ def test_dockerfile_pins_uv_and_has_no_floating_pip_upgrade() -> None:
     assert _UV_PINNED_COPY in text, "uv must be copied from a digest-pinned image"
 
 
-def test_prepared_stage_only_upgrades_the_openssl_security_packages() -> None:
-    """The final image must receive the CVE-fixed OpenSSL packages without a broad upgrade."""
+def test_prepared_stage_applies_current_debian_security_upgrades() -> None:
+    """The final image must receive Debian security updates via apt-get upgrade."""
     prepared = _DOCKERFILE.read_text(encoding="utf-8").split("FROM scratch AS production", 1)[0]
 
-    assert "apt-get install -y --only-upgrade --no-install-recommends" in prepared
-    assert "openssl" in prepared
-    assert "libssl3t64" in prepared
-    assert "openssl-provider-legacy" in prepared
+    assert "apt-get upgrade -y" in prepared

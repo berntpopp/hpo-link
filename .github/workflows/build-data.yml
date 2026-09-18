@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update && sudo apt-get install -y zstd
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.8.7"
       - run: uv sync --frozen
@@ -82,7 +82,7 @@ jobs:
           uv run python scripts/make_manifest.py "${DATE}"
       - if: steps.check.outputs.exists == 'false'
         name: attest release assets
-        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        uses: actions/attest-build-provenance@cb9b3a436573c9f220359fbe94191d8e13bb2f35 # v3.1.0
         with:
           subject-path: |
             hpo-*.sqlite.zst
