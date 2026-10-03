@@ -25,6 +25,8 @@
       }
     ],
     "deployed_compose_files": [
+      "docker/docker-compose.yml",
+      "docker/docker-compose.prod.yml",
       "docker/docker-compose.npm.yml"
     ]
   },

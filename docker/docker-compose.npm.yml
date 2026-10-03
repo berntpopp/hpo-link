@@ -7,7 +7,7 @@ name: hpo-link-npm
 
 services:
   hpo-data-init:
-    image: ${HPO_LINK_IMAGE:?Set HPO_LINK_IMAGE to ghcr.io/berntpopp/hpo-link@sha256:<digest>}
+    image: ${HPO_LINK_IMAGE:?HPO_LINK_IMAGE must be set to ghcr.io/berntpopp/hpo-link@sha256:<digest>}
     pull_policy: missing
     command: ["hpo-link-data", "materialize-data"]
     environment:
@@ -34,7 +34,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
@@ -51,8 +51,8 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  hpo_link:
-    image: ${HPO_LINK_IMAGE:?Set HPO_LINK_IMAGE to ghcr.io/berntpopp/hpo-link@sha256:<digest>}
+  hpo-link:
+    image: ${HPO_LINK_IMAGE:?HPO_LINK_IMAGE must be set to ghcr.io/berntpopp/hpo-link@sha256:<digest>}
     pull_policy: missing
     container_name: hpo-link-npm
     depends_on:
@@ -108,7 +108,7 @@ services:
         max-size: "50m"
         max-file: "5"
         labels: "service=hpo-link,environment=production,proxy=npm"
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL

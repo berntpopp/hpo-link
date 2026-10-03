@@ -112,12 +112,33 @@ def test_npm_compose_has_the_same_init_and_reader_boundary() -> None:
     """The self-contained proxy deployment does not reintroduce app bootstrap."""
     model = _render("docker/docker-compose.npm.yml", npm=True)
     init = model["services"]["hpo-data-init"]
-    app = model["services"]["hpo_link"]
+    app = model["services"]["hpo-link"]
 
     _assert_hardened_init(init)
     _assert_reader(app, "hpo-data-init")
     assert init["networks"] == {"hpo_link_internal_net": None}
     assert set(app["networks"]) == {"hpo_link_internal_net", "npm_proxy_network"}
+
+
+def test_full_npm_overlay_keeps_one_no_new_privileges_entry_per_service() -> None:
+    """The deployed base + prod + NPM overlay must render without duplicate options."""
+    model = _render(
+        "docker/docker-compose.yml",
+        "docker/docker-compose.prod.yml",
+        "docker/docker-compose.npm.yml",
+        npm=True,
+    )
+    for service in model["services"].values():
+        assert service["security_opt"] == ["no-new-privileges:true"]
+
+
+def test_release_config_declares_the_complete_deployed_compose_stack() -> None:
+    release = json.loads((ROOT / "container-release.json").read_text())
+    assert release["service"]["deployed_compose_files"] == [
+        "docker/docker-compose.yml",
+        "docker/docker-compose.prod.yml",
+        "docker/docker-compose.npm.yml",
+    ]
 
 
 def test_release_contract_declares_the_immutable_bundle_init_role() -> None:
