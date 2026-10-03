@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-10-03
+
+- Update PyJWT to 2.15.0 and Ruff to 0.16.9, preserving the grouped open action targets.
+- Refresh the pinned Python 3.14 base image and router v0.9.3 reusable container workflows.
+- Keep the production NPM overlay’s no-new-privileges setting unique across merged Compose files.
+
+
 ## [0.4.7] - 2026-09-18
 
 - Consolidated Dependabot dependencies, GitHub Actions pins, and security updates.
