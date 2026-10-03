@@ -49,6 +49,13 @@
               {
                 "val": "UMLS:C0151888"
               }
+,
+              {
+                "val": "NCIT:C3754"
+              },
+              {
+                "val": "MEDDRA:10022016"
+              }
             ],
             "basicPropertyValues": [
               {
