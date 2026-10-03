@@ -80,16 +80,16 @@ def _default_immutable_data_requirement() -> ImmutableDataRequirement:
     """Return the reviewed HPO reference bundle identity for production materialization."""
     return ImmutableDataRequirement(
         reference_root=Path("/data"),
-        release_tag="db-v2026-06-23",
+        release_tag="db-v2026-09-01",
         bundle_url=AnyHttpUrl(
             "https://github.com/berntpopp/hpo-link/releases/download/"
-            "db-v2026-06-23/hpo-2026-06-23.sqlite.zst"
+            "db-v2026-09-01/hpo-2026-09-01.sqlite.zst"
         ),
-        compressed_sha256="d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6",
-        expanded_tree_sha256="f98176204ac9b70d4451efab7fcafa4756e1aac2f14b64a5f2c5ec0d574ebee3",
+        compressed_sha256="be9e693abf9eabb06ad501e360084cc3fb039eef90ffe02912bfe83256af3999",
+        expanded_tree_sha256="e2d0f59dcc4cc3438d57e73e9cdd472582b0517301dc5eae167d2ad61b4387b1",
         schema_version=1,
-        hpo_version="2026-06-23",
-        hpoa_version="2026-06-23",
+        hpo_version="2026-09-01",
+        hpoa_version="2026-09-02",
         max_compressed_bytes=128 * 1024 * 1024,
         max_expanded_bytes=512 * 1024 * 1024,
     )

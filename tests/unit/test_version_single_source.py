@@ -39,7 +39,7 @@ def test_generated_citation_tracks_current_release_metadata() -> None:
     )
 
     assert citation["version"] == _pyproject_version()
-    assert citation["version"] == "0.4.8"
+    assert citation["version"] == "0.4.9"
     assert citation["date-released"] == "2026-10-03"
 
 
