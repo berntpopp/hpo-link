@@ -35,19 +35,26 @@ def _read_identity(path: Path) -> dict[str, Any]:
     return value
 
 
-def verify_runtime_identity(root: Path, requirement: ImmutableDataRequirement) -> dict[str, str]:
-    """Rehash the served SQLite and prove it matches the configured immutable release."""
-    if root.is_symlink():
-        raise DataUnavailableError("The selected HPO data directory is invalid.")
+def _verify_runtime_database(
+    database: Path, requirement: ImmutableDataRequirement
+) -> tuple[Path, dict[str, str]]:
+    """Verify the exact served file and return its stable path plus public identity."""
+    if database.name != "hpo.sqlite" or database.is_symlink():
+        raise DataUnavailableError("The selected HPO database file is invalid.")
     try:
-        resolved_root = root.resolve(strict=True)
+        resolved_database = database.resolve(strict=True)
     except OSError as exc:
-        raise DataUnavailableError("The selected HPO data directory is unavailable.") from exc
-    if not resolved_root.is_dir() or resolved_root.name != requirement.compressed_sha256:
-        raise DataUnavailableError("The selected HPO data directory has the wrong identity.")
+        raise DataUnavailableError("The selected HPO database is unavailable.") from exc
+    resolved_root = resolved_database.parent
+    if (
+        not resolved_database.is_file()
+        or resolved_database.name != "hpo.sqlite"
+        or not resolved_root.is_dir()
+        or resolved_root.name != requirement.compressed_sha256
+    ):
+        raise DataUnavailableError("The selected HPO database has the wrong identity.")
 
     identity_path = resolved_root / "identity.json"
-    database = resolved_root / "hpo.sqlite"
     identity = _read_identity(identity_path)
     expected = {
         "release_tag": requirement.release_tag,
@@ -57,12 +64,12 @@ def verify_runtime_identity(root: Path, requirement: ImmutableDataRequirement) -
         "hpo_version": requirement.hpo_version,
         "hpoa_version": requirement.hpoa_version,
     }
-    if identity != expected or database.is_symlink() or not database.is_file():
+    if identity != expected:
         raise DataUnavailableError("The selected HPO data release does not match its pin.")
-    if canonical_tree_sha256(database) != requirement.expanded_tree_sha256:
+    if canonical_tree_sha256(resolved_database) != requirement.expanded_tree_sha256:
         raise DataUnavailableError("The selected HPO SQLite bytes do not match their pin.")
     try:
-        connection = sqlite3.connect(f"file:{database}?mode=ro&immutable=1", uri=True)
+        connection = sqlite3.connect(f"file:{resolved_database}?mode=ro&immutable=1", uri=True)
         try:
             metadata = connection.execute(
                 "SELECT schema_version, hpo_version, hpoa_version FROM meta WHERE id = 1"
@@ -77,12 +84,30 @@ def verify_runtime_identity(root: Path, requirement: ImmutableDataRequirement) -
         requirement.hpoa_version,
     ):
         raise DataUnavailableError("The selected HPO SQLite metadata does not match its pin.")
-    if _read_identity(identity_path) != identity:
+    if (
+        _read_identity(identity_path) != identity
+        or database.is_symlink()
+        or database.resolve(strict=True) != resolved_database
+    ):
         raise DataUnavailableError("The selected HPO data identity changed during verification.")
-    return {
+    return resolved_database, {
         "release_tag": requirement.release_tag,
         "digest": f"sha256:{requirement.compressed_sha256}",
     }
+
+
+def verify_runtime_identity(
+    database: Path, requirement: ImmutableDataRequirement
+) -> dict[str, str]:
+    """Prove the exact served SQLite file matches the configured immutable release."""
+    _verified_database, identity = _verify_runtime_database(database, requirement)
+    return identity
+
+
+def verified_database_path(database: Path, requirement: ImmutableDataRequirement) -> Path:
+    """Return the stable resolved SQLite path after verifying its release identity."""
+    verified_database, _identity = _verify_runtime_database(database, requirement)
+    return verified_database
 
 
 def expected_identity(requirement: ImmutableDataRequirement) -> dict[str, str]:
@@ -93,4 +118,4 @@ def expected_identity(requirement: ImmutableDataRequirement) -> dict[str, str]:
     }
 
 
-__all__ = ["expected_identity", "verify_runtime_identity"]
+__all__ = ["expected_identity", "verify_runtime_identity", "verified_database_path"]

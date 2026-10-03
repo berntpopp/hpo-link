@@ -224,3 +224,35 @@ def test_materialize_upgrades_legacy_identity_only_after_exact_bundle_verificati
         **identity,
     }
     assert (root / "current").resolve() == target
+
+
+@respx.mock
+def test_materialize_does_not_upgrade_or_select_a_corrupt_legacy_snapshot(
+    tmp_path: Path,
+) -> None:
+    requirement, bundle = _requirement_and_bundle(tmp_path)
+    root = requirement.reference_root
+    target = root / requirement.compressed_sha256
+    target.mkdir(parents=True)
+    database = target / "hpo.sqlite"
+    database.write_bytes(b"not a sqlite database")
+    legacy_identity = {
+        "compressed_sha256": requirement.compressed_sha256,
+        "expanded_tree_sha256": requirement.expanded_tree_sha256,
+        "schema_version": requirement.schema_version,
+        "hpo_version": requirement.hpo_version,
+        "hpoa_version": requirement.hpoa_version,
+    }
+    identity_path = target / "identity.json"
+    identity_bytes = (json.dumps(legacy_identity) + "\n").encode()
+    identity_path.write_bytes(identity_bytes)
+    (root / "current").symlink_to(target.name)
+    corrupted_database_bytes = database.read_bytes()
+    respx.get(str(requirement.bundle_url)).mock(return_value=httpx.Response(200, content=bundle))
+
+    with pytest.raises(DataUnavailableError, match="not a SQLite"):
+        materialize_immutable_data(requirement)
+
+    assert identity_path.read_bytes() == identity_bytes
+    assert database.read_bytes() == corrupted_database_bytes
+    assert (root / "current").resolve() == target

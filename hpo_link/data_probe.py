@@ -11,18 +11,19 @@ from typing import Any
 
 from hpo_link.config import ImmutableDataRequirement, ServerSettings
 from hpo_link.exceptions import DataUnavailableError
-from hpo_link.runtime_data_identity import verify_runtime_identity
+from hpo_link.runtime_data_identity import verified_database_path
 
 
 def build_probe(database: Path, requirement: ImmutableDataRequirement) -> dict[str, Any]:
     """Return the fixed controller probe after proving release and queryable SQLite data."""
-    verify_runtime_identity(database.parent.resolve(), requirement)
+    database = verified_database_path(database, requirement)
     try:
         connection = sqlite3.connect(f"file:{database}?mode=ro&immutable=1", uri=True)
         try:
-            schema_version, record_count = connection.execute(
+            schema_version, declared_record_count = connection.execute(
                 "SELECT schema_version, term_count FROM meta WHERE id = 1"
             ).fetchone()
+            record_count = connection.execute("SELECT COUNT(*) FROM term").fetchone()[0]
             first_term = connection.execute(
                 "SELECT hpo_id, name, is_obsolete FROM term ORDER BY hpo_id LIMIT 1"
             ).fetchone()
@@ -34,6 +35,7 @@ def build_probe(database: Path, requirement: ImmutableDataRequirement) -> dict[s
         schema_version != requirement.schema_version
         or not isinstance(record_count, int)
         or record_count <= 0
+        or record_count != declared_record_count
         or first_term is None
     ):
         raise DataUnavailableError("The selected HPO data query probe is inconsistent.")

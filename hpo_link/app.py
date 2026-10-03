@@ -82,7 +82,7 @@ def create_app() -> FastAPI:
         }
         database = settings.data.data_dir / settings.data.db_filename
         try:
-            actual = verify_runtime_identity(database.parent.resolve(), settings.immutable_data)
+            actual = verify_runtime_identity(database, settings.immutable_data)
         except (DataUnavailableError, OSError, RuntimeError):
             payload["data_available"] = False
         else:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from starlette.testclient import TestClient
@@ -18,7 +20,7 @@ from hpo_link.runtime_data_identity import verify_runtime_identity
 
 
 def _fixture(
-    tmp_path: Path, *, include_release_tag: bool = True
+    tmp_path: Path, *, include_release_tag: bool = True, term_count: int = 1
 ) -> tuple[Path, ImmutableDataRequirement]:
     compressed_sha256 = hashlib.sha256(b"fixture-bundle").hexdigest()
     root = tmp_path / compressed_sha256
@@ -29,7 +31,10 @@ def _fixture(
             "CREATE TABLE meta (id INTEGER PRIMARY KEY, schema_version INTEGER, "
             "hpo_version TEXT, hpoa_version TEXT, term_count INTEGER)"
         )
-        connection.execute("INSERT INTO meta VALUES (1, 1, '2026-09-01', '2026-09-02', 1)")
+        connection.execute(
+            "INSERT INTO meta VALUES (1, 1, '2026-09-01', '2026-09-02', ?)",
+            (term_count,),
+        )
         connection.execute(
             "CREATE TABLE term (hpo_id TEXT PRIMARY KEY, name TEXT, is_obsolete INTEGER)"
         )
@@ -67,7 +72,7 @@ def test_runtime_identity_returns_only_the_configured_and_verified_release(
 ) -> None:
     root, requirement = _fixture(tmp_path)
 
-    identity = verify_runtime_identity(root, requirement)
+    identity = verify_runtime_identity(root / "hpo.sqlite", requirement)
 
     assert identity == {
         "release_tag": "db-v2026-09-01",
@@ -79,7 +84,25 @@ def test_runtime_identity_rejects_a_pre_runtime_v1_materialization(tmp_path: Pat
     root, requirement = _fixture(tmp_path, include_release_tag=False)
 
     with pytest.raises(DataUnavailableError):
-        verify_runtime_identity(root, requirement)
+        verify_runtime_identity(root / "hpo.sqlite", requirement)
+
+
+def test_runtime_identity_rejects_an_alternate_database_filename(tmp_path: Path) -> None:
+    root, requirement = _fixture(tmp_path)
+    alternate = root / "alternate.sqlite"
+    shutil.copyfile(root / "hpo.sqlite", alternate)
+
+    with pytest.raises(DataUnavailableError):
+        verify_runtime_identity(alternate, requirement)
+
+
+def test_runtime_identity_rejects_a_database_file_symlink(tmp_path: Path) -> None:
+    root, requirement = _fixture(tmp_path)
+    alias = root / "hpo-alias.sqlite"
+    alias.symlink_to(root / "hpo.sqlite")
+
+    with pytest.raises(DataUnavailableError):
+        verify_runtime_identity(alias, requirement)
 
 
 def test_health_publishes_runtime_v1_only_after_identity_verifies(
@@ -118,6 +141,27 @@ def test_health_fails_closed_without_a_verified_runtime_identity(
     assert "release_identity" not in body
 
 
+def test_health_does_not_claim_the_pinned_identity_for_an_alternate_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root, requirement = _fixture(tmp_path)
+    shutil.copyfile(root / "hpo.sqlite", root / "alternate.sqlite")
+    monkeypatch.setattr(
+        "hpo_link.app.settings",
+        SimpleNamespace(
+            data=SimpleNamespace(data_dir=root, db_filename="alternate.sqlite"),
+            immutable_data=requirement,
+            cors_origins=[],
+        ),
+    )
+
+    body = TestClient(create_app()).get("/health").json()
+
+    assert body["data_available"] is False
+    assert "release_identity" not in body
+
+
 def test_controller_probe_returns_fixed_schema_and_semantic_query_digest(
     tmp_path: Path,
 ) -> None:
@@ -131,3 +175,14 @@ def test_controller_probe_returns_fixed_schema_and_semantic_query_digest(
     assert result["data_schema_version"] == "1"
     assert result["record_count"] == 1
     assert result["query_result_sha256"] == hashlib.sha256(b'["HP:0000001","All",0]').hexdigest()
+
+
+def test_controller_probe_rejects_a_metadata_count_that_differs_from_actual_rows(
+    tmp_path: Path,
+) -> None:
+    from hpo_link.data_probe import build_probe
+
+    root, requirement = _fixture(tmp_path, term_count=2)
+
+    with pytest.raises(DataUnavailableError):
+        build_probe(root / "hpo.sqlite", requirement)
