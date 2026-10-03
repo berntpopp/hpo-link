@@ -118,4 +118,4 @@ def expected_identity(requirement: ImmutableDataRequirement) -> dict[str, str]:
     }
 
 
-__all__ = ["expected_identity", "verify_runtime_identity", "verified_database_path"]
+__all__ = ["expected_identity", "verified_database_path", "verify_runtime_identity"]
