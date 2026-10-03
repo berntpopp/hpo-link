@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-03
+
+- Bind runtime health and fleet admission to the verified HPO `db-v2026-09-01` release identity.
+- Upgrade already materialized September data identities only after verifying the pinned SQLite bytes and metadata.
+- Keep advertised cross-reference examples resolvable against supported HPO vocabularies.
+
 ## [0.4.8] - 2026-10-03
 
 - Update PyJWT to 2.15.0 and Ruff to 0.16.9, preserving the grouped open action targets.

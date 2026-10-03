@@ -110,6 +110,7 @@ def _verify_database(requirement: ImmutableDataRequirement, database: Path) -> N
 def _write_identity(requirement: ImmutableDataRequirement, staging: Path) -> None:
     """Write the small, audited identity record before selecting the snapshot."""
     identity = {
+        "release_tag": requirement.release_tag,
         "compressed_sha256": requirement.compressed_sha256,
         "expanded_tree_sha256": requirement.expanded_tree_sha256,
         "schema_version": requirement.schema_version,
@@ -142,6 +143,7 @@ def _select_snapshot(requirement: ImmutableDataRequirement, staging: Path) -> Pa
                 "immutable HPO existing snapshot verification failed"
             ) from exc
         expected_identity = {
+            "release_tag": requirement.release_tag,
             "compressed_sha256": requirement.compressed_sha256,
             "expanded_tree_sha256": requirement.expanded_tree_sha256,
             "schema_version": requirement.schema_version,
@@ -149,10 +151,14 @@ def _select_snapshot(requirement: ImmutableDataRequirement, staging: Path) -> Pa
             "hpoa_version": requirement.hpoa_version,
         }
         existing_database = target / database.name
-        if identity != expected_identity or not existing_database.is_file():
+        legacy_identity = {
+            key: value for key, value in expected_identity.items() if key != "release_tag"
+        }
+        if identity not in (expected_identity, legacy_identity) or not existing_database.is_file():
             raise DataUnavailableError("immutable HPO existing snapshot verification failed")
-        if canonical_tree_sha256(existing_database) != requirement.expanded_tree_sha256:
-            raise DataUnavailableError("immutable HPO existing snapshot verification failed")
+        _verify_database(requirement, existing_database)
+        if identity == legacy_identity:
+            _write_identity(requirement, target)
         shutil.rmtree(staging)
     else:
         os.replace(staging, target)

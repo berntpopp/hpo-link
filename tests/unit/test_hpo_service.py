@@ -327,6 +327,19 @@ def test_resolve_xref_has_version(hpo_service: HpoService) -> None:
     assert "recommended_citation" not in result
 
 
+def test_resolve_xref_schema_examples_exist_in_the_active_vocabulary(
+    hpo_service: HpoService,
+) -> None:
+    """Every advertised CURIE example must resolve in a database with that vocabulary."""
+    from hpo_link.mcp.tools._common import XrefIdStr
+
+    examples = XrefIdStr.__metadata__[0].examples
+    assert examples
+    for xref_id in examples:
+        result = hpo_service.resolve_xref(xref_id)
+        assert result["total"] > 0, f"advertised example {xref_id} has no current mapping"
+
+
 # ---------------------------------------------------------------------------
 # map_cross_ontology
 # ---------------------------------------------------------------------------

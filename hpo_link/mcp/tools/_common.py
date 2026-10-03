@@ -42,10 +42,10 @@ XrefIdStr = Annotated[
     str,
     Field(
         description=(
-            "An external cross-reference CURIE (prefix:local), e.g. UMLS/SNOMED/NCIT/MEDDRA, "
-            "to resolve back to the HPO term(s) that cross-reference it."
+            "An external cross-reference CURIE (prefix:local) present in the selected HPO "
+            "release, such as NCIT or MEDDRA, to resolve back to matching HPO terms."
         ),
-        examples=["UMLS:C0036572", "SNOMEDCT_US:263681008", "NCIT:C4890"],
+        examples=["NCIT:C3754", "MEDDRA:10022016"],
     ),
 ]
 

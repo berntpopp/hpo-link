@@ -39,9 +39,12 @@
       "opt/venv/lib/python3.14/site-packages/hpo_link/data/__init__.py",
       "opt/venv/lib/python3.14/site-packages/hpo_link/data/annotations_repository.py",
       "opt/venv/lib/python3.14/site-packages/hpo_link/data/repository.py"
+    ],
+    "schema_compatibility": [
+      "1"
     ]
   },
-  "data_identity_contract": "unadopted",
+  "data_identity_contract": "runtime-v1",
   "definitions": {
     "contract": "data-bound"
   },

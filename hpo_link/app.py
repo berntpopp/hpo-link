@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from hpo_link import __version__
 from hpo_link.buildinfo import build_info
 from hpo_link.config import settings
+from hpo_link.exceptions import DataUnavailableError
 from hpo_link.logging_config import configure_logging
+from hpo_link.runtime_data_identity import expected_identity, verify_runtime_identity
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -71,13 +73,27 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        """Liveness probe (reports build provenance for deploy checks)."""
-        return {
+        """Liveness and exact immutable data identity for deployment admission."""
+        payload: dict[str, Any] = {
             "status": "ok",
             "service": "hpo-link",
             "transport": "streamable-http-stateless",
             **build_info(),
         }
+        database = settings.data.data_dir / settings.data.db_filename
+        try:
+            actual = verify_runtime_identity(database, settings.immutable_data)
+        except (DataUnavailableError, OSError, RuntimeError):
+            payload["data_available"] = False
+        else:
+            expected = expected_identity(settings.immutable_data)
+            payload["data_available"] = actual == expected
+            if payload["data_available"]:
+                payload["release_identity"] = {
+                    "schema_version": 1,
+                    "data_identity": {"expected": expected, "actual": actual},
+                }
+        return payload
 
     @app.get("/")
     async def root() -> dict[str, Any]:

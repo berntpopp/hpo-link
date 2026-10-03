@@ -6,10 +6,12 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 import respx
+import yaml
 import zstandard
 from pydantic import ValidationError
 
@@ -23,13 +25,52 @@ def test_default_requirement_matches_the_reviewed_published_hpo_bundle() -> None
     """The production default binds the exact bundle that the init sidecar fetches."""
     requirement = ServerSettings().immutable_data
 
-    assert requirement.release_tag == "db-v2026-06-23"
+    assert requirement.release_tag == "db-v2026-09-01"
     assert requirement.compressed_sha256 == (
-        "d677a96efd8c274045241934c33b25dfb6fc9a6414c27bed7ae3334d05d4c9f6"
+        "be9e693abf9eabb06ad501e360084cc3fb039eef90ffe02912bfe83256af3999"
     )
     assert requirement.expanded_tree_sha256 == (
-        "f98176204ac9b70d4451efab7fcafa4756e1aac2f14b64a5f2c5ec0d574ebee3"
+        "e2d0f59dcc4cc3438d57e73e9cdd472582b0517301dc5eae167d2ad61b4387b1"
     )
+
+
+def test_runtime_and_container_release_bind_the_same_september_data_identity() -> None:
+    requirement = ServerSettings().immutable_data
+    release = json.loads((Path(__file__).parents[2] / "container-release.json").read_text())
+    assert release["data_identity_contract"] == "runtime-v1"
+    assert release["data"]["release_tag"] == requirement.release_tag
+    assert release["data"]["digest"] == f"sha256:{requirement.compressed_sha256}"
+    assert release["data"]["schema_compatibility"] == ["1"]
+
+
+def _compose(path: str) -> dict[str, Any]:
+    class ComposeLoader(yaml.SafeLoader):
+        pass
+
+    ComposeLoader.add_multi_constructor(
+        "!", lambda loader, _tag, node: loader.construct_object(node)
+    )
+    return yaml.load(
+        (Path(__file__).parents[2] / path).read_text(encoding="utf-8"),
+        Loader=ComposeLoader,  # noqa: S506 - subclass is SafeLoader.
+    )
+
+
+def test_init_service_pins_match_data_manifest_in_base_and_npm_compose() -> None:
+    release = json.loads((Path(__file__).parents[2] / "container-release.json").read_text())
+    for path in ("docker/docker-compose.yml", "docker/docker-compose.npm.yml"):
+        init = _compose(path)["services"]["hpo-data-init"]
+        environment = init["environment"]
+        assert environment["HPO_LINK_IMMUTABLE_DATA__RELEASE_TAG"] == release["data"]["release_tag"]
+        assert environment["HPO_LINK_IMMUTABLE_DATA__COMPRESSED_SHA256"] == (
+            release["data"]["digest"].removeprefix("sha256:")
+        )
+        assert environment["HPO_LINK_IMMUTABLE_DATA__EXPANDED_TREE_SHA256"] == (
+            ServerSettings().immutable_data.expanded_tree_sha256
+        )
+        assert environment["HPO_LINK_IMMUTABLE_DATA__SCHEMA_VERSION"] == "1"
+        assert environment["HPO_LINK_IMMUTABLE_DATA__HPO_VERSION"] == "2026-09-01"
+        assert environment["HPO_LINK_IMMUTABLE_DATA__HPOA_VERSION"] == "2026-09-02"
 
 
 def _tree_sha256(path: Path) -> str:
@@ -88,6 +129,7 @@ def test_materialize_verifies_and_selects_atomically(tmp_path: Path) -> None:
     assert (tmp_path / "reference" / "current").resolve() == selected.parent
     assert selected.stat().st_mode & 0o777 == 0o444
     assert json.loads(selected.with_name("identity.json").read_text()) == {
+        "release_tag": requirement.release_tag,
         "compressed_sha256": requirement.compressed_sha256,
         "expanded_tree_sha256": requirement.expanded_tree_sha256,
         "schema_version": 1,
@@ -147,3 +189,70 @@ def test_repository_opens_the_selected_snapshot_immutably(
     repository.close()
 
     assert called["uri"] == f"file:{database}?mode=ro&immutable=1"
+
+
+@respx.mock
+def test_materialize_upgrades_legacy_identity_only_after_exact_bundle_verification(
+    tmp_path: Path,
+) -> None:
+    requirement, bundle = _requirement_and_bundle(tmp_path)
+    root = requirement.reference_root
+    target = root / requirement.compressed_sha256
+    target.mkdir(parents=True)
+    database = target / "hpo.sqlite"
+    decompressor = zstandard.ZstdDecompressor()
+    database.write_bytes(decompressor.decompress(bundle))
+    database.chmod(0o444)
+    identity = {
+        "compressed_sha256": requirement.compressed_sha256,
+        "expanded_tree_sha256": requirement.expanded_tree_sha256,
+        "schema_version": requirement.schema_version,
+        "hpo_version": requirement.hpo_version,
+        "hpoa_version": requirement.hpoa_version,
+    }
+    (target / "identity.json").write_text(json.dumps(identity), encoding="utf-8")
+    (root / "current").symlink_to(target.name)
+    previous_bytes = database.read_bytes()
+    respx.get(str(requirement.bundle_url)).mock(return_value=httpx.Response(200, content=bundle))
+
+    selected = materialize_immutable_data(requirement)
+
+    assert selected == database
+    assert database.read_bytes() == previous_bytes
+    assert json.loads((target / "identity.json").read_text()) == {
+        "release_tag": requirement.release_tag,
+        **identity,
+    }
+    assert (root / "current").resolve() == target
+
+
+@respx.mock
+def test_materialize_does_not_upgrade_or_select_a_corrupt_legacy_snapshot(
+    tmp_path: Path,
+) -> None:
+    requirement, bundle = _requirement_and_bundle(tmp_path)
+    root = requirement.reference_root
+    target = root / requirement.compressed_sha256
+    target.mkdir(parents=True)
+    database = target / "hpo.sqlite"
+    database.write_bytes(b"not a sqlite database")
+    legacy_identity = {
+        "compressed_sha256": requirement.compressed_sha256,
+        "expanded_tree_sha256": requirement.expanded_tree_sha256,
+        "schema_version": requirement.schema_version,
+        "hpo_version": requirement.hpo_version,
+        "hpoa_version": requirement.hpoa_version,
+    }
+    identity_path = target / "identity.json"
+    identity_bytes = (json.dumps(legacy_identity) + "\n").encode()
+    identity_path.write_bytes(identity_bytes)
+    (root / "current").symlink_to(target.name)
+    corrupted_database_bytes = database.read_bytes()
+    respx.get(str(requirement.bundle_url)).mock(return_value=httpx.Response(200, content=bundle))
+
+    with pytest.raises(DataUnavailableError, match="not a SQLite"):
+        materialize_immutable_data(requirement)
+
+    assert identity_path.read_bytes() == identity_bytes
+    assert database.read_bytes() == corrupted_database_bytes
+    assert (root / "current").resolve() == target
