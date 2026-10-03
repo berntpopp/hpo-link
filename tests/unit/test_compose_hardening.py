@@ -84,6 +84,7 @@ def _assert_hardened_init(service: dict[str, Any]) -> None:
 
 
 def _assert_reader(service: dict[str, Any], init_name: str) -> None:
+    assert service["security_opt"] == ["no-new-privileges:true"]
     assert service["depends_on"][init_name]["condition"] == "service_completed_successfully"
     assert _mount(service, "/data")["read_only"] is True
     environment = _environment(service)
@@ -118,6 +119,11 @@ def test_npm_compose_has_the_same_init_and_reader_boundary() -> None:
     _assert_reader(app, "hpo-data-init")
     assert init["networks"] == {"hpo_link_internal_net": None}
     assert set(app["networks"]) == {"hpo_link_internal_net", "npm_proxy_network"}
+
+
+def test_release_config_declares_the_controller_deployed_compose_file() -> None:
+    release = json.loads((ROOT / "container-release.json").read_text())
+    assert release["service"]["deployed_compose_files"] == ["docker/docker-compose.npm.yml"]
 
 
 def test_release_contract_declares_the_immutable_bundle_init_role() -> None:
