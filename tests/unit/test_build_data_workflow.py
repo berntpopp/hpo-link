@@ -158,3 +158,17 @@ def test_all_workflows_parse() -> None:
     assert files, "no workflow files found"
     for path in files:
         yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def test_existing_modern_release_is_verified_noop_not_a_failure() -> None:
+    """An unchanged upstream week must verify the published release and succeed.
+
+    Regression: any existing non-legacy release hit an unconditional ``exit 1``,
+    so every week without a new HPO release turned the scheduled run red.
+    """
+    check = next(step for step in _steps(_load(_BUILD_DATA)) if step.get("id") == "check")
+    run = check["run"]
+    assert "needs full standard identity verification" not in run
+    assert "sha256sum -c SHA256SUMS" in run
+    assert "gh attestation verify" in run
+    assert "SHA256SUMS" in run and "manifest.json" in run
