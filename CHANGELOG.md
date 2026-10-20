@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-20
+
+### Security
+
+- Upgrade `mcp` to 1.30.0 (fixes the open Dependabot alert) and raise the `mcp[cli]` floor to `>=1.30.0`.
+
+### Changed
+
+- Bump the Python dependency group (pydantic, pydantic-core, pydantic-settings, fastapi, mypy, ruff, typer, orjson and related packages).
+- Bump GitHub Actions: `astral-sh/setup-uv` to v10.3.0, `github/codeql-action` to v4.38.3, and the GeneFoundry router reusable container workflows to `genefoundry-router` v0.10.4.
+
 ## [0.4.9] - 2026-10-03
 
 - Bind runtime health and fleet admission to the verified HPO `db-v2026-09-01` release identity.
