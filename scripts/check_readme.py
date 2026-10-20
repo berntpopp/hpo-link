@@ -63,33 +63,28 @@ GENERATED_BLOCK = re.compile(
 )
 
 
-def repo_slug() -> str:
-    """Return the canonical GitHub repository name for this checkout.
-
-    A git worktree is commonly named for the task branch rather than the
-    repository. Badge identity must follow ``origin`` in that case; only an
-    exact GitHub URL for this fleet owner is accepted, otherwise the ordinary
-    checkout-directory fallback preserves the existing local behaviour.
-    """
+def _origin_slug(root: Path) -> str | None:
+    """Return the repository name from ``origin``, even in a named worktree."""
     git = shutil.which("git")
     if git is None:
-        return ROOT.name
+        return None
     try:
-        result = subprocess.run(  # noqa: S603 - executable is resolved locally; arguments are fixed.
-            [git, "-C", str(ROOT), "remote", "get-url", "origin"],
-            check=False,
+        result = subprocess.run(  # noqa: S603 -- fixed git argv; root is this checkout
+            [git, "-C", str(root), "remote", "get-url", "origin"],
             capture_output=True,
+            check=False,
             text=True,
         )
     except OSError:
-        return ROOT.name
-    match = re.fullmatch(
-        rf"(?:https://github\.com/|git@github\.com:){re.escape(OWNER)}/([A-Za-z0-9_.-]+?)(?:\.git)?",
-        result.stdout.strip(),
-    )
-    if match is not None:
-        return match.group(1)
-    return ROOT.name
+        return None
+    if result.returncode != 0:
+        return None
+    slug = result.stdout.strip().rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]
+    return slug if re.fullmatch(r"[A-Za-z0-9_.-]+", slug) else None
+
+
+def repo_slug() -> str:
+    return _origin_slug(ROOT) or ROOT.name
 
 
 def is_router() -> bool:
@@ -113,8 +108,8 @@ def expected_badges(slug: str) -> list[tuple[str, str]]:
     gate_label = "Security" if is_router() else "Conformance"
     return [
         (
-            "Python 3.12+",
-            "[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB"
+            "Python 3.14+",
+            "[![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-3776AB"
             "?logo=python&logoColor=white)](https://www.python.org/)",
         ),
         ("CI", _workflow_badge("CI", slug, "ci.yml")),

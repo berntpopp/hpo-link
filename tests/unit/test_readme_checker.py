@@ -27,6 +27,7 @@ def test_repo_slug_uses_origin_when_worktree_directory_has_a_different_name(
     monkeypatch.setattr(checker, "ROOT", worktree)
 
     class Result:
+        returncode = 0
         stdout = "https://github.com/berntpopp/hpo-link.git\n"
 
     monkeypatch.setattr(checker.subprocess, "run", lambda *args, **kwargs: Result())

@@ -34,10 +34,14 @@ on:
       - ".github/workflows/container-ci.yml"
       - ".github/workflows/container-release.yml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: {}
 
 jobs:
   container-ci:
     permissions:
       contents: read
-    uses: berntpopp/genefoundry-router/.github/workflows/_container-ci.yml@88b565f1b6047f47fd58138cbf041994bb137c03 # genefoundry-router v0.10.4
+    uses: berntpopp/genefoundry-router/.github/workflows/_container-ci.yml@e8931f0114bba3568517d1c7b1f990bea2be31af # genefoundry-router v0.10.5

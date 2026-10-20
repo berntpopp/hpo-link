@@ -93,7 +93,7 @@ def _positive_int(value: object) -> int:
         return 0
     try:
         parsed = int(value)
-    except (OverflowError, ValueError):
+    except OverflowError, ValueError:
         return 0
     return parsed if parsed > 0 else 0
 
