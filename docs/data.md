@@ -48,7 +48,7 @@ breakdown and the SQLite schema.
 
 ## Production immutable artifact
 
-Production uses the exact `db-v2026-06-23` GitHub Release asset and compressed
+Production uses the exact GitHub Release asset (currently `db-v2026-09-01`) and compressed
 SHA-256 declared in `container-release.json`. The non-root `hpo-data-init`
 sidecar is the only process allowed to fetch it. It bounds the download,
 verifies the committed compressed digest, verifies the canonical expanded-tree

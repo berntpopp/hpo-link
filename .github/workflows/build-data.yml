@@ -47,27 +47,46 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # db-v2026-06-23 predates the standard SHA256SUMS/attestation
-          # contract. It is the sole historical release permitted to no-op,
-          # and only after byte-level verification of every audited invariant.
-          if [[ "$DATE" != "2026-06-23" ]]; then
-            echo "existing release needs full standard identity verification" >&2
-            exit 1
-          fi
           release_dir="$(mktemp -d)"
           trap 'rm -rf "$release_dir"' EXIT
           assets="$(gh release view "db-v${DATE}" --json assets --jq '[.assets[].name] | sort | join(",")')"
-          [[ "$assets" == "hpo-2026-06-23.sqlite.zst,hpo-2026-06-23.sqlite.zst.sha256,manifest.json" ]] || {
-            echo "legacy release identity mismatch" >&2
+          # db-v2026-06-23 predates the standard SHA256SUMS/attestation
+          # contract; it no-ops only after byte-level verification of every
+          # audited invariant.
+          if [[ "$DATE" == "2026-06-23" ]]; then
+            [[ "$assets" == "hpo-2026-06-23.sqlite.zst,hpo-2026-06-23.sqlite.zst.sha256,manifest.json" ]] || {
+              echo "legacy release identity mismatch" >&2
+              exit 1
+            }
+            gh release download "db-v${DATE}" --dir "$release_dir" \
+              --pattern 'hpo-2026-06-23.sqlite.zst' \
+              --pattern 'hpo-2026-06-23.sqlite.zst.sha256' \
+              --pattern manifest.json
+            RELEASE_DIR="$release_dir" uv run python -c \
+              'import os; from pathlib import Path; from hpo_link.ingest.release_identity import verify_legacy_release; print(verify_legacy_release(Path(os.environ["RELEASE_DIR"])))' \
+              | grep -qx 'legacy_verified_noop'
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Upstream unchanged since the last publish: verify the standard
+          # identity (exact assets, checksums, manifest, provenance) and no-op.
+          bundle="hpo-${DATE}.sqlite.zst"
+          [[ "$assets" == "SHA256SUMS,${bundle},${bundle}.sha256,manifest.json" ]] || {
+            echo "release identity mismatch: unexpected assets" >&2
             exit 1
           }
-          gh release download "db-v${DATE}" --dir "$release_dir" \
-            --pattern 'hpo-2026-06-23.sqlite.zst' \
-            --pattern 'hpo-2026-06-23.sqlite.zst.sha256' \
-            --pattern manifest.json
-          RELEASE_DIR="$release_dir" uv run python -c \
-            'import os; from pathlib import Path; from hpo_link.ingest.release_identity import verify_legacy_release; print(verify_legacy_release(Path(os.environ["RELEASE_DIR"])))' \
-            | grep -qx 'legacy_verified_noop'
+          gh release download "db-v${DATE}" --dir "$release_dir"
+          cd "$release_dir"
+          sha256sum -c SHA256SUMS
+          digest="$(awk '{print $1}' SHA256SUMS)"
+          [[ "$(cat "${bundle}.sha256")" == "$digest" ]] || { echo "sha256 sidecar mismatch" >&2; exit 1; }
+          [[ "$(jq -r '.sha256' manifest.json)" == "$digest" && "$(jq -r '.sqlite_zst' manifest.json)" == "$bundle" && "$(jq -r '.hpo_version' manifest.json)" == "$DATE" ]] || {
+            echo "manifest identity mismatch" >&2
+            exit 1
+          }
+          for asset in "$bundle" "${bundle}.sha256" SHA256SUMS manifest.json; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" >/dev/null
+          done
           echo "exists=true" >> "$GITHUB_OUTPUT"
       - if: steps.check.outputs.exists == 'false'
         run: uv run hpo-link-data build
@@ -82,7 +101,7 @@ jobs:
           uv run python scripts/make_manifest.py "${DATE}"
       - if: steps.check.outputs.exists == 'false'
         name: attest release assets
-        uses: actions/attest-build-provenance@cb9b3a436573c9f220359fbe94191d8e13bb2f35 # v3.1.0
+        uses: actions/attest-build-provenance@00014ed6ed5efc5b1ab7f7f34a39eb55d41aa4f8 # v3.1.0
         with:
           subject-path: |
             hpo-*.sqlite.zst
