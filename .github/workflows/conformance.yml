@@ -3,6 +3,8 @@ on:
   pull_request:
   push:
     branches: [main]
+env:
+  UV_PYTHON: "3.14"
 permissions:
   contents: read
 concurrency:

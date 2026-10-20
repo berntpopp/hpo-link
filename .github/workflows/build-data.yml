@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
 
 # Least privilege at the top level; the publish job opts up to contents: write.
+env:
+  UV_PYTHON: "3.14"
 permissions:
   contents: read
 

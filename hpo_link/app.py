@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """Log application lifetime; immutable data is prepared by the init sidecar."""
     logger = configure_logging()
     logger.info("hpo-link starting", host=settings.host, port=settings.port)
@@ -83,7 +83,7 @@ def create_app() -> FastAPI:
         database = settings.data.data_dir / settings.data.db_filename
         try:
             actual = verify_runtime_identity(database, settings.immutable_data)
-        except (DataUnavailableError, OSError, RuntimeError):
+        except DataUnavailableError, OSError, RuntimeError:
             payload["data_available"] = False
         else:
             expected = expected_identity(settings.immutable_data)

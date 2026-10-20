@@ -53,7 +53,7 @@ def main() -> int:
     database = settings.data.data_dir / settings.data.db_filename
     try:
         payload = build_probe(database, settings.immutable_data)
-    except (DataUnavailableError, OSError, RuntimeError):
+    except DataUnavailableError, OSError, RuntimeError:
         sys.stderr.write("HPO runtime data probe failed\n")
         return 1
     sys.stdout.write(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n")

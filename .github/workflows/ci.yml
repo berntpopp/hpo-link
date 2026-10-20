@@ -22,10 +22,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.12 is the `requires-python` floor; 3.14 is the interpreter the container
-        # actually ships (docker/Dockerfile). Testing only 3.14 left the declared floor
-        # an unverified claim; testing only 3.12 shipped an untested interpreter.
-        python-version: ["3.12", "3.14"]
+        # Single interpreter: the one the container ships (docker/Dockerfile).
+        python-version: ["3.14"]
 
     # uv resolves its interpreter from `.python-version` before PATH, so the matrix
     # alone would not reliably move it. UV_PYTHON makes each leg run the interpreter

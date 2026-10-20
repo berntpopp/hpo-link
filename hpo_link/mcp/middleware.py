@@ -255,7 +255,7 @@ def _is_structured_envelope(result: CallToolResult) -> bool:
         return False
     try:
         obj = json.loads(text)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False
     return isinstance(obj, dict) and "error_code" in obj
 
