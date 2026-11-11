@@ -33,6 +33,10 @@
     "release_tag": "db-v2026-09-01",
     "digest": "sha256:be9e693abf9eabb06ad501e360084cc3fb039eef90ffe02912bfe83256af3999",
     "image_allowlist": [
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/__init__.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataabc.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdatacode.py",
+      "opt/venv/lib/python3.14/site-packages/beartype/_check/cls/hint/data/hintdataerror.py",
       "home/app/web/hpo_link/data/__init__.py",
       "home/app/web/hpo_link/data/annotations_repository.py",
       "home/app/web/hpo_link/data/repository.py",

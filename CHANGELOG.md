@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-11-11
+
+### Security
+
+- Authlib 1.9.1 (critical + high/medium/low advisories, incl. GHSA for 1.9.0 fixes), dnspython 2.9.0 (CVE-2026-114605), fastmcp / fastmcp-slim 3.4.10, opentelemetry-api 1.45.1.
+
+### Changed
+
+- Image-content allowlist covers the new `beartype` 0.23 `hint/data` code modules (container-ci inspect-oci policy).
+- Router reusable workflows re-pinned to v0.10.10 (fresh control ledger).
+- Full `uv lock --upgrade` dependency sweep; GitHub Actions pins bumped (setup-uv v10.3.2, setup-python v7.1.0, codeql-action v4.39.1).
+
 ## [0.4.11] - 2026-10-20
 
 ### Security
