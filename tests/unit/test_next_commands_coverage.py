@@ -8,7 +8,7 @@ hands the client a ready-to-call recovery step, so a failure never dead-ends.
 from __future__ import annotations
 
 import pytest
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from hpo_link.exceptions import (
     AmbiguousQueryError,

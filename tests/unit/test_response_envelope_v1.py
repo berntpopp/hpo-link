@@ -38,7 +38,7 @@ notice/citation/HPO-release provenance triad remains declared once in the
 
 from __future__ import annotations
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from hpo_link.exceptions import NotFoundError
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool

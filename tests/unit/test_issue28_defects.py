@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from hpo_link.data.repository import HpoRepository
 from hpo_link.exceptions import AmbiguousQueryError, NotFoundError
