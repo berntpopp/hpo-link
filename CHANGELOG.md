@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-18
+
+### Added
+
+- `resolve_term` text queries (label/synonym/fuzzy) now report `other_matches_count` — how many other terms the same text matches — and add a `search_terms` step to `_meta.next_commands` when it is > 0; the description states the contract (single best match; use `search_terms` to list every matching term) (#118).
+
 ## [0.5.0] - 2026-11-18
 
 ### Changed

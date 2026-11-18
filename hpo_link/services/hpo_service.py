@@ -59,6 +59,10 @@ _CROSS_ONTOLOGY_FIELDS: frozenset[str] = frozenset(
 _MAX_SEARCH_LIMIT = 200
 
 
+#: Identifier lookups (not free text): no "other matches" count applies.
+_IDENTITY_MATCH_TYPES = frozenset({"hpo_id", "alt_id", "xref"})
+
+
 class HpoService:
     """Service layer over the read-only HPO SQLite index."""
 
@@ -149,6 +153,12 @@ class HpoService:
         }
         if record.get("replaced_by"):
             out["replaced_by"] = record["replaced_by"]
+        if match_type not in _IDENTITY_MATCH_TYPES:
+            # Text queries: say how many OTHER terms the same text matches (search_terms).
+            # ponytail: assumes the resolved term is the top hit when it matches at all
+            # (exact-label boost); a non-top related/fuzzy match may overcount by one.
+            hits, total = self._db.search(raw, limit=1, include_obsolete=False)
+            out["other_matches_count"] = total - int(bool(hits) and hits[0]["hpo_id"] == hpo_id)
         return out
 
     # -- search_terms ----------------------------------------------------------

@@ -442,3 +442,23 @@ def test_confidence_for_unknown_match_type_is_low_default() -> None:
     from hpo_link.services.resolution import confidence_for
 
     assert confidence_for("something_unexpected") == 0.6
+
+
+def test_resolve_term_text_query_counts_other_matches(
+    hpo_service: HpoService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A text resolve reports how many OTHER terms the same text matches (issue #118)."""
+    from hpo_link.mcp.next_commands import after_resolve_term
+
+    assert hpo_service.resolve_term("Phenotypic abnormality")["other_matches_count"] == 0
+    monkeypatch.setattr(hpo_service._db, "search", lambda *a, **k: ([{"hpo_id": "HP:0000118"}], 4))
+    result = hpo_service.resolve_term("Phenotypic abnormality")
+    assert result["hpo_id"] == "HP:0000118"
+    assert result["other_matches_count"] == 3
+    steps = after_resolve_term(result)
+    assert {"tool": "search_terms", "arguments": {"query": "Phenotypic abnormality"}} in steps
+
+
+def test_resolve_term_identifier_query_has_no_other_matches(hpo_service: HpoService) -> None:
+    """An HP-id resolve is an identity lookup: no other-matches count."""
+    assert "other_matches_count" not in hpo_service.resolve_term("HP:0000118")
