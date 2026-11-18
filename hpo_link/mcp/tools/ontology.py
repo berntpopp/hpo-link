@@ -43,7 +43,9 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "ambiguous_query with candidates (each {hpo_id, name}); an obsolete HP id "
             "resolves with success:true, obsolete:true, and its successor in replaced_by. "
             "This is the recommended first step — resolve any query to a canonical HP id "
-            "before calling get_term. Signature: resolve_term(query, response_mode=)."
+            "before calling get_term. Returns the single best match; text queries add "
+            "other_matches_count, and to list every term matching a text use search_terms. "
+            "Signature: resolve_term(query, response_mode=)."
         ),
     )
     async def resolve_term(query: QueryStr, response_mode: ResponseMode = "compact") -> ToolReturn:

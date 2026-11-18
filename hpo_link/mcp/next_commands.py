@@ -110,7 +110,10 @@ def after_resolve_term(resolution: dict[str, Any]) -> list[dict[str, Any]]:
             cmd("search_terms", query=str(resolution.get("query", ""))),
             cmd("get_server_capabilities"),
         ]
-    return [cmd("get_term", term=hpo_id)]
+    steps = [cmd("get_term", term=hpo_id)]
+    if resolution.get("other_matches_count"):
+        steps.append(cmd("search_terms", query=str(resolution.get("query", ""))))
+    return steps
 
 
 def after_search(query: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
