@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from fastmcp.exceptions import ToolError
+from pydantic import BaseModel
 
 from hpo_link.mcp.service_adapters import reset_services, set_annotation_service, set_hpo_service
 
@@ -157,5 +158,6 @@ async def test_middleware_does_not_reclassify_tool_body_validation_errors(
         RequiredValue.model_validate({})
         return {}
 
-    with pytest.raises(ValidationError):
+    # fastmcp 4 surfaces a tool-BODY validation failure as ToolError (not reclassified).
+    with pytest.raises(ToolError):
         await router_mcp.call_tool("raise_body_validation", {})

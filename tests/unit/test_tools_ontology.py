@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastmcp.tools.tool import ToolResult
+from fastmcp.tools import ToolResult
 
 from hpo_link.mcp.service_adapters import reset_services, set_hpo_service
 
