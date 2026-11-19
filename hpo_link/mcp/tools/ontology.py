@@ -72,7 +72,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         tags={"hpo", "search"},
         description=(
             "Full-text search over HPO phenotype term names, synonyms, and definitions "
-            "(FTS, relevance-ranked). Returns {hpo_id, name, score} -- compact adds "
+            "(FTS, relevance-ranked); returns {hpo_id, name, score} -- compact adds "
             "a short definition_snippet; standard/full add the complete definition -- "
             "plus a pagination block {total, returned, limit, offset, truncated, "
             "next_offset}. When truncated, next_commands carries a forward-page step "
