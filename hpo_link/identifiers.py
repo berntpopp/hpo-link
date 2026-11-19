@@ -20,9 +20,27 @@ _DISEASE_ID_HINT = (
     "(the prefix is case-sensitive)."
 )
 _GENE_ALLOWED = ["<symbol> e.g. PAX6", "NCBIGene:<id> e.g. NCBIGene:5080", "<numeric id> e.g. 5080"]
-_GENE_HINT = (
-    "gene is a symbol (PAX6), an NCBIGene CURIE (NCBIGene:5080), or a bare numeric NCBI id (5080)."
+#: hpo-link has no Ensembl/HGNC/RefSeq mapping (HPO ships symbol + NCBI id only), issue #128.
+TRANSLATE_GENE_HINT = (
+    "Ensembl, RefSeq and HGNC ids are not mapped here: translate them to gene symbols "
+    "first (an HGNC resolver does this)."
 )
+_GENE_HINT = (
+    "gene is a symbol (PAX6), an NCBIGene CURIE (NCBIGene:5080), or a bare numeric NCBI id "
+    f"(5080). {TRANSLATE_GENE_HINT}"
+)
+# Ensembl (any species, optional version), RefSeq and LRG accessions: never a gene symbol.
+_FOREIGN_GENE_RE = re.compile(
+    r"(ENS[A-Z]*[GTP]\d{6,}|[NX][CGMPR]_\d+|LRG_\d+)(\.\d+)?$", re.IGNORECASE
+)
+
+
+def is_foreign_gene_id(raw: str) -> bool:
+    """True for an id of a namespace hpo-link cannot map (ENSG…, NM_…, HGNC:…, any CURIE)."""
+    s = (raw or "").strip()
+    if ":" in s:
+        return not s.lower().startswith("ncbigene:")
+    return bool(_FOREIGN_GENE_RE.match(s))
 
 
 def normalize_hpo_id(raw: str | None) -> str | None:
@@ -139,5 +157,12 @@ def validate_gene(raw: str) -> tuple[str, str]:
                 hint=_GENE_HINT,
             )
         return ("ncbi", body)
+    if is_foreign_gene_id(s):  # would otherwise look like an unannotated symbol (empty success)
+        raise InvalidInputError(
+            f"gene {s!r} is an Ensembl/RefSeq accession, which hpo-link cannot map.",
+            field="gene",
+            allowed=_GENE_ALLOWED,
+            hint=_GENE_HINT,
+        )
     # bare symbol or bare numeric id
     return normalize_gene(s)

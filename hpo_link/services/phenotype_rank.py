@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from hpo_link.exceptions import InvalidInputError
-from hpo_link.identifiers import normalize_hpo_id
+from hpo_link.identifiers import (
+    TRANSLATE_GENE_HINT,
+    is_foreign_gene_id,
+    normalize_gene,
+    normalize_hpo_id,
+)
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.phenotype_index import (
     EXPLAIN_MIN_MATCH,
@@ -212,22 +217,27 @@ def rank_payload(
         {x for x in present + excluded if ix.self_ic.get(ix.canonical(x) or "", 0) <= 0}
     )
     pool: list[str] | None = None
-    unranked: list[str] = []
+    unranked: list[dict[str, str]] = []
+    hits: dict[str, str] = {}  # gene -> the caller's spelling; ordered de-duplication
     if candidate_genes is not None:
         upper = {g.upper(): g for g in ix.genes}
-        hits: dict[str, None] = {}  # ordered de-duplication
-        for g in candidate_genes:
-            hit = upper.get(g.strip().upper())
-            if hit is None:
-                unranked.append(g)  # unknown symbol or no HPO-annotated disease
-            else:
-                hits[hit] = None
+        for raw in candidate_genes:
+            g = raw.strip()
+            hit = upper.get(g.upper())
+            if hit is not None:
+                hits.setdefault(hit, g)
+            elif is_foreign_gene_id(g) or normalize_gene(g)[0] == "ncbi":  # index is by symbol
+                unranked.append({"input_id": g, "reason": "unsupported_identifier"})
+            else:  # unknown symbol or no HPO-annotated disease
+                unranked.append({"input_id": g, "reason": "not_rankable"})
         pool = list(hits)
         if not pool:  # an all-unknown filter must not look like "no gene fits"
             raise InvalidInputError(
-                "candidate_genes: none of the symbols is a gene with an HPO-annotated disease "
-                f"({', '.join(unranked[:5])}). Use HGNC symbols, e.g. SCN1A.",
+                "candidate_genes: none of the entries is a gene symbol with an HPO-annotated "
+                f"disease ({', '.join(u['input_id'] for u in unranked[:5])}).",
                 "candidate_genes",
+                allowed=["<gene symbol> e.g. SCN1A"],
+                hint=f"candidate_genes takes gene symbols only (e.g. SCN1A). {TRANSLATE_GENE_HINT}",
             )
     ranked = rank_genes(ix, profile, pool)
     page = ranked[offset : offset + limit]
@@ -237,6 +247,7 @@ def rank_payload(
         row: dict[str, Any] = {
             "rank": n,
             "gene": gene,
+            **({"input_id": hits[gene]} if pool is not None else {}),
             "score": round(score, 4),
             "best_disease": {"disease_id": disease.id, "disease_name": disease.name},
         }

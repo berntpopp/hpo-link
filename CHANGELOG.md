@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-20
+
+### Changed
+
+- Gene identifiers hpo-link cannot map now fail fast (#128). hpo-link has no Ensembl/HGNC/RefSeq mapping (HPO ships gene symbol + NCBI gene id only). `get_phenotypes_for_gene` and `get_diseases_for_gene` used to treat an Ensembl id (`ENSG…`, `ENST…`), a RefSeq accession (`NM_…`) or an `LRG_…` id as an unknown symbol and return a successful empty page; they now return `invalid_input` with `field: gene`, the accepted forms in `allowed_values` (symbol, `NCBIGene:<id>`, numeric NCBI id) and a `hint` to translate the id to a gene symbol first. A well-formed symbol without annotations still returns an empty page.
+- `score_genes_for_phenotypes`: `unranked_candidate_genes` entries are now objects `{input_id, reason}` (were bare strings); `reason` is `unsupported_identifier` (Ensembl/HGNC/RefSeq/NCBI id — `candidate_genes` takes gene symbols only) or `not_rankable` (unknown symbol or no HPO-annotated disease). When no entry is usable the `invalid_input` error names the accepted form in `allowed_values` and the translation remedy in `hint`.
+
+### Added
+
+- `score_genes_for_phenotypes`: with `candidate_genes`, each ranked row echoes the caller's spelling as `input_id`.
+- The `get_phenotypes_for_gene` and `get_genes_for_phenotype` descriptions point to `score_genes_for_phenotypes` for several phenotypes and/or a candidate gene list at once.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added

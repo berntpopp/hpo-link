@@ -191,9 +191,20 @@ def test_payload_validation_and_honest_counts() -> None:
     with pytest.raises(InvalidInputError) as no_genes:  # all-unknown filter is not "no hits"
         rank_payload(ix, ids("FEB"), None, ["NOPE"], 10, 0, "compact")
     assert no_genes.value.field == "candidate_genes"
-    page = rank_payload(ix, ids("FEB"), None, ["g_d", "G_E", "NOPE"], 1, 0, "minimal")
-    assert [g["gene"] for g in page["genes"]] == ["G_d"]
-    assert page["unranked_candidate_genes"] == ["NOPE"]
+    with pytest.raises(InvalidInputError) as foreign:  # issue #128: no Ensembl/HGNC mapping
+        rank_payload(ix, ids("FEB"), None, ["ENSG00000066279", "HGNC:1234"], 10, 0, "compact")
+    assert foreign.value.field == "candidate_genes"
+    assert foreign.value.allowed and "translate" in (foreign.value.hint or "")
+    candidates = ["g_d", "G_E", "NOPE", "ENSG00000066279", "HGNC:1234", "5080", "G_d"]
+    page = rank_payload(ix, ids("FEB"), None, candidates, 1, 0, "minimal")
+    assert [(g["gene"], g["input_id"]) for g in page["genes"]] == [("G_d", "g_d")]
+    assert page["unranked_candidate_genes"] == [
+        {"input_id": "NOPE", "reason": "not_rankable"},
+        {"input_id": "ENSG00000066279", "reason": "unsupported_identifier"},
+        {"input_id": "HGNC:1234", "reason": "unsupported_identifier"},
+        {"input_id": "5080", "reason": "unsupported_identifier"},
+    ]
+    assert "input_id" not in rank_payload(ix, ids("FEB"), None, None, 1, 0, "minimal")["genes"][0]
     assert (page["total"], page["returned"], page["truncated"], page["next_offset"]) == (
         2,
         1,

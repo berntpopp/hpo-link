@@ -114,13 +114,25 @@ def test_validate_gene_valid(raw, expected_kind, expected_value):
         "NCBIGene:abc",  # non-digit body
         "HGNC:1234",  # wrong prefix with colon
         "OMIM:12345",  # wrong prefix with colon
+        "ENSG00000066279",  # Ensembl gene (issue #128: was an empty success)
+        "ENSG00000066279.19",
+        "ENST00000367409",
+        "ensmusg00000026385",
+        "NM_018136.5",
+        "LRG_1",
     ],
 )
 def test_validate_gene_malformed(malformed):
-    """Malformed gene id raises InvalidInputError with field='gene'."""
+    """Malformed or unmappable gene id raises InvalidInputError naming the accepted forms."""
     with pytest.raises(InvalidInputError) as exc_info:
         validate_gene(malformed)
     assert exc_info.value.field == "gene"
+    assert exc_info.value.allowed and "translate" in (exc_info.value.hint or "")
+
+
+@pytest.mark.parametrize("symbol", ["ENSA", "ENG", "NMT1", "C1orf112", "NOTAREALGENE99999"])
+def test_validate_gene_keeps_symbols_that_resemble_accessions(symbol):
+    assert validate_gene(symbol) == ("symbol", symbol.upper())
 
 
 def test_validate_gene_empty():

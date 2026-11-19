@@ -67,7 +67,8 @@ GeneStr = Annotated[
     Field(
         description=(
             "A gene symbol (e.g. 'PAX6') or NCBI gene CURIE (e.g. 'NCBIGene:5080'). "
-            "Bare NCBI numeric ids (e.g. '5080') are also accepted."
+            "Bare NCBI numeric ids (e.g. '5080') are also accepted. Ensembl (ENSG...), "
+            "RefSeq and HGNC ids are rejected: translate them to a symbol first."
         ),
         examples=["PAX6", "NCBIGene:5080", "5080"],
     ),

@@ -38,7 +38,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         tags={"hpo", "annotation", "gene"},
         description=(
             "Return the HPO phenotype terms annotated to a gene (symbol or NCBI id). "
-            "Signature: get_phenotypes_for_gene(gene, limit=, offset=, response_mode=)."
+            "Signature: get_phenotypes_for_gene(gene, limit=, offset=, response_mode=). "
+            "For several phenotypes and/or a candidate gene list at once, use "
+            "score_genes_for_phenotypes instead of looping over single-gene calls."
         ),
     )
     async def get_phenotypes_for_gene(
@@ -82,7 +84,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             "Return the genes annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
             "Signature: get_genes_for_phenotype(hpo_id, include_descendants=, limit=, "
-            "offset=, response_mode=)."
+            "offset=, response_mode=). "
+            "For several phenotypes and/or a candidate gene list at once, use "
+            "score_genes_for_phenotypes instead of looping over single-term calls."
         ),
     )
     async def get_genes_for_phenotype(
@@ -346,10 +350,14 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             Field(
                 max_length=5000,
                 description=(
-                    "Restrict ranking to these gene symbols (e.g. genes with exome variants); "
-                    "symbols that are unknown or have no HPO-annotated disease are listed in "
-                    "unranked_candidate_genes."
+                    "Restrict ranking to these gene symbols (e.g. SCN1A; genes with exome "
+                    "variants). Gene symbols only: Ensembl (ENSG...), HGNC (HGNC:...), RefSeq "
+                    "and NCBI ids are not mapped here, translate them to symbols first. Each "
+                    "ranked row echoes the caller's spelling as input_id; entries that cannot "
+                    "be ranked are listed in unranked_candidate_genes as {input_id, reason} "
+                    "(unsupported_identifier | not_rankable)."
                 ),
+                examples=[["SCN1A", "KCNQ2", "STXBP1"]],
             ),
         ] = None,
         limit: Annotated[

@@ -64,9 +64,38 @@ async def test_ranks_exact_match_first_with_matched_pairs(mcp: Any) -> None:
 async def test_candidate_filter_reports_unrankable_genes(mcp: Any) -> None:
     # GLI3's only disease is annotated to HP:0000478 alone (IC 0 in the fixture): unrankable.
     payload = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["pax6", "GLI3", "NOPE"])
-    assert [g["gene"] for g in payload["genes"]] == ["PAX6"]
-    assert payload["unranked_candidate_genes"] == ["GLI3", "NOPE"]
+    assert [(g["gene"], g["input_id"]) for g in payload["genes"]] == [("PAX6", "pax6")]
+    assert payload["unranked_candidate_genes"] == [
+        {"input_id": "GLI3", "reason": "not_rankable"},
+        {"input_id": "NOPE", "reason": "not_rankable"},
+    ]
     assert payload["total"] == 1
+
+
+async def test_foreign_gene_ids_fail_with_accepted_forms_and_remedy(mcp: Any) -> None:
+    # Issue #128: hpo-link has no Ensembl/HGNC mapping; say so instead of "see field".
+    bad = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["ENSG00000007372"])
+    assert (bad["success"], bad["error_code"], bad["field"]) == (
+        False,
+        "invalid_input",
+        "candidate_genes",
+    )
+    assert bad["allowed_values"] and "translate them to gene symbols" in bad["hint"]
+    mixed = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", "ENSG00000007372"])
+    assert [g["input_id"] for g in mixed["genes"]] == ["PAX6"]
+    assert mixed["unranked_candidate_genes"] == [
+        {"input_id": "ENSG00000007372", "reason": "unsupported_identifier"}
+    ]
+    # The single-gene tools returned an empty success for an Ensembl id (317 wasted calls).
+    for tool in ("get_phenotypes_for_gene", "get_diseases_for_gene"):
+        result = await mcp.call_tool(tool, {"gene": "ENSG00000007372"})
+        single = result.structured_content
+        assert (single["success"], single["error_code"], single["field"]) == (
+            False,
+            "invalid_input",
+            "gene",
+        )
+        assert "translate them to gene symbols" in single["hint"]
 
 
 async def test_truncation_and_excluded_conflict_on_toy_index(mcp: Any, service: Any) -> None:
