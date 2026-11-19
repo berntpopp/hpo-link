@@ -101,6 +101,33 @@ async def test_resolve_term_not_found(live_hpo_service) -> None:
     assert "_meta" in env
 
 
+async def test_resolve_term_free_text_miss_types_candidates(live_hpo_service) -> None:
+    """A free-text miss is not_found with typed weak candidates (Response-Envelope §2a)."""
+    from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
+    from hpo_link.mcp.service_adapters import get_hpo_service
+
+    query = "retina blurry"  # shares one word with HP:0000479; no exact label
+
+    async def call():
+        return get_hpo_service().resolve_term(query)
+
+    result = await run_mcp_tool(
+        "resolve_term", call, context=McpErrorContext("resolve_term", arguments={"query": query})
+    )
+    env = _err_env(result)
+    assert env["error_code"] == "not_found"
+    assert env["candidates"], "the miss must carry its near matches"
+    for cand in env["candidates"]:
+        assert cand["match_type"] == "fuzzy"
+        assert cand["match"] == "weak"
+        assert isinstance(cand["score"], float)
+    assert env["_meta"]["next_commands"][0] == {
+        "tool": "get_term",
+        "arguments": {"term": env["candidates"][0]["hpo_id"]},
+    }
+    assert query not in str(env)  # the free-text query is never echoed on the error path
+
+
 async def test_resolve_term_empty_query(live_hpo_service) -> None:
     """Empty query returns invalid_input error (not an exception)."""
     from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool

@@ -155,7 +155,7 @@ def _valid_hp_ids(items: Any) -> list[dict[str, str]]:
     return out
 
 
-def _valid_candidates(items: Any) -> list[dict[str, str]]:
+def _valid_candidates(items: Any) -> list[dict[str, Any]]:
     """Rebuild candidate/suggestion rows as grammar-validated ``{hpo_id, name}``.
 
     Unlike :func:`_valid_hp_ids`, this CARRIES the term ``name``: a candidate label is a
@@ -347,6 +347,12 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
         return envelope
     if isinstance(exc, NotFoundError) and exc.suggestions:
         candidates = _valid_candidates(exc.suggestions)
+        scores = {s.get("hpo_id"): s.get("score") for s in exc.suggestions if isinstance(s, dict)}
+        for cand in candidates:  # every miss suggestion is a below-floor FTS guess (§2a)
+            cand.update(match_type="fuzzy", match="weak")
+            score = scores.get(cand["hpo_id"])
+            if isinstance(score, int | float) and not isinstance(score, bool):
+                cand["score"] = float(score)
         if candidates:
             envelope["candidates"] = candidates
         steps = [cmd("get_term", term=c["hpo_id"]) for c in candidates[:3]]
