@@ -188,6 +188,9 @@ def test_payload_validation_and_honest_counts() -> None:
     with pytest.raises(InvalidInputError) as bad_excl:
         rank_payload(ix, ids("FEB"), ["nope"], None, 10, 0, "compact")
     assert bad_excl.value.field == "excluded_hpo_ids"
+    with pytest.raises(InvalidInputError) as no_genes:  # all-unknown filter is not "no hits"
+        rank_payload(ix, ids("FEB"), None, ["NOPE"], 10, 0, "compact")
+    assert no_genes.value.field == "candidate_genes"
     page = rank_payload(ix, ids("FEB"), None, ["g_d", "G_E", "NOPE"], 1, 0, "minimal")
     assert [g["gene"] for g in page["genes"]] == ["G_d"]
     assert page["unranked_candidate_genes"] == ["NOPE"]

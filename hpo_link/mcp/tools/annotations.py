@@ -328,6 +328,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 min_length=1,
                 max_length=100,
                 description="Present patient phenotypes as HP ids (e.g. HP:0001250).",
+                examples=[["HP:0001250", "HP:0001263"]],
             ),
         ],
         excluded_hpo_ids: Annotated[

@@ -223,6 +223,12 @@ def rank_payload(
             else:
                 hits[hit] = None
         pool = list(hits)
+        if not pool:  # an all-unknown filter must not look like "no gene fits"
+            raise InvalidInputError(
+                "candidate_genes: none of the symbols is a gene with an HPO-annotated disease "
+                f"({', '.join(unranked[:5])}). Use HGNC symbols, e.g. SCN1A.",
+                "candidate_genes",
+            )
     ranked = rank_genes(ix, profile, pool)
     page = ranked[offset : offset + limit]
     genes: list[dict[str, Any]] = []
