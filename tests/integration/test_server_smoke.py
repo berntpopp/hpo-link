@@ -23,7 +23,7 @@ def _reset_singleton():  # type: ignore[return]
 
 @pytest.mark.mcp
 async def test_all_tools_registered(built_test_db) -> None:
-    """The MCP facade must register exactly 17 tools."""
+    """The MCP facade must register exactly 18 tools."""
     from hpo_link.mcp.facade import create_hpo_mcp
 
     mcp = create_hpo_mcp()
@@ -49,10 +49,11 @@ async def test_all_tools_registered(built_test_db) -> None:
             "get_diseases_for_phenotype",
             "get_genes_for_disease",
             "get_diseases_for_gene",
+            "score_genes_for_phenotypes",
         ]
     )
 
-    assert len(tools) == 17, f"Expected 17 tools, got {len(tools)}: {tool_names}"
+    assert len(tools) == 18, f"Expected 18 tools, got {len(tools)}: {tool_names}"
     assert tool_names == expected
 
 

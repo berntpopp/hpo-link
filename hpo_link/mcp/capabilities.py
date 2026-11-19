@@ -56,6 +56,7 @@ TOOLS: list[str] = [
     "get_diseases_for_phenotype",
     "get_genes_for_disease",
     "get_diseases_for_gene",
+    "score_genes_for_phenotypes",
 ]
 
 #: Machine-readable tool-transition graph — the static form of _meta.next_commands.
@@ -88,6 +89,7 @@ TOOL_GRAPH: dict[str, list[str]] = {
     "get_diseases_for_gene": ["get_phenotypes_for_disease", "get_genes_for_disease"],
     "get_genes_for_disease": ["get_phenotypes_for_gene", "get_diseases_for_gene"],
     "get_phenotypes_for_disease": ["get_genes_for_disease", "get_diseases_for_phenotype"],
+    "score_genes_for_phenotypes": ["get_phenotypes_for_gene", "get_phenotypes_for_disease"],
 }
 
 _SUMMARY_KEYS: tuple[str, ...] = (
