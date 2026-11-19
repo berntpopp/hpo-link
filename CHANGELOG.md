@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-19
+
+### Added
+
+- A free-text label miss (`not_found` from `resolve_term`, or a label passed to a term tool) now carries a static top-level `hint` pointing disease and syndrome names at `mondo_resolve_disease` (#124). The hint is fixed server text; the caller's query is still never reflected into the error path, and `_meta.next_commands` is unchanged.
+
+### Fixed
+
+- `resolve_term` exact-label precedence (mondo-link v0.9.0 rule): when a label hits several terms, the term with the unique strongest match type (primary > exact synonym > related/broad/narrow synonym) resolves, provided it is live; terms tied at the strongest type, or an obsolete winner, stay `ambiguous_query` (#124).
+
 ## [0.7.0] - 2026-11-19
 
 ### Added

@@ -68,6 +68,13 @@ FUZZY_MAX_CANDIDATES = 5
 #: can sink less-relevant terms out of the candidate window entirely.
 FUZZY_SEARCH_POOL = FUZZY_MAX_CANDIDATES * 3
 
+#: Static pointer for a free-text miss: most misses are disease names, which HPO (a
+#: phenotype ontology) does not carry. Never interpolates the caller's text.
+_DISEASE_NAME_HINT = (
+    "HPO covers phenotypic features, not diseases. If the query is a disease or syndrome "
+    "name, resolve it with mondo_resolve_disease instead."
+)
+
 #: Distinctive (>=3-char alphabetic) tokens used to relax a multi-token miss into
 #: candidate suggestions (so a query like "HP 479" never dead-ends on a bare 404).
 _TOKEN_RE = re.compile(r"[A-Za-z]{3,}")
@@ -141,9 +148,16 @@ class Resolver:
         # Step 2: exact label / synonym
         candidates = self._repo.resolve_label(raw.upper())
         if candidates:
+            # Strongest match type wins (as mondo-link): a primary label on one live term
+            # beats synonym-only hits on others; >=2 terms tied at the strongest type stay
+            # ambiguous_query.
+            candidates = sorted(candidates, key=_label_confidence, reverse=True)
+            best = candidates[0]
+            top_ids = {
+                c["hpo_id"] for c in candidates if _label_confidence(c) == _label_confidence(best)
+            }
             distinct = {c["hpo_id"] for c in candidates}
-            if len(distinct) == 1:
-                best = candidates[0]
+            if len(top_ids) == 1 and (len(distinct) == 1 or self._is_live(best["hpo_id"])):
                 match_type = _LABEL_MATCH_TYPE.get(best["label_type"], "primary")
                 return match_type, str(best["hpo_id"])
             raise AmbiguousQueryError(
@@ -161,6 +175,11 @@ class Resolver:
         if fuzzy:
             return self._fuzzy_or_not_found(raw)
         raise self._label_not_found(raw)
+
+    def _is_live(self, hpo_id: str) -> bool:
+        """True when ``hpo_id`` is a non-obsolete term (a precedence win needs one)."""
+        term = self._repo.get_term(hpo_id)
+        return term is not None and not term["is_obsolete"]
 
     def _fuzzy_or_not_found(self, raw: str) -> tuple[str, str]:
         """Exact-label miss: try a conservative FTS-based fuzzy resolution.
@@ -201,7 +220,10 @@ class Resolver:
             message = (
                 f"No HPO term matches '{raw}'. Try an HP id, a phenotype label, or an xref CURIE."
             )
-        return NotFoundError(message, suggestions=suggestions)
+        hint = (
+            None if normalize_hpo_id(raw) else _DISEASE_NAME_HINT
+        )  # an absent HP id is no disease
+        return NotFoundError(message, suggestions=suggestions, hint=hint)
 
     def _search_suggestions(self, raw: str, *, limit: int = 3) -> list[dict[str, Any]]:
         """Close-match suggestions for a failed lookup (id + name + score), best-effort."""
@@ -239,6 +261,11 @@ class Resolver:
                 }
             )
         return out
+
+
+def _label_confidence(cand: dict[str, Any]) -> float:
+    """Confidence of an exact label hit by its match type (higher = stronger)."""
+    return MATCH_CONFIDENCE.get(_LABEL_MATCH_TYPE.get(cand["label_type"], ""), 0.0)
 
 
 def _hits_to_suggestions(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:

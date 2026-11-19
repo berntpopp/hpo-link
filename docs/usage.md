@@ -80,7 +80,7 @@ get_term(hpo_id="HP:0000107")
 `[{text, scope}]` objects; `compact` (default) and sparse `fields` collapse them
 to plain `["string", ...]`. A free-text label miss returns `not_found` with the
 closest hits in `candidates` and `_meta.next_commands` chaining to `get_term` on
-the top hit.
+the top hit, plus a static `hint` naming `mondo_resolve_disease` for disease names.
 
 ## Hierarchy
 

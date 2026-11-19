@@ -66,10 +66,16 @@ class NotFoundError(HpoLinkError):
         message: str = "No matching HPO term found.",
         *,
         suggestions: list[dict[str, Any]] | None = None,
+        hint: str | None = None,
     ) -> None:
-        """Initialise with a 404 status code and optional close-match suggestions."""
+        """Initialise with a 404 status code, close-match suggestions and a static hint.
+
+        ``hint`` must be server-authored (never caller text); it surfaces as the
+        envelope's top-level ``hint``.
+        """
         super().__init__(message, status_code=404)
         self.suggestions = suggestions or []
+        self.hint = hint
 
 
 class WithdrawnEntryError(NotFoundError):

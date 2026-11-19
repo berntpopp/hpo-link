@@ -345,6 +345,8 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
             envelope["replaced_by"] = replaced_by
         envelope["_meta"]["next_commands"] = withdrawn_recovery(replaced_by)
         return envelope
+    if isinstance(exc, NotFoundError) and exc.hint:
+        envelope["hint"] = exc.hint  # static, server-authored (never caller text)
     if isinstance(exc, NotFoundError) and exc.suggestions:
         candidates = _valid_candidates(exc.suggestions)
         scores = {s.get("hpo_id"): s.get("score") for s in exc.suggestions if isinstance(s, dict)}
