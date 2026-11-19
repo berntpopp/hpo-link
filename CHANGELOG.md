@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
+### Added
+
+- A free-text `resolve_term` miss (`not_found`) now types each close-match candidate per Response-Envelope §2a: `match_type: "fuzzy"`, `match: "weak"` (every miss candidate is a below-floor search guess, never a resolution) and the FTS `score` the server already ranked by (#121). `_meta.next_commands` still opens the top candidates with `get_term`.
+
+### Notes
+
+- No `search_terms` step and no `mondo_resolve_disease` chaining on the miss: this repo never reflects a free-text query into an error-path recovery argument (only HP ids and strict xref CURIEs), and `resolve_term` has no disease-vs-phenotype input branch to justify pointing a phenotype miss at the disease front door.
+
 ## [0.6.1] - 2026-11-19
 
 ### Changed

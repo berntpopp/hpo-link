@@ -242,7 +242,8 @@ def build_capabilities() -> dict[str, Any]:
         ],
         "not_found_contract": (
             "An id/label/xref with no term returns error_code 'not_found' (with "
-            "close-match candidates, each {hpo_id, name}, when available). An "
+            "close-match candidates, each {hpo_id, name, match_type:'fuzzy', "
+            "match:'weak', score}, when available). An "
             "ambiguous label returns 'ambiguous_query' with candidates (each "
             "{hpo_id, name}) and next_commands to each. An obsolete HP id RESOLVES "
             "(success:true) with obsolete:true and its successor in replaced_by."
