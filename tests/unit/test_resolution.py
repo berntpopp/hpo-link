@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from hpo_link.exceptions import InvalidInputError, NotFoundError
+from hpo_link.exceptions import AmbiguousQueryError, InvalidInputError, NotFoundError
 from hpo_link.services.resolution import (
     FUZZY_DOMINANCE,
     FUZZY_MIN_SCORE,
@@ -118,3 +118,68 @@ def test_resolver_strict_miss_raises_not_found(repo: HpoRepository) -> None:
     """A non-matching free-text label with fuzzy disabled raises NotFoundError."""
     with pytest.raises(NotFoundError):
         Resolver(repo).resolve_term_id("zzqqxx-not-a-phenotype-zzqqxx")
+
+
+class _LabelRepo:
+    """Stub repo: one exact-label lookup result + per-id obsolete flags."""
+
+    def __init__(self, rows: list[dict[str, str]], obsolete: frozenset[str] = frozenset()) -> None:
+        self._rows, self._obsolete = rows, obsolete
+
+    def get_term(self, hpo_id: str) -> dict[str, object] | None:
+        if not hpo_id.startswith("HP:"):
+            return None
+        return {"hpo_id": hpo_id, "name": hpo_id, "is_obsolete": hpo_id in self._obsolete}
+
+    def resolve_label(self, label: str) -> list[dict[str, str]]:
+        return self._rows
+
+
+def _resolver(rows: list[tuple[str, str]], obsolete: frozenset[str] = frozenset()) -> Resolver:
+    repo = _LabelRepo([{"hpo_id": h, "label_type": t} for h, t in rows], obsolete)
+    return Resolver(repo)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([("HP:0000002", "exact_synonym"), ("HP:0000001", "primary")], "HP:0000001"),
+        ([("HP:0000002", "related_synonym"), ("HP:0000001", "exact_synonym")], "HP:0000001"),
+        ([("HP:0000002", "broad_synonym"), ("HP:0000001", "exact_synonym")], "HP:0000001"),
+    ],
+)
+def test_exact_label_strongest_match_type_wins(rows: list[tuple[str, str]], expected: str) -> None:
+    """Primary > exact synonym > related synonym: a unique strongest term resolves (#124)."""
+    assert _resolver(rows).classify_resolution("x label")[1] == expected
+
+
+@pytest.mark.parametrize(
+    ("rows", "obsolete"),
+    [
+        ([("HP:0000001", "exact_synonym"), ("HP:0000002", "exact_synonym")], frozenset()),
+        ([("HP:0000001", "primary"), ("HP:0000002", "related_synonym")], {"HP:0000001"}),
+    ],
+)
+def test_exact_label_tie_or_obsolete_winner_stays_ambiguous(
+    rows: list[tuple[str, str]], obsolete: frozenset[str]
+) -> None:
+    """A tie at the strongest type, or an obsolete winner, stays ambiguous_query."""
+    with pytest.raises(AmbiguousQueryError):
+        _resolver(rows, frozenset(obsolete)).classify_resolution("x label")
+
+
+def test_free_text_miss_carries_static_mondo_hint(repo: HpoRepository) -> None:
+    """A free-text miss points disease names at mondo_resolve_disease without echoing them."""
+    query = "zzqx Holt-Oram syndrome"
+    with pytest.raises(NotFoundError) as exc_info:
+        Resolver(repo).resolve_term_id(query)
+    hint = exc_info.value.hint
+    assert hint and "mondo_resolve_disease" in hint
+    assert "Holt" not in hint
+
+
+def test_absent_hp_id_miss_has_no_disease_hint(repo: HpoRepository) -> None:
+    """A well-formed but absent HP id is not a disease name: no mondo hint."""
+    with pytest.raises(NotFoundError) as exc_info:
+        Resolver(repo).resolve_term_id("HP:9999999")
+    assert exc_info.value.hint is None

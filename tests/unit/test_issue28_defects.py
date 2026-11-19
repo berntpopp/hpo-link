@@ -380,3 +380,17 @@ def test_resolve_term_does_not_fabricate_a_mapping_for_a_foreign_namespace(
     svc = _svc(built_test_db)
     with pytest.raises((NotFoundError, InvalidInputError)):
         svc.resolve_term("__NONSENSE__:C0151888")
+
+
+async def test_notfound_hint_surfaces_on_envelope() -> None:
+    """A NotFoundError hint (static, server-authored) is a top-level envelope key (#124)."""
+
+    async def call() -> dict[str, Any]:
+        raise NotFoundError("no exact match", hint="try mondo_resolve_disease")
+
+    result = await run_mcp_tool(
+        "resolve_term", call, context=McpErrorContext("resolve_term", arguments={"query": "x"})
+    )
+    env = _env(result)
+    assert env["error_code"] == "not_found"
+    assert env["hint"] == "try mondo_resolve_disease"
