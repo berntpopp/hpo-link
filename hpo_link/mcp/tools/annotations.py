@@ -8,7 +8,7 @@ from pydantic import Field
 
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
-from hpo_link.mcp.next_commands import cmd
+from hpo_link.mcp.next_commands import cmd, page_cmd
 from hpo_link.mcp.service_adapters import get_annotation_service
 from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode, ToolReturn
 
@@ -303,5 +303,99 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 "get_diseases_for_gene",
                 arguments={"gene": gene},
                 response_mode=response_mode,
+            ),
+        )
+
+    @mcp.tool(
+        name="score_genes_for_phenotypes",
+        title="Score Genes for HPO Phenotypes",
+        annotations=READ_ONLY_OPEN_WORLD,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
+        tags={"hpo", "annotation", "gene", "ranking"},
+        description=(
+            "Rank genes for a set of HPO phenotype terms (Resnik similarity to annotated "
+            "diseases); returns ranked candidate genes for a patient's phenotypes, each with "
+            "score, best disease and matched term pairs (shared ancestor + IC); excluded "
+            "terms are reported as conflicts, never scored. "
+            "Signature: score_genes_for_phenotypes(hpo_ids, excluded_hpo_ids=, "
+            "candidate_genes=, limit=, offset=, response_mode=)."
+        ),
+    )
+    async def score_genes_for_phenotypes(
+        hpo_ids: Annotated[
+            list[str],
+            Field(
+                min_length=1,
+                max_length=100,
+                description="Present patient phenotypes as HP ids (e.g. HP:0001250).",
+            ),
+        ],
+        excluded_hpo_ids: Annotated[
+            list[str] | None,
+            Field(
+                max_length=100,
+                description=(
+                    "Phenotypes observed ABSENT. Reported as conflicts on each gene's best "
+                    "disease; they never lower a score."
+                ),
+            ),
+        ] = None,
+        candidate_genes: Annotated[
+            list[str] | None,
+            Field(
+                max_length=5000,
+                description=(
+                    "Restrict ranking to these gene symbols (e.g. genes with exome variants); "
+                    "symbols that are unknown or have no HPO-annotated disease are listed in "
+                    "unranked_candidate_genes."
+                ),
+            ),
+        ] = None,
+        limit: Annotated[
+            int, Field(ge=1, le=100, description="Max genes to return (default 20).")
+        ] = 20,
+        offset: Annotated[
+            int, Field(ge=0, description="Rows to skip for forward paging (default 0).")
+        ] = 0,
+        response_mode: ResponseMode = "compact",
+    ) -> ToolReturn:
+        args: dict[str, Any] = {"hpo_ids": hpo_ids}
+        if excluded_hpo_ids:
+            args["excluded_hpo_ids"] = excluded_hpo_ids
+        if candidate_genes is not None:
+            args["candidate_genes"] = candidate_genes
+
+        async def call() -> dict[str, Any]:
+            payload = get_annotation_service().score_genes_for_phenotypes(
+                hpo_ids,
+                excluded_hpo_ids=excluded_hpo_ids,
+                candidate_genes=candidate_genes,
+                limit=limit,
+                offset=offset,
+                response_mode=response_mode,
+            )
+            steps: list[dict[str, Any]] = []
+            if payload.get("truncated"):
+                steps.append(
+                    page_cmd(
+                        "score_genes_for_phenotypes",
+                        {**args, "limit": limit},
+                        payload["next_offset"],
+                    )
+                )
+            if payload["genes"]:
+                top = payload["genes"][0]
+                steps.append(cmd("get_phenotypes_for_gene", gene=top["gene"]))
+                steps.append(
+                    cmd("get_phenotypes_for_disease", disease_id=top["best_disease"]["disease_id"])
+                )
+            payload.setdefault("_meta", {})["next_commands"] = steps
+            return payload
+
+        return await run_mcp_tool(
+            "score_genes_for_phenotypes",
+            call,
+            context=McpErrorContext(
+                "score_genes_for_phenotypes", arguments=args, response_mode=response_mode
             ),
         )

@@ -76,6 +76,7 @@ Three console scripts: `hpo-link` (unified server), `hpo-link-mcp` (stdio),
 | `get_diseases_for_phenotype` | Diseases annotated to an HPO term |
 | `get_genes_for_disease` | Genes associated with a disease |
 | `get_diseases_for_gene` | Diseases associated with a gene |
+| `score_genes_for_phenotypes` | Genes ranked for a set of HPO terms (disease-level Resnik) |
 
 Every response carries `_meta.next_commands` (ready-to-call follow-ups). Ids are
 normalised to `HP:NNNNNNN`. `response_mode` ∈ `minimal | compact | standard | full`

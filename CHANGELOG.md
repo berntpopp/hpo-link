@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-19
+
+### Added
+
+- `score_genes_for_phenotypes(hpo_ids, excluded_hpo_ids=, candidate_genes=, limit=, offset=, response_mode=)` (#126): one call ranks genes for a patient's HPO terms by disease-level Resnik similarity, ported from VarLens `779a6d25` (frequency-weighted forward/reverse match, S = 0.55*Fwd + 0.45*Rev, f0 = 1, tau = 1, no background correction; a gene takes its best disease). Each gene carries its rank, score, best disease and matched term pairs (query term, disease term, MICA id + IC). Excluded terms are reported as `conflicts` on the best disease and never change a score. `candidate_genes` restricts the ranking; symbols that cannot be ranked are listed in `unranked_candidate_genes`. The scoring index is built in-process from the shipped SQLite tables on first use (no schema or data change). Named with the canonical Tool-Naming v1 verb `score` (`rank` is not a canonical verb).
+
 ## [0.8.0] - 2026-11-19
 
 ### Added

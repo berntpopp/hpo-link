@@ -15,6 +15,8 @@ from hpo_link.exceptions import DataUnavailableError
 from hpo_link.identifiers import validate_disease_id, validate_gene
 from hpo_link.ingest.parser_hpoa import parse_frequency
 from hpo_link.services.pagination import page_fields
+from hpo_link.services.phenotype_index import PhenotypeIndex, load_index
+from hpo_link.services.phenotype_rank import rank_payload
 from hpo_link.services.resolution import Resolver
 from hpo_link.services.shaping import shape_annotation_rows
 
@@ -33,6 +35,7 @@ class AnnotationService:
         """Bind the service to a pre-opened HPO repository (or None when unavailable)."""
         self._repo = repo
         self._hpo_version: str | None = None
+        self._phenotype_index: PhenotypeIndex | None = None
 
     # -- provenance ------------------------------------------------------------
 
@@ -338,3 +341,35 @@ class AnnotationService:
             **pag,
             **self._provenance(response_mode),
         }
+
+    # -- phenotype set -> ranked genes (issue #126) ----------------------------
+
+    def score_genes_for_phenotypes(
+        self,
+        hpo_ids: list[str],
+        excluded_hpo_ids: list[str] | None = None,
+        candidate_genes: list[str] | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        response_mode: str = "compact",
+    ) -> dict[str, Any]:
+        """Rank genes by disease-level Resnik similarity to a phenotype profile.
+
+        The index (IC, ancestor sets, disease annotations) is built from the
+        SQLite tables on first use (~1-2 s) and cached for the process.
+
+        Raises:
+            InvalidInputError: Empty/malformed ``hpo_ids`` or no informative term.
+        """
+        if self._phenotype_index is None:
+            self._phenotype_index = load_index(self._db._conn)
+        payload = rank_payload(
+            self._phenotype_index,
+            hpo_ids,
+            excluded_hpo_ids,
+            candidate_genes,
+            limit,
+            offset,
+            response_mode,
+        )
+        return {**payload, **self._provenance(response_mode)}

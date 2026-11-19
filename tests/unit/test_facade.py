@@ -20,6 +20,7 @@ EXPECTED_TOOLS = {
     "get_diseases_for_phenotype",
     "get_genes_for_disease",
     "get_diseases_for_gene",
+    "score_genes_for_phenotypes",
 }
 
 
