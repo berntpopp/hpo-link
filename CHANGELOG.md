@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-20
+
+### Added
+
+- `score_genes_for_phenotypes` tells the caller when rank 1 cannot be trusted on score alone (#130). Every response, in every `response_mode`, carries `rank1_margin` (score of rank 1 minus rank 2 over the whole ranking, `null` with fewer than two ranked genes) and `close_call`; when the margin is below 0.05, `close_call` is `true` and `close_call_note` says which ranks are within the margin and to compare matched terms or gene-disease evidence before choosing. The threshold was fixed on the tune split of an evaluation on 2,568 published cases (phenopacket-store 0.1.27, at most 5 cases per gene, 689 genes) and checked once on the confirm split: among 16-candidate rankings 4-5% are flagged and rank 1 is wrong in 51% (tune) / 37% (confirm) of them, against 0.9% of the unflagged; genome-wide 36% are flagged and rank 1 is wrong in 65% of them, against 4%.
+- `score_genes_for_phenotypes` rows carry `matched_count` (input terms with a listed match on the best disease) in every mode. In `minimal` mode ranks 1-5 also carry `top_matches`, the one or two strongest pairs as `"<input HP id> ~ <disease term label> (f=<annotation frequency>)"`, so the reason for a lead (and a low-frequency match) is visible without a second call. Mean response size on 25 realistic 13-candidate queries: `minimal` 2,902 to 3,776 characters, `compact` 9,510 to 9,911.
+
+### Changed
+
+- `score_genes_for_phenotypes`: `limitations` states that `matched_terms` lists only pairs sharing at least half of the input term's information content and that weaker matches still add to a score (a row can score above 0 with `matched_count` 0).
+- Scores and ranks are unchanged. The same evaluation tested stronger annotation-frequency weighting of forward matches, a higher default for annotations without a frequency, and a penalty for excluded phenotypes; none improved ranking (stronger frequency weighting lowered genome-wide top-1 by 3 to 13 points), so none ships. The port was also checked against the VarLens original: index and scores are identical.
+
 ## [0.10.0] - 2026-11-20
 
 ### Changed (BREAKING)

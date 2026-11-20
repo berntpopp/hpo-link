@@ -59,6 +59,14 @@ async def test_ranks_exact_match_first_with_matched_pairs(mcp: Any) -> None:
     steps = [s["tool"] for s in payload["_meta"]["next_commands"]]
     assert steps == ["get_phenotypes_for_gene", "get_phenotypes_for_disease"]
     assert payload["limitations"] and payload["hpo_version"]
+    # issue #130: one ranked gene cannot be a close call; every mode carries the fields.
+    assert (payload["rank1_margin"], payload["close_call"], top["matched_count"]) == (
+        None,
+        False,
+        1,
+    )
+    minimal = await _call(mcp, hpo_ids=["HP:0000479"], response_mode="minimal")
+    assert minimal["close_call"] is False and minimal["genes"][0]["top_matches"]
 
 
 async def test_candidate_filter_reports_unrankable_genes(mcp: Any) -> None:

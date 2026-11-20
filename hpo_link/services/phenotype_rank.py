@@ -113,9 +113,11 @@ def _mica(ix: PhenotypeIndex, p: str, t: str) -> str | None:
     return next((a for a in ix.by_ic[p] if a in common), None)
 
 
-def explain(ix: PhenotypeIndex, profile: Profile, d: Disease) -> dict[str, list[dict[str, Any]]]:
-    """Matched (patient term ↔ disease term, MICA) pairs and excluded-term conflicts."""
-    matched: list[dict[str, Any]] = []
+def _matches(
+    ix: PhenotypeIndex, profile: Profile, d: Disease
+) -> list[tuple[float, dict[str, Any]]]:
+    """(forward contribution, matched pair) per present term that reaches EXPLAIN_MIN_MATCH."""
+    matched: list[tuple[float, dict[str, Any]]] = []
     for p in profile.present:
         best, arg, mica = 0.0, -1, None
         for j, t in enumerate(d.terms):
@@ -126,16 +128,25 @@ def explain(ix: PhenotypeIndex, profile: Profile, d: Disease) -> dict[str, list[
         if arg < 0 or mica is None or best / ix.self_ic[p] < EXPLAIN_MIN_MATCH:
             continue
         matched.append(
-            {
-                "hpo_id": p,
-                "label": ix.labels.get(p),
-                "disease_hpo_id": d.terms[arg],
-                "disease_label": ix.labels.get(d.terms[arg]),
-                "mica_hpo_id": mica,
-                "mica_ic": round(ix.ic[mica], 4),
-                "frequency": round(d.f[arg], 4),
-            }
+            (
+                best,
+                {
+                    "hpo_id": p,
+                    "label": ix.labels.get(p),
+                    "disease_hpo_id": d.terms[arg],
+                    "disease_label": ix.labels.get(d.terms[arg]),
+                    "mica_hpo_id": mica,
+                    "mica_ic": round(ix.ic[mica], 4),
+                    "frequency": round(d.f[arg], 4),
+                },
+            )
         )
+    return matched
+
+
+def explain(ix: PhenotypeIndex, profile: Profile, d: Disease) -> dict[str, list[dict[str, Any]]]:
+    """Matched (patient term ↔ disease term, MICA) pairs and excluded-term conflicts."""
+    matched = [m for _, m in _matches(ix, profile, d)]
     conflicts: list[dict[str, Any]] = []
     for e in profile.excluded:
         hits = [j for j, t in enumerate(d.terms) if e in ix.anc[t]]
@@ -172,12 +183,39 @@ METHOD = (
     "from phenotype.hpoa): S = 0.55*forward + 0.45*reverse, frequency-weighted; a gene takes "
     "its best-scoring disease. Excluded terms are reported as conflicts and never change a score."
 )
+# Chosen on the tune split of a published-case evaluation (phenopacket-store 0.1.27, see
+# CHANGELOG 0.11.0). With the top two scores closer than this, rank 1 was the wrong gene in
+# 51% (tune) / 37% (confirm) of 16-candidate rankings and ~65% genome-wide; otherwise in
+# ~1% and ~4%.
+CLOSE_CALL_MARGIN = 0.05
+TOP_MATCH_ROWS = 5  # minimal mode: ranks that carry top_matches
 LIMITATIONS = [
     "Annotation-overlap ranking, not clinical-grade prioritisation; research use only.",
     "Scores correlate with how many phenotypes a gene's diseases are annotated with "
     "(well-annotated genes rank higher).",
     "Only genes linked to an HPO-annotated disease can be ranked.",
+    "matched_terms lists pairs sharing at least half of the input term's information content; "
+    "weaker matches still add to a score.",
 ]
+
+
+def close_call(ranked: list[tuple[str, float, int]]) -> dict[str, Any]:
+    """Whether the top ranks are separable; computed on the whole ranking, not the page."""
+    if len(ranked) < 2:
+        return {"rank1_margin": None, "close_call": False}
+    top = ranked[0][1]
+    margin = top - ranked[1][1]
+    if margin >= CLOSE_CALL_MARGIN:
+        return {"rank1_margin": round(margin, 4), "close_call": False}
+    k = sum(1 for _, s, _ in ranked if top - s < CLOSE_CALL_MARGIN)
+    return {
+        "rank1_margin": round(margin, 4),
+        "close_call": True,
+        "close_call_note": (
+            f"Ranks 1-{k} are within {CLOSE_CALL_MARGIN} of each other, too close to separate "
+            "by score; compare matched terms or check gene-disease evidence before choosing."
+        ),
+    }
 
 
 def _parse_ids(raw: list[str] | None, field: str, *, required: bool) -> list[str]:
@@ -290,6 +328,16 @@ def rank_payload(
         }
         if response_mode != "minimal":
             row.update(explain(ix, profile, disease))
+            row["matched_count"] = len(row["matched_terms"])
+        else:  # minimal: why a row leads, without a second call (#130); top ranks only (size)
+            pairs = sorted(_matches(ix, profile, disease), key=lambda m: -m[0])
+            row["matched_count"] = len(pairs)
+            if n <= TOP_MATCH_ROWS:
+                row["top_matches"] = [
+                    f"{m['hpo_id']} ~ {m['disease_label'] or m['disease_hpo_id']} "
+                    f"(f={m['frequency']:.2g})"
+                    for _, m in pairs[:2]
+                ]
         genes.append(row)
     return {
         "scored_hpo_ids": profile.present,
@@ -297,6 +345,7 @@ def rank_payload(
         "replaced_hpo_ids": replaced,
         "ignored_hpo_ids": ignored,
         "unranked_candidate_genes": unranked,
+        **close_call(ranked),
         "genes": genes,
         **page_fields(total=len(ranked), returned=len(genes), limit=limit, offset=offset),
         "method": METHOD,

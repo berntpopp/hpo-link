@@ -323,6 +323,8 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             "terms are reported as conflicts, never scored. Every input HP id is scored as "
             "given, listed in replaced_hpo_ids (obsolete id or alt_id, scored as replaced_by) "
             "or listed in ignored_hpo_ids with a reason. "
+            "close_call=true (with rank1_margin) means the top ranks are too close to pick "
+            "rank 1 by score alone. "
             "Signature: score_genes_for_phenotypes(hpo_ids, excluded_hpo_ids=, "
             "candidate_genes=, limit=, offset=, response_mode=)."
         ),
