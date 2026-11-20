@@ -178,7 +178,9 @@ def build_index(
                     col[i] = max(col[i], raw[a] * fac)
             icf[a] = col
     by_ic = {
-        t: tuple(sorted((a for a in anc[t] if raw[a] > 0), key=lambda a: -raw[a])) for t in anc
+        # equal IC: lowest HP id first, so the reported MICA does not depend on the hash seed
+        t: tuple(sorted((a for a in anc[t] if raw[a] > 0), key=lambda a: (-raw[a], a)))
+        for t in anc
     }
     return PhenotypeIndex(
         ic=raw,

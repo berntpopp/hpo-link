@@ -14,6 +14,7 @@ import math
 import pytest
 
 from hpo_link.exceptions import InvalidInputError
+from hpo_link.services import phenotype_rank
 from hpo_link.services.phenotype_index import (
     MISSING_F,
     PhenotypeIndex,
@@ -235,3 +236,71 @@ def test_every_input_hpo_id_is_accounted_for() -> None:
         {"input_id": ids("NEURO")[0], "reason": "contradicts_present_term", "covered_by": feb},
     ]
     assert page["excluded_hpo_ids"] == ids("MICRO")
+
+
+# -- issue #130: close call, minimal-mode reasons -------------------------------------
+
+
+def test_close_call_flags_inseparable_top_ranks() -> None:
+    ix = toy({"a": [("FEB", 0.9)], "b": [("FEB", 0.88)], "c": [("CAT", 0.9)]})
+    close = rank_payload(ix, ids("FEB"), None, None, 1, 1, "minimal")  # any page: whole ranking
+    assert close["close_call"] is True and 0 < close["rank1_margin"] < 0.05
+    assert close["close_call_note"].startswith("Ranks 1-2 are within 0.05")
+    clear = rank_payload(ix, ids("FEB"), None, ["G_a", "G_c"], 10, 0, "compact")
+    assert clear["close_call"] is False and "close_call_note" not in clear
+    assert clear["rank1_margin"] == pytest.approx(
+        clear["genes"][0]["score"] - clear["genes"][1]["score"], abs=1e-4
+    )
+    single = rank_payload(ix, ids("FEB"), None, ["G_a"], 10, 0, "compact")
+    assert (single["rank1_margin"], single["close_call"]) == (None, False)
+    # the flag follows the reported (rounded) margin: 0.05 is not below 0.05
+    edge = phenotype_rank.close_call([("A", 0.5, 0), ("B", 0.45001, 1), ("C", 0.4, 2)])
+    assert edge == {"rank1_margin": 0.05, "close_call": False}
+    under = phenotype_rank.close_call([("A", 0.5, 0), ("B", 0.4501, 1), ("C", 0.45001, 2)])
+    assert under["rank1_margin"] == 0.0499 and under["close_call_note"].startswith("Ranks 1-2 ")
+
+
+def test_minimal_top_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
+    ix = toy({"d": [("FEB", 0.9), ("MICRO", 0.5), ("CAT", MISSING_F)], "e": [("HYPO", 0.9)]})
+    query = ids("ALIAS_FEB", "MICRO", "CAT")
+    row = rank_payload(ix, query, None, None, 10, 0, "minimal")["genes"][0]
+    assert row["matched_count"] == 3 and "matched_terms" not in row
+    # strongest first; '=' the same term (after alias replacement)
+    assert row["top_matches"] == [
+        f"{H['FEB']} = label FEB (f=0.9)",
+        f"{H['MICRO']} = label MICRO (f=0.5)",
+    ]
+    # '~' a related term (SEIZ ~ FEB); 'f=?' when no frequency is recorded
+    other = rank_payload(ix, ids("SEIZ", "CAT"), None, ["G_d"], 10, 0, "minimal")["genes"][0]
+    assert set(other["top_matches"]) == {
+        f"{H['CAT']} = label CAT (f=?)",
+        f"{H['SEIZ']} ~ label FEB (f=0.9)",
+    }
+    full = rank_payload(ix, query, None, None, 10, 0, "compact")["genes"]
+    assert full[0]["matched_count"] == len(full[0]["matched_terms"]) == 3
+    assert "top_matches" not in full[0] and all("matched_count" in r for r in full)
+    # a weak partial match (HYPO ~ FEB via NEURO, 1 of 3) scores without a listed pair
+    weak = rank_payload(ix, ids("HYPO"), None, ["G_d"], 10, 0, "minimal")["genes"][0]
+    assert weak["score"] > 0 and weak["matched_count"] == 0 and weak["top_matches"] == []
+    # minimal computes matches for the top ranks only; lower rows carry neither field
+    monkeypatch.setattr(phenotype_rank, "TOP_MATCH_ROWS", 1)
+    rows = rank_payload(ix, ids("HYPO"), None, None, 10, 0, "minimal")["genes"]
+    assert [("top_matches" in r, "matched_count" in r) for r in rows] == [
+        (True, True),
+        (False, False),
+    ]
+
+
+def test_mica_tie_between_equally_informative_ancestors_is_the_lowest_id() -> None:
+    tied = [f"HP:{8000 + i:07d}" for i in range(6)]  # six common parents, the same IC
+    x, y = "HP:0008100", "HP:0008101"
+    ix = build_index(
+        ic={ROOT: 0.0, **dict.fromkeys(tied, 2.0), x: 5.0, y: 5.0},
+        parents={ROOT: [], **{t: [ROOT] for t in tied}, x: tied[::-1], y: tied[::-1]},
+        diseases=[("d", "name d", [(y, 0.9)])],
+        gene_diseases=[("G", "d")],
+    )
+    assert ix.by_ic[x] == (x, *tied)
+    row = rank_payload(ix, [x], None, None, 10, 0, "compact")["genes"][0]
+    assert row["matched_terms"] == [] and row["score"] > 0  # 2 of 5: below the listing threshold
+    assert phenotype_rank._mica(ix, x, y) == tied[0]

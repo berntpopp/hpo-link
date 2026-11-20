@@ -323,6 +323,10 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             "terms are reported as conflicts, never scored. Every input HP id is scored as "
             "given, listed in replaced_hpo_ids (obsolete id or alt_id, scored as replaced_by) "
             "or listed in ignored_hpo_ids with a reason. "
+            "close_call=true (with rank1_margin) means the top ranks are too close to pick "
+            "rank 1 by score alone; close_call=false does not confirm rank 1. In minimal mode "
+            "top_matches reads '<input id> = <disease term>' for the same term, '~' for a "
+            "related one, f=? when no frequency is recorded. "
             "Signature: score_genes_for_phenotypes(hpo_ids, excluded_hpo_ids=, "
             "candidate_genes=, limit=, offset=, response_mode=)."
         ),
