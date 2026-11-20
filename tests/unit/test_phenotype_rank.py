@@ -273,6 +273,10 @@ def test_close_call_lists_other_diseases_of_tied_genes() -> None:
     }
     links = [("G_a", d) for d in ("a5", "a4", "a3", "a2", "a")] + [("G_b", "b"), ("G_c", "c")]
     ix = toy(ann, links)
+    assert rank_payload(ix, ids("FEB"), None, None, 1, 1, "minimal")["close_call_genes"] == [
+        "G_a",
+        "G_b",
+    ]  # the tied set of the whole ranking, whatever the page
     for mode in ("minimal", "compact"):
         page = rank_payload(ix, ids("FEB"), None, None, 10, 0, mode)
         top, second, third = page["genes"]
@@ -290,6 +294,30 @@ def test_close_call_lists_other_diseases_of_tied_genes() -> None:
         assert "other_diseases" not in third  # G_c is outside the margin
     clear = rank_payload(ix, ids("FEB"), None, ["G_a", "G_c"], 10, 0, "compact")
     assert clear["close_call"] is False and "other_diseases" not in clear["genes"][0]
+    assert "close_call_genes" not in clear
+
+
+def test_other_diseases_skip_repeated_names_and_stop_at_rank_five() -> None:
+    # The same disease under a second vocabulary id (name differs by case only) is not repeated.
+    ix = build_index(
+        ic={ROOT: 0.0, **{H[t]: v for t, v in TERMS.items()}},
+        parents={H[c]: [H[p] for p in ps] for c, ps in PARENTS.items()},
+        diseases=[
+            ("OMIM:1", "Sotos syndrome", [(H["FEB"], 0.9)]),
+            ("ORPHA:1", "SOTOS SYNDROME", [(H["FEB"], 0.8)]),
+            ("ORPHA:2", "Weaver syndrome", [(H["SEIZ"], 0.9)]),
+            ("OMIM:2", "Weaver Syndrome", [(H["SEIZ"], 0.8)]),
+            *[(f"t{i}", f"name t{i}", [(H["FEB"], 0.9)]) for i in range(6)],
+        ],
+        gene_diseases=[
+            *[("G_0", d) for d in ("OMIM:1", "ORPHA:1", "ORPHA:2", "OMIM:2")],
+            *[(f"G_t{i}", f"t{i}") for i in range(6)],
+        ],
+    )
+    page = rank_payload(ix, ids("FEB"), None, None, 10, 0, "compact")
+    assert page["close_call_note"].startswith("Ranks 1-7 ") and len(page["close_call_genes"]) == 7
+    assert [o["disease_id"] for o in page["genes"][0]["other_diseases"]] == ["ORPHA:2"]
+    assert ["other_diseases" in g for g in page["genes"]] == [True] * 5 + [False] * 2
 
 
 def test_minimal_top_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyPatch) -> None:

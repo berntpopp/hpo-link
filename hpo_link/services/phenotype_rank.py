@@ -196,6 +196,7 @@ METHOD = (
 # genome-wide; otherwise in ~1% and ~4%.
 CLOSE_CALL_MARGIN = 0.05
 TOP_MATCH_ROWS = 5  # minimal mode: ranks that carry top_matches; close call: other_diseases
+CURATION_GENES = 20  # close_call_genes cap: one gencc_get_genes_curations call takes 20
 OTHER_DISEASES = {"minimal": 2}  # close call: next-best diseases per tied gene, else 3
 LIMITATIONS = [
     "Annotation-overlap ranking, not clinical-grade prioritisation; research use only.",
@@ -219,10 +220,12 @@ def close_call(ranked: list[tuple[str, float, int]]) -> dict[str, Any]:
     return {
         "rank1_margin": margin,
         "close_call": True,
+        "close_call_genes": [g for g, _, _ in ranked[: min(k, CURATION_GENES)]],
         "close_call_note": (
             f"Ranks 1-{k} are within {CLOSE_CALL_MARGIN} of each other, too close to separate "
-            "by score; compare matched terms or check gene-disease evidence before choosing. "
-            f"other_diseases (tied rows up to rank {TOP_MATCH_ROWS}) lists a gene's next-best "
+            "by score; compare matched terms or check gene-disease evidence "
+            "(gencc_get_genes_curations) before choosing. "
+            f"other_diseases (tied rows up to rank {TOP_MATCH_ROWS}): a gene's next-best "
             "HPO-linked diseases; a disease HPO does not link to the gene is never scored."
         ),
     }
@@ -356,15 +359,18 @@ def rank_payload(
             row["top_matches"] = [_pair_text(m) for _, m in pairs[:2]]
         tied = close["close_call"] and round(ranked[0][1] - score, 4) < CLOSE_CALL_MARGIN
         if tied and n <= TOP_MATCH_ROWS:  # what else the tied gene was scored under (#132)
-            rest = sorted((i for i in ix.genes[gene] if i != d), key=lambda i: (-scores[i], i))
-            row["other_diseases"] = [
-                {
-                    "disease_id": ix.diseases[i].id,
-                    "disease_name": ix.diseases[i].name,
-                    "score": round(scores[i], 4),
-                }
-                for i in rest[: OTHER_DISEASES.get(response_mode, 3)]
-            ]
+            # One row per disease name: OMIM and Orphanet often carry the same disease twice.
+            seen = {disease.name.casefold()}
+            others: list[dict[str, Any]] = []
+            for i in sorted(ix.genes[gene], key=lambda i: (-scores[i], i)):
+                o = ix.diseases[i]
+                if o.name.casefold() in seen or len(others) == OTHER_DISEASES.get(response_mode, 3):
+                    continue
+                seen.add(o.name.casefold())
+                others.append(
+                    {"disease_id": o.id, "disease_name": o.name, "score": round(scores[i], 4)}
+                )
+            row["other_diseases"] = others
         genes.append(row)
     return {
         "scored_hpo_ids": profile.present,

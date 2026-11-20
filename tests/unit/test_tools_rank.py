@@ -188,10 +188,21 @@ async def test_close_call_points_to_curations_of_the_tied_genes(mcp: Any, servic
     service._phenotype_index = toy({"a": [("FEB", 0.9)], "b": [("FEB", 0.88)], "c": [("CAT", 0.9)]})
     close = await _call(mcp, hpo_ids=ids("FEB"))
     assert close["close_call"] is True and close["genes"][0]["other_diseases"] == []
-    assert close["_meta"]["next_commands"][0] == {
-        "tool": "gencc_get_genes_curations",
-        "arguments": {"genes": ["G_a", "G_b"]},
-    }
+    curations = {"tool": "gencc_get_genes_curations", "arguments": {"genes": ["G_a", "G_b"]}}
+    assert close["_meta"]["next_commands"][0] == curations
+    assert "gencc_get_genes_curations" in close["close_call_note"]  # minimal has no next_commands
+    # a truncated page: the whole tied set, ahead of paging, behind the identifier converter
+    for offset in (0, 1):
+        page = await _call(mcp, hpo_ids=ids("FEB"), limit=1, offset=offset)
+        assert page["_meta"]["next_commands"][0] == curations
+    mixed = await _call(
+        mcp, hpo_ids=ids("FEB"), candidate_genes=["G_a", "G_b", "G_c", "ENSG00000144285"], limit=1
+    )
+    assert [s["tool"] for s in mixed["_meta"]["next_commands"]][:3] == [
+        "hgnc_resolve_symbols_batch",
+        "gencc_get_genes_curations",
+        "score_genes_for_phenotypes",
+    ]
     clear = await _call(mcp, hpo_ids=ids("FEB"), candidate_genes=["G_a", "G_c"])
     assert "gencc_get_genes_curations" not in [s["tool"] for s in clear["_meta"]["next_commands"]]
 
