@@ -260,6 +260,66 @@ def test_close_call_flags_inseparable_top_ranks() -> None:
     assert under["rank1_margin"] == 0.0499 and under["close_call_note"].startswith("Ranks 1-2 ")
 
 
+def test_close_call_lists_other_diseases_of_tied_genes() -> None:
+    # issue #132: G_a is linked to five diseases; all are scored, the best one ranks it.
+    ann = {
+        "a": [("FEB", 0.9)],
+        "a2": [("SEIZ", 0.9)],
+        "a3": [("HYPO", 0.9)],
+        "a4": [("NEURO", 0.9)],
+        "a5": [("CAT", 0.9)],
+        "b": [("FEB", 0.88)],
+        "c": [("CAT", 0.9)],
+    }
+    links = [("G_a", d) for d in ("a5", "a4", "a3", "a2", "a")] + [("G_b", "b"), ("G_c", "c")]
+    ix = toy(ann, links)
+    assert rank_payload(ix, ids("FEB"), None, None, 1, 1, "minimal")["close_call_genes"] == [
+        "G_a",
+        "G_b",
+    ]  # the tied set of the whole ranking, whatever the page
+    for mode in ("minimal", "compact"):
+        page = rank_payload(ix, ids("FEB"), None, None, 10, 0, mode)
+        top, second, third = page["genes"]
+        assert page["close_call"] is True and "other_diseases" in page["close_call_note"]
+        assert (top["gene"], top["best_disease"]["disease_id"]) == ("G_a", "a")
+        others = top["other_diseases"]
+        # best three of four; minimal keeps two
+        assert [o["disease_id"] for o in others] == ["a2", "a4", "a3"][
+            : 2 if mode == "minimal" else 3
+        ]
+        # SEIZ (IC 2) vs FEB (IC 4): 0.55 * 2*0.975/4 + 0.45 * 0.9/1.9
+        assert others[0] == {"disease_id": "a2", "disease_name": "name a2", "score": 0.4813}
+        assert top["score"] > others[0]["score"] > others[1]["score"]
+        assert (second["gene"], second["other_diseases"]) == ("G_b", [])  # tied, one disease
+        assert "other_diseases" not in third  # G_c is outside the margin
+    clear = rank_payload(ix, ids("FEB"), None, ["G_a", "G_c"], 10, 0, "compact")
+    assert clear["close_call"] is False and "other_diseases" not in clear["genes"][0]
+    assert "close_call_genes" not in clear
+
+
+def test_other_diseases_skip_repeated_names_and_stop_at_rank_five() -> None:
+    # The same disease under a second vocabulary id (name differs by case only) is not repeated.
+    ix = build_index(
+        ic={ROOT: 0.0, **{H[t]: v for t, v in TERMS.items()}},
+        parents={H[c]: [H[p] for p in ps] for c, ps in PARENTS.items()},
+        diseases=[
+            ("OMIM:1", "Sotos syndrome", [(H["FEB"], 0.9)]),
+            ("ORPHA:1", "SOTOS SYNDROME", [(H["FEB"], 0.8)]),
+            ("ORPHA:2", "Weaver syndrome", [(H["SEIZ"], 0.9)]),
+            ("OMIM:2", "Weaver Syndrome", [(H["SEIZ"], 0.8)]),
+            *[(f"t{i}", f"name t{i}", [(H["FEB"], 0.9)]) for i in range(6)],
+        ],
+        gene_diseases=[
+            *[("G_0", d) for d in ("OMIM:1", "ORPHA:1", "ORPHA:2", "OMIM:2")],
+            *[(f"G_t{i}", f"t{i}") for i in range(6)],
+        ],
+    )
+    page = rank_payload(ix, ids("FEB"), None, None, 10, 0, "compact")
+    assert page["close_call_note"].startswith("Ranks 1-7 ") and len(page["close_call_genes"]) == 7
+    assert [o["disease_id"] for o in page["genes"][0]["other_diseases"]] == ["ORPHA:2"]
+    assert ["other_diseases" in g for g in page["genes"]] == [True] * 5 + [False] * 2
+
+
 def test_minimal_top_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
     ix = toy({"d": [("FEB", 0.9), ("MICRO", 0.5), ("CAT", MISSING_F)], "e": [("HYPO", 0.9)]})
     query = ids("ALIAS_FEB", "MICRO", "CAT")

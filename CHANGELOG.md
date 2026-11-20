@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-20
+
+### Added
+
+- `score_genes_for_phenotypes` shows what a close call rests on (#132). When `close_call` is `true`, each tied row up to rank 5 carries `other_diseases`: the gene's next-best HPO-linked diseases as `{disease_id, disease_name, score}` (at most 3; 2 in `minimal` mode; `[]` when the gene has one disease). A disease listed again under a second vocabulary id with the same name (OMIM and Orphanet) appears once. The new `close_call_genes` lists the tied genes of the whole ranking in rank order (at most 20), whatever page is returned. `close_call_note` names `other_diseases` and the curation tool `gencc_get_genes_curations`, and says that a disease HPO does not link to the gene is never scored. In `compact` and richer modes `_meta.next_commands` carries `gencc_get_genes_curations(genes=<close_call_genes>)`, the curated gene-disease links that HPO may lack: it is the first step, or the second when an unsupported gene id puts the identifier converter first, and always ahead of the paging step. Rows of a ranking that is not a close call are unchanged.
+
+### Changed
+
+- Scores and ranks are unchanged. The scorer already scored a gene under every disease HPO links it to and kept the best one; the case in #132 is a data limit (HPO links NSD1 to Sotos syndrome, Weaver syndrome and two 5q35 copy-number syndromes, not to a Beckwith-Wiedemann presentation). Checked on HPO release 2026-09-01: 306 genome-wide rankings (top 30 genes, scores, best disease, margin) are identical before and after.
+
 ## [0.11.0] - 2026-11-20
 
 ### Added

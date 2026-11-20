@@ -398,6 +398,8 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 if u["reason"] == "unsupported_identifier"
             ]
             steps = foreign_id_converter("candidate_genes", {"candidate_genes": unsupported})
+            if payload["close_call"]:  # curated gene-disease links HPO may lack; takes symbols
+                steps.append(cmd("gencc_get_genes_curations", genes=payload["close_call_genes"]))
             if payload.get("truncated"):
                 steps.append(
                     page_cmd(
