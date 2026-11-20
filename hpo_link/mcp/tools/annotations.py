@@ -406,6 +406,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                         payload["next_offset"],
                     )
                 )
+            tied = [g["gene"] for g in payload["genes"] if "other_diseases" in g]
+            if tied:  # curated gene-disease links HPO may lack (gencc-link takes symbols)
+                steps.append(cmd("gencc_get_genes_curations", genes=tied))
             if payload["genes"]:
                 top = payload["genes"][0]
                 steps.append(cmd("get_phenotypes_for_gene", gene=top["gene"]))

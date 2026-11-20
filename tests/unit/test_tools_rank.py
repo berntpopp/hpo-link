@@ -182,6 +182,20 @@ async def test_truncation_and_excluded_conflict_on_toy_index(mcp: Any, service: 
     assert page["arguments"]["excluded_hpo_ids"] == ids("MICRO")
 
 
+async def test_close_call_points_to_curations_of_the_tied_genes(mcp: Any, service: Any) -> None:
+    from tests.unit.test_phenotype_rank import ids, toy
+
+    service._phenotype_index = toy({"a": [("FEB", 0.9)], "b": [("FEB", 0.88)], "c": [("CAT", 0.9)]})
+    close = await _call(mcp, hpo_ids=ids("FEB"))
+    assert close["close_call"] is True and close["genes"][0]["other_diseases"] == []
+    assert close["_meta"]["next_commands"][0] == {
+        "tool": "gencc_get_genes_curations",
+        "arguments": {"genes": ["G_a", "G_b"]},
+    }
+    clear = await _call(mcp, hpo_ids=ids("FEB"), candidate_genes=["G_a", "G_c"])
+    assert "gencc_get_genes_curations" not in [s["tool"] for s in clear["_meta"]["next_commands"]]
+
+
 async def test_validation_errors_name_the_field(mcp: Any) -> None:
     bad = await _call(mcp, hpo_ids=["not-an-id"])
     assert (bad["success"], bad["error_code"], bad["field"]) == (False, "invalid_input", "hpo_ids")

@@ -166,11 +166,17 @@ def explain(ix: PhenotypeIndex, profile: Profile, d: Disease) -> dict[str, list[
 
 
 def rank_genes(
-    ix: PhenotypeIndex, profile: Profile, genes: list[str] | None = None
+    ix: PhenotypeIndex,
+    profile: Profile,
+    genes: list[str] | None = None,
+    scores: list[float] | None = None,
 ) -> list[tuple[str, float, int]]:
-    """(gene, score, best disease index), best first; ties by gene symbol."""
+    """(gene, score, best disease index), best first; ties by gene symbol.
+
+    Every disease linked to a gene is scored and the best one kept (issue #132).
+    """
     pool = list(ix.genes) if genes is None else genes
-    scores = score_diseases(ix, profile)
+    scores = score_diseases(ix, profile) if scores is None else scores
     ranked = []
     for g in pool:
         best = max(ix.genes[g], key=lambda d: (scores[d], -d))  # first disease wins a tie
@@ -189,7 +195,8 @@ METHOD = (
 # roughly 40-50% of 16-candidate rankings (it varies with the random distractors) and ~65%
 # genome-wide; otherwise in ~1% and ~4%.
 CLOSE_CALL_MARGIN = 0.05
-TOP_MATCH_ROWS = 5  # minimal mode: ranks that carry top_matches
+TOP_MATCH_ROWS = 5  # minimal mode: ranks that carry top_matches; close call: other_diseases
+OTHER_DISEASES = {"minimal": 2}  # close call: next-best diseases per tied gene, else 3
 LIMITATIONS = [
     "Annotation-overlap ranking, not clinical-grade prioritisation; research use only.",
     "Scores correlate with how many phenotypes a gene's diseases are annotated with "
@@ -214,7 +221,9 @@ def close_call(ranked: list[tuple[str, float, int]]) -> dict[str, Any]:
         "close_call": True,
         "close_call_note": (
             f"Ranks 1-{k} are within {CLOSE_CALL_MARGIN} of each other, too close to separate "
-            "by score; compare matched terms or check gene-disease evidence before choosing."
+            "by score; compare matched terms or check gene-disease evidence before choosing. "
+            f"other_diseases (tied rows up to rank {TOP_MATCH_ROWS}) lists a gene's next-best "
+            "HPO-linked diseases; a disease HPO does not link to the gene is never scored."
         ),
     }
 
@@ -324,7 +333,9 @@ def rank_payload(
                     f"(NCBIGene:6323 or 6323). {TRANSLATE_GENE_HINT}"
                 ),
             )
-    ranked = rank_genes(ix, profile, pool)
+    scores = score_diseases(ix, profile)
+    ranked = rank_genes(ix, profile, pool, scores)
+    close = close_call(ranked)
     page = ranked[offset : offset + limit]
     genes: list[dict[str, Any]] = []
     for n, (gene, score, d) in enumerate(page, start=offset + 1):
@@ -343,6 +354,17 @@ def rank_payload(
             pairs = sorted(_matches(ix, profile, disease), key=lambda m: -m[0])
             row["matched_count"] = len(pairs)
             row["top_matches"] = [_pair_text(m) for _, m in pairs[:2]]
+        tied = close["close_call"] and round(ranked[0][1] - score, 4) < CLOSE_CALL_MARGIN
+        if tied and n <= TOP_MATCH_ROWS:  # what else the tied gene was scored under (#132)
+            rest = sorted((i for i in ix.genes[gene] if i != d), key=lambda i: (-scores[i], i))
+            row["other_diseases"] = [
+                {
+                    "disease_id": ix.diseases[i].id,
+                    "disease_name": ix.diseases[i].name,
+                    "score": round(scores[i], 4),
+                }
+                for i in rest[: OTHER_DISEASES.get(response_mode, 3)]
+            ]
         genes.append(row)
     return {
         "scored_hpo_ids": profile.present,
@@ -350,7 +372,7 @@ def rank_payload(
         "replaced_hpo_ids": replaced,
         "ignored_hpo_ids": ignored,
         "unranked_candidate_genes": unranked,
-        **close_call(ranked),
+        **close,
         "genes": genes,
         **page_fields(total=len(ranked), returned=len(genes), limit=limit, offset=offset),
         "method": METHOD,
