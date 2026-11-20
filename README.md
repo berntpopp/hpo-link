@@ -62,6 +62,7 @@ Three console scripts: `hpo-link` (unified server), `hpo-link-mcp` (stdio),
 | `get_server_capabilities` | Discovery surface — tools, workflows, error taxonomy, limits |
 | `get_diagnostics` | Database status, loaded HPO release, counts |
 | `resolve_term` | Label, synonym, HP id or xref → one canonical term + `match_type` |
+| `resolve_terms_batch` | Up to 100 labels / HP ids / xrefs in one call, per-item outcome |
 | `search_terms` | Full-text search over names, synonyms and definitions |
 | `get_term` | The record — definition, synonyms, grouped xrefs, parents/children, obsolescence |
 | `get_term_ancestors` | Transitive `is_a` ancestors |

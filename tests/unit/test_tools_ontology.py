@@ -329,3 +329,24 @@ def test_capabilities_summary_includes_graph_and_slo() -> None:
     summary = project_capabilities("summary")
     assert "tool_graph" in summary
     assert "latency_slo" in summary
+
+
+async def test_resolve_terms_batch_reports_each_item(live_hpo_service) -> None:
+    """Router #343 batch gap: label <-> id for a list in one call; a miss never fails it."""
+    from hpo_link.mcp.facade import create_hpo_mcp
+
+    mcp = create_hpo_mcp()
+    queries = ["Phenotypic abnormality", "HP:0000118", "zzqx nothing", "MP:0002064"]
+    result = await mcp.call_tool("resolve_terms_batch", {"queries": queries})
+    payload = result.structured_content
+    assert payload["success"] is True
+    assert (payload["count"], payload["unresolved_count"]) == (4, 2)
+    rows = payload["results"]
+    assert [r["index"] for r in rows] == [0, 1, 2, 3]
+    assert [(r["ok"], r.get("hpo_id")) for r in rows[:2]] == [(True, "HP:0000118")] * 2
+    assert rows[0]["query"] == "Phenotypic abnormality" and rows[1]["name"]
+    assert [(r["ok"], r["error_code"]) for r in rows[2:]] == [(False, "not_found")] * 2
+    assert "query" not in rows[2]  # an unresolved input is not echoed
+    assert payload["_meta"]["next_commands"][0]["tool"] == "get_term"
+    tools = {t.name: t.description for t in await mcp.list_tools()}
+    assert "call resolve_terms_batch once" in tools["resolve_term"]

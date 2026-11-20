@@ -14,21 +14,46 @@ _IRI_RE = re.compile(r"HP[_:](\d{7})$", re.IGNORECASE)
 # validators named the field but not what a valid value looks like, unlike the exemplary
 # limit error). The classifier severs the message (it can interpolate the rejected value),
 # so `allowed_values` + `hint` — both server-authored — carry the actionable guidance.
-_DISEASE_ID_ALLOWED = ["OMIM:<mim>", "ORPHA:<id>"]
+_DISEASE_ID_ALLOWED = [
+    "OMIM:<mim> e.g. OMIM:106210",
+    "ORPHA:<id> e.g. ORPHA:550",
+    "DECIPHER:<id> e.g. DECIPHER:16",
+]
 _DISEASE_ID_HINT = (
-    "disease_id is a CURIE PREFIX:body, e.g. OMIM:106210 or ORPHA:550 "
-    "(the prefix is case-sensitive)."
+    "disease_id is an OMIM, Orphanet or DECIPHER CURIE, e.g. OMIM:106210 or ORPHA:550 "
+    "(MIM: and Orphanet: spellings are accepted). Convert a MONDO or other ontology id "
+    "with mondo_map_cross_ontology(term=<id>, prefixes=['OMIM', 'ORPHA']) first."
 )
+# Spellings of the namespaces HPOA annotates (normalisation, not mapping) -> stored prefix.
+_DISEASE_PREFIXES = {
+    "OMIM": "OMIM",
+    "MIM": "OMIM",
+    "ORPHA": "ORPHA",
+    "ORPHANET": "ORPHA",
+    "DECIPHER": "DECIPHER",
+}
 _GENE_ALLOWED = ["<symbol> e.g. PAX6", "NCBIGene:<id> e.g. NCBIGene:5080", "<numeric id> e.g. 5080"]
 #: hpo-link has no Ensembl/HGNC/RefSeq mapping (HPO ships symbol + NCBI id only), issue #128.
 TRANSLATE_GENE_HINT = (
-    "Ensembl, RefSeq and HGNC ids are not mapped here: translate them to gene symbols "
-    "first (an HGNC resolver does this)."
+    "Ensembl gene (ENSG), RefSeq and HGNC ids are not mapped here: translate them to gene "
+    "symbols first with hgnc_resolve_symbol (one id) or hgnc_resolve_symbols_batch (a list)."
 )
-_GENE_HINT = (
-    "gene is a symbol (PAX6), an NCBIGene CURIE (NCBIGene:5080), or a bare numeric NCBI id "
-    f"(5080). {TRANSLATE_GENE_HINT}"
+_GENE_FORMS = (
+    "gene is a symbol (PAX6), an NCBIGene CURIE (NCBIGene:5080), or a bare numeric NCBI id (5080)."
 )
+_GENE_HINT = f"{_GENE_FORMS} {TRANSLATE_GENE_HINT}"
+_TRANSCRIPT_RE = re.compile(r"ENS[A-Z]*T\d", re.IGNORECASE)
+
+
+def _foreign_gene_hint(s: str) -> str:
+    """Name the HGNC converter only for the forms it really converts (never a transcript id)."""
+    if hgnc_resolvable(s):
+        return _GENE_HINT
+    if _TRANSCRIPT_RE.match(s):
+        return f"This is an Ensembl transcript id, not a gene id. {_GENE_FORMS}"
+    return f"This identifier form is not mapped here. {_GENE_FORMS}"
+
+
 # Ensembl (any species, optional version), RefSeq and LRG accessions: never a gene symbol.
 _FOREIGN_GENE_RE = re.compile(
     r"(ENS[A-Z]*[GTP]\d{6,}|[NX][CGMPR]_\d+|LRG_\d+)(\.\d+)?$", re.IGNORECASE
@@ -41,6 +66,22 @@ def is_foreign_gene_id(raw: str) -> bool:
     if ":" in s:
         return not s.lower().startswith("ncbigene:")
     return bool(_FOREIGN_GENE_RE.match(s))
+
+
+# Forms hgnc_resolve_symbol / hgnc_resolve_symbols_batch convert (hgnc-link >= 2.5.0).
+_HGNC_RESOLVABLE_RE = re.compile(r"(HGNC:\d+|ENSG\d{11}|N[MRP]_\d+)(\.\d+)?$", re.IGNORECASE)
+
+
+def hgnc_resolvable(raw: object) -> bool:
+    """True for a foreign gene id the fleet's HGNC resolver converts (safe to reflect)."""
+    return isinstance(raw, str) and bool(_HGNC_RESOLVABLE_RE.match(raw.strip()))
+
+
+def is_foreign_disease_id(raw: object) -> bool:
+    """True for a PREFIX:body id whose namespace HPOA does not annotate (MONDO, DOID, ...)."""
+    if not isinstance(raw, str) or ":" not in raw:
+        return False
+    return raw.strip().split(":", 1)[0].upper() not in _DISEASE_PREFIXES
 
 
 def normalize_hpo_id(raw: str | None) -> str | None:
@@ -86,7 +127,7 @@ def validate_disease_id(raw: str) -> str:
     Raises :class:`~hpo_link.exceptions.InvalidInputError` with
     ``field="disease_id"`` when the shape is invalid.
 
-    Returns the normalized id (prefix uppercased) on success.
+    Returns the normalized id (stored prefix: OMIM / ORPHA / DECIPHER) on success.
     """
     s = (raw or "").strip()
     if not s:
@@ -118,7 +159,15 @@ def validate_disease_id(raw: str) -> str:
             allowed=_DISEASE_ID_ALLOWED,
             hint=_DISEASE_ID_HINT,
         )
-    return f"{prefix.upper()}:{body}"
+    canonical = _DISEASE_PREFIXES.get(prefix.upper())
+    if canonical is None:  # MONDO/DOID/...: would otherwise match nothing (empty success)
+        raise InvalidInputError(
+            f"disease_id prefix {prefix!r} is not a namespace HPO annotates.",
+            field="disease_id",
+            allowed=_DISEASE_ID_ALLOWED,
+            hint=_DISEASE_ID_HINT,
+        )
+    return f"{canonical}:{body}"
 
 
 def validate_gene(raw: str) -> tuple[str, str]:
@@ -147,7 +196,7 @@ def validate_gene(raw: str) -> tuple[str, str]:
                 "a bare symbol, or a bare numeric NCBI id.",
                 field="gene",
                 allowed=_GENE_ALLOWED,
-                hint=_GENE_HINT,
+                hint=_foreign_gene_hint(s),
             )
         if not body or not body.isdigit():
             raise InvalidInputError(
@@ -162,7 +211,7 @@ def validate_gene(raw: str) -> tuple[str, str]:
             f"gene {s!r} is an Ensembl/RefSeq accession, which hpo-link cannot map.",
             field="gene",
             allowed=_GENE_ALLOWED,
-            hint=_GENE_HINT,
+            hint=_foreign_gene_hint(s),
         )
     # bare symbol or bare numeric id
     return normalize_gene(s)

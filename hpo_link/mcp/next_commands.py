@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from hpo_link.identifiers import is_hpo_id
+from hpo_link.identifiers import hgnc_resolvable, is_foreign_disease_id, is_hpo_id
 
 #: Strict external cross-reference CURIE grammar (PREFIX:body) — the only free-text-looking
 #: value allowed to be reflected into an error-path recovery argument. It is a bounded
@@ -52,8 +52,26 @@ def _is_xref_curie(value: str) -> bool:
     return bool(_XREF_CURIE_RE.match(value)) and not is_hpo_id(value)
 
 
+def foreign_id_converter(field: str | None, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+    """The sibling-backend call that converts a foreign gene/disease id (router #343).
+
+    hpo-link holds no Ensembl/HGNC/RefSeq or MONDO mapping, so the rejected value(s) are
+    handed, ready to send, to the backend that does. Only shape-validated ids are reflected.
+    """
+    if field == "candidate_genes":
+        ids = [g.strip() for g in arguments.get(field) or [] if hgnc_resolvable(g)]
+        # ponytail: hgnc_resolve_symbols_batch takes 200 per call; a longer list needs a second.
+        return [cmd("hgnc_resolve_symbols_batch", queries=ids[:200])] if ids else []
+    value = str(arguments.get(field or "") or "").strip()
+    if field == "gene" and hgnc_resolvable(value):
+        return [cmd("hgnc_resolve_symbol", query=value)]
+    if field == "disease_id" and is_foreign_disease_id(value) and _is_xref_curie(value):
+        return [cmd("mondo_map_cross_ontology", term=value, prefixes=["OMIM", "ORPHA"])]
+    return []
+
+
 def default_error_next_commands(
-    tool: str, error_code: str, arguments: dict[str, Any]
+    tool: str, error_code: str, arguments: dict[str, Any], field: str | None = None
 ) -> list[dict[str, Any]]:
     """A recovery step for any error lacking an explicit fallback.
 
@@ -63,6 +81,10 @@ def default_error_next_commands(
     query) is NOT echoed — it could carry injection prose — so those cases fall back to a
     fixed ``get_server_capabilities`` step.
     """
+    if error_code == "invalid_input":
+        converter = foreign_id_converter(field, arguments)
+        if converter:
+            return [*converter, cmd("get_server_capabilities")]
     if tool in (
         "resolve_term",
         "get_term",
@@ -75,7 +97,8 @@ def default_error_next_commands(
         value = str(arguments.get("term", "") or arguments.get("query", ""))
         if is_hpo_id(value):
             return [cmd("resolve_term", query=value), cmd("get_server_capabilities")]
-        if _is_xref_curie(value):
+        # A not_found already tried the xref lookup: resolve_xref would only repeat the miss.
+        if _is_xref_curie(value) and error_code != "not_found":
             return [cmd("resolve_xref", xref_id=value), cmd("get_server_capabilities")]
         return [cmd("get_server_capabilities")]
     if tool == "resolve_xref":

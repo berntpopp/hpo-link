@@ -61,6 +61,9 @@ def test_normalize_disease_id():
         ("omim:106210", "OMIM:106210"),
         ("ORPHA:123", "ORPHA:123"),
         ("DECIPHER:42", "DECIPHER:42"),
+        ("Orphanet:648", "ORPHA:648"),  # same namespace, other spelling (router #343)
+        ("ORPHANET:648", "ORPHA:648"),
+        ("MIM:106210", "OMIM:106210"),
     ],
 )
 def test_validate_disease_id_valid(raw, expected):
@@ -71,6 +74,7 @@ def test_validate_disease_id_valid(raw, expected):
 @pytest.mark.parametrize(
     "malformed",
     [
+        "MONDO:0018997",  # another ontology: needs mapping, not normalisation
         "notacurie",  # no colon
         ":123",  # empty prefix
         "OMIM:",  # empty body
@@ -127,7 +131,13 @@ def test_validate_gene_malformed(malformed):
     with pytest.raises(InvalidInputError) as exc_info:
         validate_gene(malformed)
     assert exc_info.value.field == "gene"
-    assert exc_info.value.allowed and "translate" in (exc_info.value.hint or "")
+    hint = exc_info.value.hint or ""
+    assert exc_info.value.allowed and "gene is a symbol" in hint
+    # The HGNC converter is named only for the forms it converts: never a transcript id.
+    convertible = malformed.upper().startswith(("HGNC:", "ENSG", "NM_"))
+    if not malformed.startswith("NCBIGene"):
+        assert ("hgnc_resolve_symbol" in hint) is convertible
+    assert ("transcript id" in hint) is malformed.startswith("ENST")
 
 
 @pytest.mark.parametrize("symbol", ["ENSA", "ENG", "NMT1", "C1orf112", "NOTAREALGENE99999"])

@@ -42,6 +42,7 @@ TOOLS: list[str] = [
     "get_server_capabilities",
     "get_diagnostics",
     "resolve_term",
+    "resolve_terms_batch",
     "search_terms",
     "get_term",
     "get_term_parents",
@@ -67,6 +68,7 @@ TOOL_GRAPH: dict[str, list[str]] = {
     "get_server_capabilities": ["resolve_term", "search_terms", "get_diagnostics"],
     "get_diagnostics": ["resolve_term", "get_server_capabilities"],
     "resolve_term": ["get_term", "search_terms"],
+    "resolve_terms_batch": ["get_term", "search_terms"],
     "search_terms": ["get_term", "resolve_term"],
     "get_term": [
         "get_term_parents",
@@ -237,6 +239,7 @@ def build_capabilities() -> dict[str, Any]:
         ),
         "recommended_workflows": [
             "label/id/xref -> resolve_term -> get_term",
+            "many labels/ids at once -> resolve_terms_batch (one call, per-item outcome)",
             "term -> get_term_parents / get_term_children (immediate neighbours)",
             "term -> get_term_ancestors / get_term_descendants (transitive closure)",
             "external CURIE -> resolve_xref (xref -> HPO)",

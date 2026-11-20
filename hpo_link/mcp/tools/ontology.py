@@ -6,9 +6,15 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import Field
 
+from hpo_link.exceptions import AmbiguousQueryError
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
-from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
-from hpo_link.mcp.next_commands import after_get_term, after_resolve_term, after_search
+from hpo_link.mcp.envelope import (
+    McpErrorContext,
+    _valid_candidates,
+    classify_exception,
+    run_mcp_tool,
+)
+from hpo_link.mcp.next_commands import after_get_term, after_resolve_term, after_search, cmd
 from hpo_link.mcp.service_adapters import get_hpo_service
 from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode, ToolReturn
 
@@ -39,7 +45,9 @@ def register_ontology_tools(mcp: FastMCP) -> None:
         description=(
             "Resolve a phenotype label, synonym, HP id (HP:0000118), or external "
             "cross-reference CURIE (UMLS:C0000737, SNOMEDCT_US:263681008, ...) to the "
-            "canonical HPO term {hpo_id, name, match_type}. An ambiguous label returns "
+            "canonical HPO term {hpo_id, name, match_type}. For 2 or more terms, call "
+            "resolve_terms_batch once instead of calling this tool per item. An ambiguous "
+            "label returns "
             "ambiguous_query with candidates (each {hpo_id, name}); an obsolete HP id "
             "resolves with success:true, obsolete:true, and its successor in replaced_by. "
             "This is the recommended first step — resolve any query to a canonical HP id "
@@ -62,6 +70,71 @@ def register_ontology_tools(mcp: FastMCP) -> None:
                 arguments={"query": query},
                 response_mode=response_mode,
             ),
+        )
+
+    @mcp.tool(
+        name="resolve_terms_batch",
+        title="Resolve HPO Terms (batch)",
+        annotations=READ_ONLY_OPEN_WORLD,
+        output_schema=None,  # B1/B2: outputSchema is optional & unread; suppress to cut surface
+        tags={"hpo", "resolve", "batch"},
+        description=(
+            "Resolve many phenotype labels, synonyms, HP ids or xref CURIEs in one call "
+            "(label -> HP id and HP id -> label); returns one results[] row per input in "
+            "input order: {index, query, ok: true, hpo_id, name, match_type} or {index, "
+            "ok: false, error_code, message} (an ambiguous label adds candidates). One bad "
+            "item never fails the call; unresolved_count says how many missed. Max 100 items. "
+            "Signature: resolve_terms_batch(queries, response_mode=)."
+        ),
+    )
+    async def resolve_terms_batch(
+        queries: Annotated[
+            list[str],
+            Field(
+                min_length=1,
+                max_length=100,
+                description="1..100 phenotype labels/synonyms, HP ids, or xref CURIEs.",
+                examples=[["Seizure", "HP:0001263", "Renal cyst"]],
+            ),
+        ],
+        response_mode: ResponseMode = "compact",
+    ) -> ToolReturn:
+        async def call() -> dict[str, Any]:
+            svc = get_hpo_service()
+            results: list[dict[str, Any]] = []
+            for index, query in enumerate(queries):
+                try:
+                    rec = svc.resolve_term(query, response_mode="compact")
+                    rec.pop("hpo_version", None)  # provenance is stated once, below
+                    results.append({"index": index, "ok": True, **rec})
+                except Exception as exc:  # per-item boundary; the call still succeeds
+                    # Fixed classified message + index: the unresolved input is not echoed.
+                    code, message = classify_exception(exc)
+                    row: dict[str, Any] = {
+                        "index": index,
+                        "ok": False,
+                        "error_code": code,
+                        "message": message,
+                    }
+                    if isinstance(exc, AmbiguousQueryError):
+                        row["candidates"] = _valid_candidates(exc.candidates)
+                    results.append(row)
+            resolved = [r["hpo_id"] for r in results if r["ok"]]
+            return {
+                "results": results,
+                "count": len(results),
+                "unresolved_count": len(results) - len(resolved),
+                **svc._version_fields(response_mode),
+                "_meta": {
+                    "next_commands": [cmd("get_term", term=h) for h in resolved[:2]]
+                    or [cmd("search_terms", query="seizure")]
+                },
+            }
+
+        return await run_mcp_tool(
+            "resolve_terms_batch",
+            call,
+            context=McpErrorContext("resolve_terms_batch", response_mode=response_mode),
         )
 
     @mcp.tool(
@@ -124,6 +197,7 @@ def register_ontology_tools(mcp: FastMCP) -> None:
             "broad/narrow), alt_ids, subsets, comments, cross-references, direct "
             "parents and children, and obsolescence (replaced_by). The term accepts an "
             "HP id, a label/synonym, or an external xref CURIE (resolved first). "
+            "For only the labels of several HP ids, call resolve_terms_batch once. "
             "Pass fields=['synonyms', 'definition'] for a sparse projection. "
             "Note on synonyms shape: compact (default) returns synonyms as plain "
             "strings; standard/full return {text, scope} objects. "

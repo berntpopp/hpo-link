@@ -81,11 +81,20 @@ async def test_foreign_gene_ids_fail_with_accepted_forms_and_remedy(mcp: Any) ->
         "candidate_genes",
     )
     assert bad["allowed_values"] and "translate them to gene symbols" in bad["hint"]
+    # router #343: the error hands the rejected ids to the converter, ready to send.
+    batch = {"tool": "hgnc_resolve_symbols_batch", "arguments": {"queries": ["ENSG00000007372"]}}
+    assert bad["_meta"]["next_commands"][0] == batch
+    assert "hgnc_resolve_symbols_batch" in bad["hint"]
     mixed = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", "ENSG00000007372"])
     assert [g["input_id"] for g in mixed["genes"]] == ["PAX6"]
     assert mixed["unranked_candidate_genes"] == [
         {"input_id": "ENSG00000007372", "reason": "unsupported_identifier"}
     ]
+    assert mixed["_meta"]["next_commands"][0] == batch
+    # NCBI gene ids are HPO's own data: ranked, with the caller's spelling echoed.
+    for ncbi in ("NCBIGene:5080", "5080"):
+        own = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=[ncbi])
+        assert [(g["gene"], g["input_id"]) for g in own["genes"]] == [("PAX6", ncbi)]
     # The single-gene tools returned an empty success for an Ensembl id (317 wasted calls).
     for tool in ("get_phenotypes_for_gene", "get_diseases_for_gene"):
         result = await mcp.call_tool(tool, {"gene": "ENSG00000007372"})
@@ -96,6 +105,47 @@ async def test_foreign_gene_ids_fail_with_accepted_forms_and_remedy(mcp: Any) ->
             "gene",
         )
         assert "translate them to gene symbols" in single["hint"]
+        assert single["_meta"]["next_commands"][0] == {
+            "tool": "hgnc_resolve_symbol",
+            "arguments": {"query": "ENSG00000007372"},
+        }
+
+    # A transcript id is not a gene: no HGNC converter is named (it does not take ENST).
+    result = await mcp.call_tool("get_phenotypes_for_gene", {"gene": "ENST00000379132"})
+    enst = result.structured_content
+    assert (enst["error_code"], enst["field"]) == ("invalid_input", "gene")
+    assert "transcript id" in enst["hint"] and "hgnc_" not in enst["hint"]
+    assert [s["tool"] for s in enst["_meta"]["next_commands"]] == ["get_server_capabilities"]
+    listed = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["ENST00000379132"])
+    assert [s["tool"] for s in listed["_meta"]["next_commands"]] == ["get_server_capabilities"]
+
+
+async def test_disease_id_spellings_are_normalised_and_foreign_ontologies_rejected(
+    mcp: Any,
+) -> None:
+    """Router #343: Orphanet:/MIM: are the same namespace; MONDO is not (no empty success)."""
+    for tool, key in (
+        ("get_phenotypes_for_disease", "phenotypes"),
+        ("get_genes_for_disease", "genes"),
+    ):
+        ok = (await mcp.call_tool(tool, {"disease_id": "mim:106210"})).structured_content
+        assert (ok["success"], ok["disease_id"]) == (True, "OMIM:106210") and ok[key]
+        orpha = (await mcp.call_tool(tool, {"disease_id": "Orphanet:648"})).structured_content
+        assert (orpha["success"], orpha["disease_id"]) == (True, "ORPHA:648")
+        bad = (await mcp.call_tool(tool, {"disease_id": "MONDO:0018997"})).structured_content
+        assert (bad["success"], bad["error_code"], bad["field"]) == (
+            False,
+            "invalid_input",
+            "disease_id",
+        )
+        assert bad["allowed_values"] and "mondo_map_cross_ontology" in bad["hint"]
+        assert bad["_meta"]["next_commands"][0] == {
+            "tool": "mondo_map_cross_ontology",
+            "arguments": {"term": "MONDO:0018997", "prefixes": ["OMIM", "ORPHA"]},
+        }
+        # a correctly understood disease without annotations is still an honest empty page
+        empty = (await mcp.call_tool(tool, {"disease_id": "OMIM:0000000"})).structured_content
+        assert (empty["success"], empty[key]) == (True, [])
 
 
 async def test_truncation_and_excluded_conflict_on_toy_index(mcp: Any, service: Any) -> None:

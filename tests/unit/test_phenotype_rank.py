@@ -195,14 +195,17 @@ def test_payload_validation_and_honest_counts() -> None:
         rank_payload(ix, ids("FEB"), None, ["ENSG00000066279", "HGNC:1234"], 10, 0, "compact")
     assert foreign.value.field == "candidate_genes"
     assert foreign.value.allowed and "translate" in (foreign.value.hint or "")
-    candidates = ["g_d", "G_E", "NOPE", "ENSG00000066279", "HGNC:1234", "5080", "G_d"]
+    ix.gene_ids = {"77": "G_e"}  # NCBI gene id -> symbol, as HPO ships it
+    candidates = ["g_d", "NCBIGene:77", "NOPE", "ENSG00000066279", "HGNC:1234", "5080", "G_d"]
     page = rank_payload(ix, ids("FEB"), None, candidates, 1, 0, "minimal")
     assert [(g["gene"], g["input_id"]) for g in page["genes"]] == [("G_d", "g_d")]
+    second = rank_payload(ix, ids("FEB"), None, candidates, 1, 1, "minimal")["genes"]
+    assert [(g["gene"], g["input_id"]) for g in second] == [("G_e", "NCBIGene:77")]
     assert page["unranked_candidate_genes"] == [
         {"input_id": "NOPE", "reason": "not_rankable"},
         {"input_id": "ENSG00000066279", "reason": "unsupported_identifier"},
         {"input_id": "HGNC:1234", "reason": "unsupported_identifier"},
-        {"input_id": "5080", "reason": "unsupported_identifier"},
+        {"input_id": "5080", "reason": "not_rankable"},  # an NCBI id HPO does not list
     ]
     assert "input_id" not in rank_payload(ix, ids("FEB"), None, None, 1, 0, "minimal")["genes"][0]
     assert (page["total"], page["returned"], page["truncated"], page["next_offset"]) == (
@@ -213,3 +216,22 @@ def test_payload_validation_and_honest_counts() -> None:
     )
     assert "matched_terms" not in page["genes"][0]
     assert page["limitations"]
+
+
+def test_every_input_hpo_id_is_accounted_for() -> None:
+    """Issue #130: scored as given, replaced (alias) or ignored with a reason; never dropped."""
+    ix = toy({"d": [("FEB", 0.9)], "e": [("CAT", 0.9)]})
+    present = [*ids("ALIAS_FEB", "SEIZ", "CAT"), "HP:0000005", ROOT]
+    page = rank_payload(ix, present, ids("NEURO", "MICRO"), None, 10, 0, "minimal")
+    feb, cat = ids("FEB", "CAT")
+    assert page["scored_hpo_ids"] == sorted([feb, cat])
+    assert page["replaced_hpo_ids"] == [
+        {"input_id": ids("ALIAS_FEB")[0], "replaced_by": feb, "reason": "obsolete_or_alt_id"}
+    ]
+    assert page["ignored_hpo_ids"] == [
+        {"input_id": ids("SEIZ")[0], "reason": "ancestor_of_scored_term", "covered_by": feb},
+        {"input_id": "HP:0000005", "reason": "unknown_id"},
+        {"input_id": ROOT, "reason": "no_disease_annotations"},
+        {"input_id": ids("NEURO")[0], "reason": "contradicts_present_term", "covered_by": feb},
+    ]
+    assert page["excluded_hpo_ids"] == ids("MICRO")

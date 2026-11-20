@@ -103,7 +103,9 @@ class AnnotationsMixin:
         rows = self._conn.execute(
             f"SELECT DISTINCT gp.ncbi_gene_id, gp.gene_symbol "  # noqa: S608
             f"FROM gene_phenotype gp "
-            f"WHERE gp.hpo_id IN ({placeholders}) ORDER BY gp.gene_symbol LIMIT ? OFFSET ?",
+            # HPO ships "-" as the symbol of a few genes: list those last, not first.
+            f"WHERE gp.hpo_id IN ({placeholders}) "
+            f"ORDER BY gp.gene_symbol = '-', gp.gene_symbol LIMIT ? OFFSET ?",
             (*ids, limit, offset),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -229,7 +231,8 @@ class AnnotationsMixin:
             "SELECT gd.ncbi_gene_id, gd.gene_symbol, gd.association_type, "
             "gd.disease_id, gd.source "
             "FROM gene_disease gd "
-            "WHERE gd.disease_id = ? ORDER BY gd.gene_symbol LIMIT ? OFFSET ?",
+            "WHERE gd.disease_id = ? ORDER BY gd.gene_symbol = '-', gd.gene_symbol "
+            "LIMIT ? OFFSET ?",
             (disease_id, limit, offset),
         ).fetchall()
         return [dict(r) for r in rows]

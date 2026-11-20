@@ -193,6 +193,34 @@ def _parse_ids(raw: list[str] | None, field: str, *, required: bool) -> list[str
     return [str(normalize_hpo_id(x)) for x in ids]
 
 
+def _account(
+    ix: PhenotypeIndex, present: list[str], excluded: list[str], profile: Profile
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Say what happened to every input id that is not scored as given (issue #130).
+
+    Returns ``(replaced, ignored)``: an obsolete id / alt_id scored as its current term, and
+    ids left out with a reason (and the scored term that covers them, where one does).
+    """
+    replaced: list[dict[str, str]] = []
+    ignored: list[dict[str, str]] = []
+    for ids, kept in ((present, profile.present), (excluded, profile.excluded)):
+        for x in dict.fromkeys(ids):
+            t = ix.canonical(x)
+            if t is None:
+                known = x in ix.labels or x in ix.aliases
+                reason = "not_a_current_phenotype_term" if known else "unknown_id"
+                ignored.append({"input_id": x, "reason": reason})
+            elif ix.self_ic[t] <= 0:
+                ignored.append({"input_id": x, "reason": "no_disease_annotations"})
+            elif t not in kept:  # pruned: a scored term is this term or a descendant of it
+                by = next(p for p in profile.present if t in ix.anc[p])
+                reason = "ancestor_of_scored_term" if ids is present else "contradicts_present_term"
+                ignored.append({"input_id": x, "reason": reason, "covered_by": by})
+            elif t != x:
+                replaced.append({"input_id": x, "replaced_by": t, "reason": "obsolete_or_alt_id"})
+    return replaced, ignored
+
+
 def rank_payload(
     ix: PhenotypeIndex,
     hpo_ids: list[str],
@@ -212,10 +240,7 @@ def rank_payload(
             "hpo_ids",
             hint="Use specific terms under Phenotypic abnormality (HP:0000118).",
         )
-    # Unknown, obsolete-without-replacement or uninformative (IC 0) ids are reported, not scored.
-    ignored = sorted(
-        {x for x in present + excluded if ix.self_ic.get(ix.canonical(x) or "", 0) <= 0}
-    )
+    replaced, ignored = _account(ix, present, excluded, profile)
     pool: list[str] | None = None
     unranked: list[dict[str, str]] = []
     hits: dict[str, str] = {}  # gene -> the caller's spelling; ordered de-duplication
@@ -223,21 +248,27 @@ def rank_payload(
         upper = {g.upper(): g for g in ix.genes}
         for raw in candidate_genes:
             g = raw.strip()
-            hit = upper.get(g.upper())
+            kind, value = normalize_gene(g)
+            if kind == "ncbi":  # HPO ships the NCBI gene id next to the symbol
+                value = ix.gene_ids.get(value, "").upper()
+            hit = upper.get(value)
             if hit is not None:
                 hits.setdefault(hit, g)
-            elif is_foreign_gene_id(g) or normalize_gene(g)[0] == "ncbi":  # index is by symbol
+            elif kind != "ncbi" and is_foreign_gene_id(g):
                 unranked.append({"input_id": g, "reason": "unsupported_identifier"})
-            else:  # unknown symbol or no HPO-annotated disease
+            else:  # unknown symbol / NCBI id, or no HPO-annotated disease
                 unranked.append({"input_id": g, "reason": "not_rankable"})
         pool = list(hits)
         if not pool:  # an all-unknown filter must not look like "no gene fits"
             raise InvalidInputError(
-                "candidate_genes: none of the entries is a gene symbol with an HPO-annotated "
+                "candidate_genes: none of the entries is a gene with an HPO-annotated "
                 f"disease ({', '.join(u['input_id'] for u in unranked[:5])}).",
                 "candidate_genes",
-                allowed=["<gene symbol> e.g. SCN1A"],
-                hint=f"candidate_genes takes gene symbols only (e.g. SCN1A). {TRANSLATE_GENE_HINT}",
+                allowed=["<gene symbol> e.g. SCN1A", "NCBIGene:<id> e.g. NCBIGene:6323"],
+                hint=(
+                    "candidate_genes takes gene symbols (SCN1A) or NCBI gene ids "
+                    f"(NCBIGene:6323 or 6323). {TRANSLATE_GENE_HINT}"
+                ),
             )
     ranked = rank_genes(ix, profile, pool)
     page = ranked[offset : offset + limit]
@@ -257,6 +288,7 @@ def rank_payload(
     return {
         "scored_hpo_ids": profile.present,
         "excluded_hpo_ids": profile.excluded,
+        "replaced_hpo_ids": replaced,
         "ignored_hpo_ids": ignored,
         "unranked_candidate_genes": unranked,
         "genes": genes,

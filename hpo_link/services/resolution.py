@@ -75,6 +75,29 @@ _DISEASE_NAME_HINT = (
     "name, resolve it with mondo_resolve_disease instead."
 )
 
+#: Static pointers for an external-id miss (never the disease hint: wrong entity type).
+_XREF_MISS_HINT = (
+    "No term in the loaded HPO release cross-references this id. hpo-link maps only the "
+    "external ids HPO itself carries (see resolve_xref); search the phenotype by its label "
+    "with search_terms instead."
+)
+_MP_MISS_HINT = (
+    "MP ids are Mammalian Phenotype (mouse) terms. HPO cross-references only a handful of "
+    "them and this one is not among them; hpo-link has no general MP-to-HPO mapping. Search "
+    "the human phenotype by its label with search_terms instead."
+)
+_CURIE_RE = re.compile(r"([A-Za-z][A-Za-z0-9_.-]*):\S+$")
+_DISEASE_PREFIXES = frozenset({"OMIM", "MIM", "OMIMPS", "ORPHA", "ORPHANET", "MONDO", "DOID"})
+
+
+def _miss_hint(raw: str) -> str:
+    """Pick the static hint for a miss by the SHAPE of the query (its text is never echoed)."""
+    m = _CURIE_RE.match(raw)
+    if m is None or m.group(1).upper() in _DISEASE_PREFIXES:
+        return _DISEASE_NAME_HINT
+    return _MP_MISS_HINT if m.group(1).upper() == "MP" else _XREF_MISS_HINT
+
+
 #: Distinctive (>=3-char alphabetic) tokens used to relax a multi-token miss into
 #: candidate suggestions (so a query like "HP 479" never dead-ends on a bare 404).
 _TOKEN_RE = re.compile(r"[A-Za-z]{3,}")
@@ -220,9 +243,7 @@ class Resolver:
             message = (
                 f"No HPO term matches '{raw}'. Try an HP id, a phenotype label, or an xref CURIE."
             )
-        hint = (
-            None if normalize_hpo_id(raw) else _DISEASE_NAME_HINT
-        )  # an absent HP id is no disease
+        hint = None if normalize_hpo_id(raw) else _miss_hint(raw)  # an absent HP id: no hint
         return NotFoundError(message, suggestions=suggestions, hint=hint)
 
     def _search_suggestions(self, raw: str, *, limit: int = 3) -> list[dict[str, Any]]:
