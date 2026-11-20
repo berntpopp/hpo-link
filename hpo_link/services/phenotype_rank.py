@@ -27,6 +27,7 @@ from hpo_link.services.phenotype_index import (
     EXPLAIN_MIN_MATCH,
     F0,
     GAMMA,
+    MISSING_F,
     Disease,
     PhenotypeIndex,
 )
@@ -185,8 +186,8 @@ METHOD = (
 )
 # Chosen on the tune split of a published-case evaluation (phenopacket-store 0.1.27, see
 # CHANGELOG 0.11.0). With the top two scores closer than this, rank 1 was the wrong gene in
-# 51% (tune) / 37% (confirm) of 16-candidate rankings and ~65% genome-wide; otherwise in
-# ~1% and ~4%.
+# roughly 40-50% of 16-candidate rankings (it varies with the random distractors) and ~65%
+# genome-wide; otherwise in ~1% and ~4%.
 CLOSE_CALL_MARGIN = 0.05
 TOP_MATCH_ROWS = 5  # minimal mode: ranks that carry top_matches
 LIMITATIONS = [
@@ -204,18 +205,27 @@ def close_call(ranked: list[tuple[str, float, int]]) -> dict[str, Any]:
     if len(ranked) < 2:
         return {"rank1_margin": None, "close_call": False}
     top = ranked[0][1]
-    margin = top - ranked[1][1]
+    margin = round(top - ranked[1][1], 4)  # flag what is reported: 0.05 is never a close call
     if margin >= CLOSE_CALL_MARGIN:
-        return {"rank1_margin": round(margin, 4), "close_call": False}
-    k = sum(1 for _, s, _ in ranked if top - s < CLOSE_CALL_MARGIN)
+        return {"rank1_margin": margin, "close_call": False}
+    k = sum(1 for _, s, _ in ranked if round(top - s, 4) < CLOSE_CALL_MARGIN)
     return {
-        "rank1_margin": round(margin, 4),
+        "rank1_margin": margin,
         "close_call": True,
         "close_call_note": (
             f"Ranks 1-{k} are within {CLOSE_CALL_MARGIN} of each other, too close to separate "
             "by score; compare matched terms or check gene-disease evidence before choosing."
         ),
     }
+
+
+def _pair_text(m: dict[str, Any]) -> str:
+    """'<input id> = <label> (f=0.9)': '=' the same term, '~' a related one, 'f=?' not recorded."""
+    same = "=" if m["disease_hpo_id"] == m["hpo_id"] else "~"
+    # ponytail: "not recorded" is recognised by the placeholder value, which a pooled 2/6 also
+    # yields; store a flag on Disease if that ever matters.
+    f = "?" if m["frequency"] == MISSING_F else f"{m['frequency']:.2g}"
+    return f"{m['hpo_id']} {same} {m['disease_label'] or m['disease_hpo_id']} (f={f})"
 
 
 def _parse_ids(raw: list[str] | None, field: str, *, required: bool) -> list[str]:
@@ -329,15 +339,10 @@ def rank_payload(
         if response_mode != "minimal":
             row.update(explain(ix, profile, disease))
             row["matched_count"] = len(row["matched_terms"])
-        else:  # minimal: why a row leads, without a second call (#130); top ranks only (size)
+        elif n <= TOP_MATCH_ROWS:  # minimal: why a top row leads, without a second call (#130)
             pairs = sorted(_matches(ix, profile, disease), key=lambda m: -m[0])
             row["matched_count"] = len(pairs)
-            if n <= TOP_MATCH_ROWS:
-                row["top_matches"] = [
-                    f"{m['hpo_id']} ~ {m['disease_label'] or m['disease_hpo_id']} "
-                    f"(f={m['frequency']:.2g})"
-                    for _, m in pairs[:2]
-                ]
+            row["top_matches"] = [_pair_text(m) for _, m in pairs[:2]]
         genes.append(row)
     return {
         "scored_hpo_ids": profile.present,

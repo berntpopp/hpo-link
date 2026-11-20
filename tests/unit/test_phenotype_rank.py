@@ -241,9 +241,8 @@ def test_every_input_hpo_id_is_accounted_for() -> None:
 # -- issue #130: close call, minimal-mode reasons -------------------------------------
 
 
-def test_close_call_flags_inseparable_top_ranks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_close_call_flags_inseparable_top_ranks() -> None:
     ix = toy({"a": [("FEB", 0.9)], "b": [("FEB", 0.88)], "c": [("CAT", 0.9)]})
-    monkeypatch.setattr(phenotype_rank, "CLOSE_CALL_MARGIN", 0.05)
     close = rank_payload(ix, ids("FEB"), None, None, 1, 1, "minimal")  # any page: whole ranking
     assert close["close_call"] is True and 0 < close["rank1_margin"] < 0.05
     assert close["close_call_note"].startswith("Ranks 1-2 are within 0.05")
@@ -254,28 +253,42 @@ def test_close_call_flags_inseparable_top_ranks(monkeypatch: pytest.MonkeyPatch)
     )
     single = rank_payload(ix, ids("FEB"), None, ["G_a"], 10, 0, "compact")
     assert (single["rank1_margin"], single["close_call"]) == (None, False)
+    # the flag follows the reported (rounded) margin: 0.05 is not below 0.05
+    edge = phenotype_rank.close_call([("A", 0.5, 0), ("B", 0.45001, 1), ("C", 0.4, 2)])
+    assert edge == {"rank1_margin": 0.05, "close_call": False}
+    under = phenotype_rank.close_call([("A", 0.5, 0), ("B", 0.4501, 1), ("C", 0.45001, 2)])
+    assert under["rank1_margin"] == 0.0499 and under["close_call_note"].startswith("Ranks 1-2 ")
 
 
-def test_minimal_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
-    ix = toy({"d": [("FEB", 0.9), ("MICRO", 0.5), ("CAT", 0.2)], "e": [("HYPO", 0.9)]})
-    query = ids("FEB", "MICRO", "CAT")
+def test_minimal_top_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
+    ix = toy({"d": [("FEB", 0.9), ("MICRO", 0.5), ("CAT", MISSING_F)], "e": [("HYPO", 0.9)]})
+    query = ids("ALIAS_FEB", "MICRO", "CAT")
     row = rank_payload(ix, query, None, None, 10, 0, "minimal")["genes"][0]
     assert row["matched_count"] == 3 and "matched_terms" not in row
-    # best forward contribution first: FEB (4 * 0.975), MICRO (4 * 0.875); CAT is third.
+    # strongest first; '=' the same term (after alias replacement)
     assert row["top_matches"] == [
-        f"{H['FEB']} ~ label FEB (f=0.9)",
-        f"{H['MICRO']} ~ label MICRO (f=0.5)",
+        f"{H['FEB']} = label FEB (f=0.9)",
+        f"{H['MICRO']} = label MICRO (f=0.5)",
     ]
-    full = rank_payload(ix, query, None, None, 10, 0, "compact")["genes"][0]
-    assert full["matched_count"] == len(full["matched_terms"]) == 3 and "top_matches" not in full
+    # '~' a related term (SEIZ ~ FEB); 'f=?' when no frequency is recorded
+    other = rank_payload(ix, ids("SEIZ", "CAT"), None, ["G_d"], 10, 0, "minimal")["genes"][0]
+    assert set(other["top_matches"]) == {
+        f"{H['CAT']} = label CAT (f=?)",
+        f"{H['SEIZ']} ~ label FEB (f=0.9)",
+    }
+    full = rank_payload(ix, query, None, None, 10, 0, "compact")["genes"]
+    assert full[0]["matched_count"] == len(full[0]["matched_terms"]) == 3
+    assert "top_matches" not in full[0] and all("matched_count" in r for r in full)
     # a weak partial match (HYPO ~ FEB via NEURO, 1 of 3) scores without a listed pair
     weak = rank_payload(ix, ids("HYPO"), None, ["G_d"], 10, 0, "minimal")["genes"][0]
     assert weak["score"] > 0 and weak["matched_count"] == 0 and weak["top_matches"] == []
-    # only the top ranks carry top_matches; every row carries matched_count
+    # minimal computes matches for the top ranks only; lower rows carry neither field
     monkeypatch.setattr(phenotype_rank, "TOP_MATCH_ROWS", 1)
     rows = rank_payload(ix, ids("HYPO"), None, None, 10, 0, "minimal")["genes"]
-    assert ["top_matches" in r for r in rows] == [True, False]
-    assert all("matched_count" in r for r in rows)
+    assert [("top_matches" in r, "matched_count" in r) for r in rows] == [
+        (True, True),
+        (False, False),
+    ]
 
 
 def test_mica_tie_between_equally_informative_ancestors_is_the_lowest_id() -> None:
