@@ -276,3 +276,18 @@ def test_minimal_rows_show_match_count_and_top_pairs(monkeypatch: pytest.MonkeyP
     rows = rank_payload(ix, ids("HYPO"), None, None, 10, 0, "minimal")["genes"]
     assert ["top_matches" in r for r in rows] == [True, False]
     assert all("matched_count" in r for r in rows)
+
+
+def test_mica_tie_between_equally_informative_ancestors_is_the_lowest_id() -> None:
+    tied = [f"HP:{8000 + i:07d}" for i in range(6)]  # six common parents, the same IC
+    x, y = "HP:0008100", "HP:0008101"
+    ix = build_index(
+        ic={ROOT: 0.0, **dict.fromkeys(tied, 2.0), x: 5.0, y: 5.0},
+        parents={ROOT: [], **{t: [ROOT] for t in tied}, x: tied[::-1], y: tied[::-1]},
+        diseases=[("d", "name d", [(y, 0.9)])],
+        gene_diseases=[("G", "d")],
+    )
+    assert ix.by_ic[x] == (x, *tied)
+    row = rank_payload(ix, [x], None, None, 10, 0, "compact")["genes"][0]
+    assert row["matched_terms"] == [] and row["score"] > 0  # 2 of 5: below the listing threshold
+    assert phenotype_rank._mica(ix, x, y) == tied[0]
