@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-20
+
+### Changed (BREAKING)
+
+- `score_genes_for_phenotypes`: `unranked_candidate_genes` entries are now objects `{input_id, reason}` (were bare strings); `reason` is `unsupported_identifier` (Ensembl/HGNC/RefSeq id) or `not_rankable` (unknown symbol or NCBI id, or no HPO-annotated disease). When no entry is usable the `invalid_input` error names the accepted forms in `allowed_values` and the translation remedy in `hint`.
+- `score_genes_for_phenotypes` accounts for every input HP id (#130 item 1): new `replaced_hpo_ids` (`{input_id, replaced_by, reason: obsolete_or_alt_id}`), and `ignored_hpo_ids` entries are now objects `{input_id, reason[, covered_by]}` (were bare strings) with `reason` `unknown_id`, `not_a_current_phenotype_term`, `no_disease_annotations`, `ancestor_of_scored_term` or `contradicts_present_term`. Scores are unchanged.
+- Disease ids of an unsupported namespace are now an error (genefoundry-router#343): in `get_phenotypes_for_disease` and `get_genes_for_disease` an id of another ontology (`MONDO:…`, `DOID:…`) used to return an empty success and now returns `invalid_input` with `field: disease_id`, `allowed_values`; for the namespaces Mondo cross-references (MONDO, DOID, UMLS, MESH, NCIT, MEDGEN, SCTID, GARD) `_meta.next_commands[0]` is `mondo_map_cross_ontology(term=<input>, prefixes=["OMIM", "ORPHA"])`. A well-formed OMIM/ORPHA/DECIPHER id without annotations still returns an empty page.
+
+### Changed
+
+- Disease ids: `get_phenotypes_for_disease` and `get_genes_for_disease` accept the `Orphanet:` / `ORPHANET:` and `MIM:` spellings (normalised to `ORPHA:` / `OMIM:`; `Orphanet:648` used to return an empty page).
+- Gene identifiers hpo-link cannot map now fail fast (#128). hpo-link has no Ensembl/HGNC/RefSeq mapping (HPO ships gene symbol + NCBI gene id only). `get_phenotypes_for_gene` and `get_diseases_for_gene` used to treat an Ensembl id (`ENSG…`, `ENST…`), a RefSeq accession (`NM_…`) or an `LRG_…` id as an unknown symbol and return a successful empty page; they now return `invalid_input` with `field: gene`, the accepted forms in `allowed_values` (symbol, `NCBIGene:<id>`, numeric NCBI id) and a `hint` to translate the id to a gene symbol first. A well-formed symbol without annotations still returns an empty page.
+- Foreign identifiers name their converter (genefoundry-router#343). A rejected Ensembl gene id (`ENSG…`), RefSeq accession or `HGNC:n` now carries `_meta.next_commands[0] = hgnc_resolve_symbol(query=<input>)`; a `candidate_genes` list carries `hgnc_resolve_symbols_batch(queries=[<the unsupported inputs>])` (also on a mixed list that still ranks the usable entries), and the hints name both tools. A transcript id (`ENST…`) is called a transcript id and gets no converter call.
+- `resolve_term` miss on an external id: the hint no longer points a phenotype-ontology id at `mondo_resolve_disease`. An `MP:` id says HPO cross-references only a few MP terms and there is no general MP-to-HPO mapping; other non-disease CURIEs say the id is not cross-referenced in the loaded release. The `not_found` no longer offers `resolve_xref` with the same id (that lookup already ran).
+- `get_genes_for_phenotype` / `get_genes_for_disease`: the few genes HPO ships without a symbol (`-`) are listed last instead of first, so compact rows on the first page carry `gene_symbol`. Those genes are no longer merged into one pseudo-gene `-` in `score_genes_for_phenotypes`.
+
+### Added
+
+- `score_genes_for_phenotypes`: with `candidate_genes`, each ranked row echoes the caller's spelling as `input_id`.
+- `score_genes_for_phenotypes`: `candidate_genes` accepts NCBI gene ids (`NCBIGene:6323` or `6323`), which HPO ships next to the symbol; the row echoes the id as `input_id`.
+- Echoed caller text (`input_id` in `score_genes_for_phenotypes`, `query` in `resolve_terms_batch`) is stripped of control/bidi code points and length-capped.
+- `resolve_terms_batch(queries, response_mode=)`: resolve up to 100 labels, synonyms, HP ids or xref CURIEs in one call (label → id and id → label), one row per input with its own outcome; a miss never fails the call. `resolve_term` points to it for 2 or more terms.
+- The `get_phenotypes_for_gene` and `get_genes_for_phenotype` descriptions point to `score_genes_for_phenotypes` for several phenotypes and/or a candidate gene list at once.
+
 ## [0.9.0] - 2026-11-19
 
 ### Added

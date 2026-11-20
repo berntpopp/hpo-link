@@ -178,6 +178,18 @@ def test_free_text_miss_carries_static_mondo_hint(repo: HpoRepository) -> None:
     assert "Holt" not in hint
 
 
+def test_phenotype_xref_miss_does_not_point_at_the_disease_resolver(repo: HpoRepository) -> None:
+    """Router #343: an MP id is a mouse phenotype, not a disease name."""
+    with pytest.raises(NotFoundError) as exc_info:
+        Resolver(repo).resolve_term_id("MP:0002064")
+    hint = exc_info.value.hint or ""
+    assert "Mammalian Phenotype" in hint and "mondo_resolve_disease" not in hint
+    with pytest.raises(NotFoundError) as other:
+        Resolver(repo).resolve_term_id("UMLS:C9999999")
+    assert "mondo_resolve_disease" not in (other.value.hint or "")
+    assert "cross-references" in (other.value.hint or "")
+
+
 def test_absent_hp_id_miss_has_no_disease_hint(repo: HpoRepository) -> None:
     """A well-formed but absent HP id is not a disease name: no mondo hint."""
     with pytest.raises(NotFoundError) as exc_info:

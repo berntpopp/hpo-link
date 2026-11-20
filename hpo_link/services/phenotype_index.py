@@ -73,6 +73,7 @@ class PhenotypeIndex:
     ann_terms: frozenset[str]
     inv: dict[str, list[tuple[int, float]]]  # term -> (disease, forward factor)
     icf: dict[str, list[float]]  # broad term -> per-disease IC(a) * max factor under a
+    gene_ids: dict[str, str] = field(default_factory=dict)  # bare NCBI gene id -> symbol
 
     def canonical(self, hpo_id: str) -> str | None:
         """Return the current term for an id or alias, or None when unknown."""
@@ -270,11 +271,21 @@ def load_index(conn: sqlite3.Connection) -> PhenotypeIndex:
                 ann.setdefault(did, []).append((t, f))
     anc = ancestor_sets(subtree, parents)
     ic = information_content({d: [t for t, _ in a] for d, a in ann.items()}, anc)
-    return build_index(
+    ix = build_index(
         ic=ic,
         parents=parents,
         diseases=((d, names[d], a) for d, a in ann.items()),
-        gene_diseases=conn.execute("SELECT gene_symbol, disease_id FROM gene_disease"),
+        # "-" is HPO's no-symbol sentinel (a few genes): not one gene, so never ranked.
+        gene_diseases=conn.execute(
+            "SELECT gene_symbol, disease_id FROM gene_disease WHERE gene_symbol <> '-'"
+        ),
         aliases=aliases,
         labels=labels,
     )
+    ix.gene_ids = {
+        i.removeprefix("NCBIGene:"): s
+        for i, s in conn.execute(
+            "SELECT DISTINCT ncbi_gene_id, gene_symbol FROM gene_disease WHERE gene_symbol <> '-'"
+        )
+    }
+    return ix

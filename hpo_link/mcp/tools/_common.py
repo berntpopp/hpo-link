@@ -67,7 +67,9 @@ GeneStr = Annotated[
     Field(
         description=(
             "A gene symbol (e.g. 'PAX6') or NCBI gene CURIE (e.g. 'NCBIGene:5080'). "
-            "Bare NCBI numeric ids (e.g. '5080') are also accepted."
+            "Bare NCBI numeric ids (e.g. '5080') are also accepted. Ensembl gene (ENSG...), "
+            "RefSeq and HGNC ids are rejected: translate them with hgnc_resolve_symbol first. "
+            "Transcript ids (ENST...) are not gene ids."
         ),
         examples=["PAX6", "NCBIGene:5080", "5080"],
     ),
@@ -77,8 +79,9 @@ DiseaseIdStr = Annotated[
     str,
     Field(
         description=(
-            "A disease CURIE, e.g. 'OMIM:106210' (MIM Morbid) or 'ORPHA:550' (Orphanet). "
-            "The prefix is case-sensitive."
+            "A disease CURIE: 'OMIM:106210', 'ORPHA:550' (Orphanet) or 'DECIPHER:16'; the "
+            "'MIM:' and 'Orphanet:' spellings are accepted. MONDO and other ontology ids are "
+            "rejected: convert them with mondo_map_cross_ontology first."
         ),
         examples=["OMIM:106210", "ORPHA:550"],
     ),

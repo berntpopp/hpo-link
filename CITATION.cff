@@ -13,7 +13,7 @@ authors:
   given-names: Bernt
   email: bernt.popp@charite.de
   affiliation: Charité – Universitätsmedizin Berlin
-version: 0.9.0
+version: 0.10.0
 license: MIT
 repository-code: https://github.com/berntpopp/hpo-link
 url: https://genefoundry.org
@@ -31,4 +31,4 @@ keywords:
 - ontology
 - phenotype
 - rare-disease
-date-released: '2026-11-19'
+date-released: '2026-11-20'

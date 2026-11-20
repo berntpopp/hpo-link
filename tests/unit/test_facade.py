@@ -6,6 +6,7 @@ EXPECTED_TOOLS = {
     "get_server_capabilities",
     "get_diagnostics",
     "resolve_term",
+    "resolve_terms_batch",
     "search_terms",
     "get_term",
     "get_term_parents",

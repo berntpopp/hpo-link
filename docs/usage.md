@@ -41,6 +41,9 @@ resolve_term(query="Renal cyst")
 → {query, hpo_id: "HP:0000107", name: "Renal cyst", match_type: "primary", obsolete: false, hpo_version: "..."}
 ```
 
+For several terms at once use `resolve_terms_batch(queries=[...])` (up to 100; one row per
+input, a miss never fails the call).
+
 `match_type` ∈ `hpo_id | primary | exact_synonym | related_synonym | alt_id |
 xref | fuzzy` (strongest first). An ambiguous label returns `error_code:
 "ambiguous_query"` with `candidates`. An obsolete HP id returns `not_found` with

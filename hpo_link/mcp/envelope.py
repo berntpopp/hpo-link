@@ -366,7 +366,7 @@ def _build_error_envelope(exc: BaseException, context: McpErrorContext) -> dict[
         envelope["_meta"]["next_commands"] = [context.fallback]
     else:
         envelope["_meta"]["next_commands"] = default_error_next_commands(
-            context.tool_name, error_code, context.arguments
+            context.tool_name, error_code, context.arguments, getattr(exc, "field", None)
         )
     return envelope
 

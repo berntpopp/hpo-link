@@ -8,7 +8,7 @@ from pydantic import Field
 
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
-from hpo_link.mcp.next_commands import cmd, page_cmd
+from hpo_link.mcp.next_commands import cmd, foreign_id_converter, page_cmd
 from hpo_link.mcp.service_adapters import get_annotation_service
 from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode, ToolReturn
 
@@ -38,7 +38,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
         tags={"hpo", "annotation", "gene"},
         description=(
             "Return the HPO phenotype terms annotated to a gene (symbol or NCBI id). "
-            "Signature: get_phenotypes_for_gene(gene, limit=, offset=, response_mode=)."
+            "Signature: get_phenotypes_for_gene(gene, limit=, offset=, response_mode=). "
+            "For several phenotypes and/or a candidate gene list at once, use "
+            "score_genes_for_phenotypes instead of looping over single-gene calls."
         ),
     )
     async def get_phenotypes_for_gene(
@@ -82,7 +84,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             "Return the genes annotated to an HPO phenotype term, optionally expanded "
             "to include descendants. "
             "Signature: get_genes_for_phenotype(hpo_id, include_descendants=, limit=, "
-            "offset=, response_mode=)."
+            "offset=, response_mode=). "
+            "For several phenotypes and/or a candidate gene list at once, use "
+            "score_genes_for_phenotypes instead of looping over single-term calls."
         ),
     )
     async def get_genes_for_phenotype(
@@ -316,7 +320,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             "Rank genes for a set of HPO phenotype terms (Resnik similarity to annotated "
             "diseases); returns ranked candidate genes for a patient's phenotypes, each with "
             "score, best disease and matched term pairs (shared ancestor + IC); excluded "
-            "terms are reported as conflicts, never scored. "
+            "terms are reported as conflicts, never scored. Every input HP id is scored as "
+            "given, listed in replaced_hpo_ids (obsolete id or alt_id, scored as replaced_by) "
+            "or listed in ignored_hpo_ids with a reason. "
             "Signature: score_genes_for_phenotypes(hpo_ids, excluded_hpo_ids=, "
             "candidate_genes=, limit=, offset=, response_mode=)."
         ),
@@ -346,10 +352,16 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             Field(
                 max_length=5000,
                 description=(
-                    "Restrict ranking to these gene symbols (e.g. genes with exome variants); "
-                    "symbols that are unknown or have no HPO-annotated disease are listed in "
-                    "unranked_candidate_genes."
+                    "Restrict ranking to these genes (e.g. genes with exome variants): gene "
+                    "symbols (SCN1A) or NCBI gene ids (NCBIGene:6323 or 6323). Ensembl gene "
+                    "(ENSG...), HGNC (HGNC:...) and RefSeq ids are not mapped here: translate "
+                    "the list with hgnc_resolve_symbols_batch first (transcript ids, ENST..., "
+                    "are not gene ids). Each ranked row echoes the "
+                    "caller's spelling as input_id; entries that cannot be ranked are listed in "
+                    "unranked_candidate_genes as {input_id, reason} "
+                    "(unsupported_identifier | not_rankable)."
                 ),
+                examples=[["SCN1A", "KCNQ2", "STXBP1"], ["NCBIGene:6323", "3785"]],
             ),
         ] = None,
         limit: Annotated[
@@ -375,7 +387,13 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 offset=offset,
                 response_mode=response_mode,
             )
-            steps: list[dict[str, Any]] = []
+            # Unsupported ids in a mixed list: hand them to the converter, ready to send.
+            unsupported = [
+                u["input_id"]
+                for u in payload["unranked_candidate_genes"]
+                if u["reason"] == "unsupported_identifier"
+            ]
+            steps = foreign_id_converter("candidate_genes", {"candidate_genes": unsupported})
             if payload.get("truncated"):
                 steps.append(
                     page_cmd(
