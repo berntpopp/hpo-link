@@ -143,6 +143,11 @@ async def test_disease_id_spellings_are_normalised_and_foreign_ontologies_reject
             "tool": "mondo_map_cross_ontology",
             "arguments": {"term": "MONDO:0018997", "prefixes": ["OMIM", "ORPHA"]},
         }
+        # a gene id sent as a disease id is not handed to the disease converter
+        gene = (await mcp.call_tool(tool, {"disease_id": "NCBIGene:5080"})).structured_content
+        assert (gene["error_code"], gene["field"]) == ("invalid_input", "disease_id")
+        assert "mondo_" not in gene["hint"]
+        assert [s["tool"] for s in gene["_meta"]["next_commands"]] == ["get_server_capabilities"]
         # a correctly understood disease without annotations is still an honest empty page
         empty = (await mcp.call_tool(tool, {"disease_id": "OMIM:0000000"})).structured_content
         assert (empty["success"], empty[key]) == (True, [])
@@ -205,3 +210,22 @@ def test_warm_ranking_is_fast_on_shipped_data() -> None:
     print(f"cold index build {cold:.2f}s, warm 8-term ranking median {warm * 1000:.1f} ms")
     assert payload["total"] > 4000 and payload["genes"][0]["matched_terms"]
     assert warm < 0.050
+
+
+async def test_symbol_less_gene_is_listed_last_and_never_ranked(mcp: Any) -> None:
+    """HPO ships "-" as the symbol of a few genes (fixture: NCBIGene:3653 on OMIM:106210)."""
+    result = await mcp.call_tool(
+        "get_genes_for_disease", {"disease_id": "OMIM:106210", "response_mode": "standard"}
+    )
+    assert [g["gene_symbol"] for g in result.structured_content["genes"]] == ["PAX6", "-"]
+    ranked = await _call(mcp, hpo_ids=["HP:0000479"])
+    assert [g["gene"] for g in ranked["genes"]] == ["PAX6"]
+    by_id = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", "3653"])
+    assert by_id["unranked_candidate_genes"] == [{"input_id": "3653", "reason": "not_rankable"}]
+
+
+async def test_echoed_input_ids_are_stripped_of_control_characters_and_capped(mcp: Any) -> None:
+    hostile = "NO\u202ePE\u0000" + "X" * 100
+    payload = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", hostile])
+    echoed = payload["unranked_candidate_genes"][0]["input_id"]
+    assert echoed == "NOPE" + "X" * 60

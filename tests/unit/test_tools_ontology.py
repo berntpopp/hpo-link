@@ -345,6 +345,9 @@ async def test_resolve_terms_batch_reports_each_item(live_hpo_service) -> None:
     assert [r["index"] for r in rows] == [0, 1, 2, 3]
     assert [(r["ok"], r.get("hpo_id")) for r in rows[:2]] == [(True, "HP:0000118")] * 2
     assert rows[0]["query"] == "Phenotypic abnormality" and rows[1]["name"]
+    hostile = await mcp.call_tool("resolve_terms_batch", {"queries": ["HP:0000118\u202e"]})
+    echoed = hostile.structured_content["results"][0]
+    assert "\u202e" not in echoed.get("query", "")
     assert [(r["ok"], r["error_code"]) for r in rows[2:]] == [(False, "not_found")] * 2
     assert "query" not in rows[2]  # an unresolved input is not echoed
     assert payload["_meta"]["next_commands"][0]["tool"] == "get_term"

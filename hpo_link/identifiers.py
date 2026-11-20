@@ -19,11 +19,17 @@ _DISEASE_ID_ALLOWED = [
     "ORPHA:<id> e.g. ORPHA:550",
     "DECIPHER:<id> e.g. DECIPHER:16",
 ]
-_DISEASE_ID_HINT = (
+_DISEASE_ID_FORMS = (
     "disease_id is an OMIM, Orphanet or DECIPHER CURIE, e.g. OMIM:106210 or ORPHA:550 "
-    "(MIM: and Orphanet: spellings are accepted). Convert a MONDO or other ontology id "
-    "with mondo_map_cross_ontology(term=<id>, prefixes=['OMIM', 'ORPHA']) first."
+    "(MIM: and Orphanet: spellings are accepted)."
 )
+_DISEASE_ID_HINT = (
+    f"{_DISEASE_ID_FORMS} Convert a MONDO or other disease-ontology id with "
+    "mondo_map_cross_ontology(term=<id>, prefixes=['OMIM', 'ORPHA']) first."
+)
+#: Namespaces Mondo cross-references (mondo_map_cross_ontology / resolve_xref in the fleet
+#: baseline), i.e. the only foreign disease ids that tool converts to OMIM / ORPHA.
+_MONDO_CONVERTIBLE = frozenset({"MONDO", "DOID", "UMLS", "MESH", "NCIT", "MEDGEN", "SCTID", "GARD"})
 # Spellings of the namespaces HPOA annotates (normalisation, not mapping) -> stored prefix.
 _DISEASE_PREFIXES = {
     "OMIM": "OMIM",
@@ -77,11 +83,9 @@ def hgnc_resolvable(raw: object) -> bool:
     return isinstance(raw, str) and bool(_HGNC_RESOLVABLE_RE.match(raw.strip()))
 
 
-def is_foreign_disease_id(raw: object) -> bool:
-    """True for a PREFIX:body id whose namespace HPOA does not annotate (MONDO, DOID, ...)."""
-    if not isinstance(raw, str) or ":" not in raw:
-        return False
-    return raw.strip().split(":", 1)[0].upper() not in _DISEASE_PREFIXES
+def mondo_convertible(raw: object) -> bool:
+    """True for a disease id in a namespace Mondo maps to OMIM / ORPHA (MONDO, DOID, ...)."""
+    return isinstance(raw, str) and raw.strip().split(":", 1)[0].upper() in _MONDO_CONVERTIBLE
 
 
 def normalize_hpo_id(raw: str | None) -> str | None:
@@ -165,7 +169,8 @@ def validate_disease_id(raw: str) -> str:
             f"disease_id prefix {prefix!r} is not a namespace HPO annotates.",
             field="disease_id",
             allowed=_DISEASE_ID_ALLOWED,
-            hint=_DISEASE_ID_HINT,
+            # name the converter only for ids it converts (not e.g. a gene id sent here)
+            hint=_DISEASE_ID_HINT if mondo_convertible(s) else _DISEASE_ID_FORMS,
         )
     return f"{canonical}:{body}"
 

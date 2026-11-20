@@ -17,6 +17,7 @@ from hpo_link.mcp.envelope import (
 from hpo_link.mcp.next_commands import after_get_term, after_resolve_term, after_search, cmd
 from hpo_link.mcp.service_adapters import get_hpo_service
 from hpo_link.mcp.tools._common import FieldsArg, QueryStr, ResponseMode, ToolReturn
+from hpo_link.mcp.untrusted_content import sanitize_message
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -106,6 +107,8 @@ def register_ontology_tools(mcp: FastMCP) -> None:
                 try:
                     rec = svc.resolve_term(query, response_mode="compact")
                     rec.pop("hpo_version", None)  # provenance is stated once, below
+                    # the echoed query is caller text: strip forbidden code points, cap
+                    rec["query"] = sanitize_message(rec["query"])[:200]
                     results.append({"index": index, "ok": True, **rec})
                 except Exception as exc:  # per-item boundary; the call still succeeds
                     # Fixed classified message + index: the unresolved input is not echoed.

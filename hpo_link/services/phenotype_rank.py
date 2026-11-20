@@ -21,6 +21,7 @@ from hpo_link.identifiers import (
     normalize_gene,
     normalize_hpo_id,
 )
+from hpo_link.mcp.untrusted_content import sanitize_message
 from hpo_link.services.pagination import page_fields
 from hpo_link.services.phenotype_index import (
     EXPLAIN_MIN_MATCH,
@@ -193,6 +194,11 @@ def _parse_ids(raw: list[str] | None, field: str, *, required: bool) -> list[str
     return [str(normalize_hpo_id(x)) for x in ids]
 
 
+def _echo(raw: str) -> str:
+    """A caller's spelling as echoed in ``input_id``: forbidden code points stripped, capped."""
+    return sanitize_message(raw)[:64]
+
+
 def _account(
     ix: PhenotypeIndex, present: list[str], excluded: list[str], profile: Profile
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
@@ -253,11 +259,11 @@ def rank_payload(
                 value = ix.gene_ids.get(value, "").upper()
             hit = upper.get(value)
             if hit is not None:
-                hits.setdefault(hit, g)
+                hits.setdefault(hit, _echo(g))
             elif kind != "ncbi" and is_foreign_gene_id(g):
-                unranked.append({"input_id": g, "reason": "unsupported_identifier"})
+                unranked.append({"input_id": _echo(g), "reason": "unsupported_identifier"})
             else:  # unknown symbol / NCBI id, or no HPO-annotated disease
-                unranked.append({"input_id": g, "reason": "not_rankable"})
+                unranked.append({"input_id": _echo(g), "reason": "not_rankable"})
         pool = list(hits)
         if not pool:  # an all-unknown filter must not look like "no gene fits"
             raise InvalidInputError(

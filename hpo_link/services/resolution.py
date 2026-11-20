@@ -87,13 +87,13 @@ _MP_MISS_HINT = (
     "the human phenotype by its label with search_terms instead."
 )
 _CURIE_RE = re.compile(r"([A-Za-z][A-Za-z0-9_.-]*):\S+$")
-_DISEASE_PREFIXES = frozenset({"OMIM", "MIM", "OMIMPS", "ORPHA", "ORPHANET", "MONDO", "DOID"})
+_DISEASE_HINT_PREFIXES = frozenset({"OMIM", "MIM", "OMIMPS", "ORPHA", "ORPHANET", "MONDO", "DOID"})
 
 
 def _miss_hint(raw: str) -> str:
     """Pick the static hint for a miss by the SHAPE of the query (its text is never echoed)."""
     m = _CURIE_RE.match(raw)
-    if m is None or m.group(1).upper() in _DISEASE_PREFIXES:
+    if m is None or m.group(1).upper() in _DISEASE_HINT_PREFIXES:
         return _DISEASE_NAME_HINT
     return _MP_MISS_HINT if m.group(1).upper() == "MP" else _XREF_MISS_HINT
 

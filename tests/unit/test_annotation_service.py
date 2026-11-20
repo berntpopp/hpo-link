@@ -314,7 +314,7 @@ def test_diseases_for_phenotype_no_descendants(annotation_service: AnnotationSer
 def test_genes_for_disease_omim_106210(annotation_service: AnnotationService) -> None:
     """OMIM:106210 → genes should include PAX6."""
     result = annotation_service.get_genes_for_disease("OMIM:106210")
-    symbols = {g["gene_symbol"] for g in result["genes"]}
+    symbols = {g.get("gene_symbol") for g in result["genes"]}  # the "-" row has none
     assert "PAX6" in symbols
 
 

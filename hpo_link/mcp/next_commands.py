@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from hpo_link.identifiers import hgnc_resolvable, is_foreign_disease_id, is_hpo_id
+from hpo_link.identifiers import hgnc_resolvable, is_hpo_id, mondo_convertible
 
 #: Strict external cross-reference CURIE grammar (PREFIX:body) — the only free-text-looking
 #: value allowed to be reflected into an error-path recovery argument. It is a bounded
@@ -65,7 +65,7 @@ def foreign_id_converter(field: str | None, arguments: dict[str, Any]) -> list[d
     value = str(arguments.get(field or "") or "").strip()
     if field == "gene" and hgnc_resolvable(value):
         return [cmd("hgnc_resolve_symbol", query=value)]
-    if field == "disease_id" and is_foreign_disease_id(value) and _is_xref_curie(value):
+    if field == "disease_id" and mondo_convertible(value) and _is_xref_curie(value):
         return [cmd("mondo_map_cross_ontology", term=value, prefixes=["OMIM", "ORPHA"])]
     return []
 
