@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `score_genes_for_phenotypes.excluded_hpo_ids` now declares `examples` (#136), so the schema shows it takes a list of HP ids (Tool-Schema Documentation Standard, rule S3).
+
 ## [0.12.0] - 2026-11-20
 
 ### Added

@@ -349,6 +349,7 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                     "Phenotypes observed ABSENT. Reported as conflicts on each gene's best "
                     "disease; they never lower a score."
                 ),
+                examples=[["HP:0001250"]],
             ),
         ] = None,
         candidate_genes: Annotated[
