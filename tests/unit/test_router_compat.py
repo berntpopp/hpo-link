@@ -52,20 +52,20 @@ async def test_post_resolve_tool_schemas_expose_hpo_id(router_mcp: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    ("tool_name", "arguments", "result_key"),
+    ("tool_name", "arguments", "primary_key"),
     [
-        ("get_term", {"hpo_id": "HP:0000479"}, "name"),
-        ("get_term_parents", {"hpo_id": "HP:0000479"}, "parents"),
-        ("get_term_children", {"hpo_id": "HP:0000478"}, "children"),
-        ("get_term_ancestors", {"hpo_id": "HP:0000479"}, "ancestors"),
-        ("get_term_descendants", {"hpo_id": "HP:0000118"}, "descendants"),
-        ("get_genes_for_phenotype", {"hpo_id": "HP:0000479"}, "genes"),
-        ("get_diseases_for_phenotype", {"hpo_id": "HP:0000479"}, "diseases"),
-        ("map_cross_ontology", {"hpo_id": "HP:0000479"}, "mappings"),
+        ("get_term", {"hpo_id": "HP:0000479"}, "result"),
+        ("get_term_parents", {"hpo_id": "HP:0000479"}, "results"),
+        ("get_term_children", {"hpo_id": "HP:0000478"}, "results"),
+        ("get_term_ancestors", {"hpo_id": "HP:0000479"}, "results"),
+        ("get_term_descendants", {"hpo_id": "HP:0000118"}, "results"),
+        ("get_genes_for_phenotype", {"hpo_id": "HP:0000479"}, "results"),
+        ("get_diseases_for_phenotype", {"hpo_id": "HP:0000479"}, "results"),
+        ("map_cross_ontology", {"hpo_id": "HP:0000479"}, "result"),
     ],
 )
 async def test_post_resolve_tools_accept_hpo_id_via_fastmcp(
-    router_mcp: Any, tool_name: str, arguments: dict[str, Any], result_key: str
+    router_mcp: Any, tool_name: str, arguments: dict[str, Any], primary_key: str
 ) -> None:
     """FastMCP calls using hpo_id must bind and reach the tool body."""
     result = await router_mcp.call_tool(tool_name, arguments)
@@ -73,8 +73,9 @@ async def test_post_resolve_tools_accept_hpo_id_via_fastmcp(
 
     assert payload is not None
     assert payload["success"] is True
-    assert payload["hpo_id"] == arguments["hpo_id"]
-    assert result_key in payload
+    record = payload["result"] if primary_key == "result" else payload
+    assert record["hpo_id"] == arguments["hpo_id"]
+    assert primary_key in payload
 
 
 async def test_map_cross_ontology_fields_projects_mapping_groups(router_mcp: Any) -> None:
@@ -91,8 +92,11 @@ async def test_map_cross_ontology_fields_projects_mapping_groups(router_mcp: Any
 
     assert payload is not None
     assert payload["success"] is True
-    assert set(payload) >= {"hpo_id", "name", "hpo_version", "mappings", "_meta", "success"}
-    assert payload["mappings"] == {"UMLS": [{"object_id": "C0151888", "origin": "obo_xref"}]}
+    assert set(payload) >= {"result", "hpo_version", "_meta", "success"}
+    assert set(payload["result"]) >= {"hpo_id", "name", "mappings"}
+    assert payload["result"]["mappings"] == {
+        "UMLS": [{"object_id": "C0151888", "origin": "obo_xref"}]
+    }
 
 
 @pytest.mark.parametrize(

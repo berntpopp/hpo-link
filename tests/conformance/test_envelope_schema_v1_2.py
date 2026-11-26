@@ -4,12 +4,6 @@ The schema is vendored from berntpopp/genefoundry-envelope, tag v1.2.0
 (``envelope-v1.2.schema.json``); its digest is pinned in the sibling ``.sha256`` file.
 Each tool is called in-process on the fixture index with the ``examples`` of its own
 input schema.
-
-One rule is not met yet and is excluded by name, not by weakening the schema: v1 §1
-puts the payload under ``result`` (object) or ``results`` (array), while most tools
-here still return their payload flat beside ``success``. Moving it is a breaking
-wire change of its own; ``test_payload_sits_under_the_primary_key`` is a strict
-xfail that fails the day the payload moves, so this exclusion cannot outlive it.
 """
 
 from __future__ import annotations
@@ -22,7 +16,6 @@ from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
-from jsonschema.exceptions import ValidationError
 
 from hpo_link.mcp.capabilities import TOOLS
 from hpo_link.mcp.service_adapters import reset_services, set_annotation_service, set_hpo_service
@@ -69,16 +62,10 @@ async def _call(mcp: Any, name: str, **extra: Any) -> Any:
     return await mcp.call_tool(name, {**arguments, **extra})
 
 
-def _is_payload_key_rule(error: ValidationError) -> bool:
-    """The v1 §1 ``result``/``results`` rule at the envelope root (see module docstring)."""
-    return error.validator == "anyOf" and not error.absolute_path
-
-
 def _violations(envelope: dict[str, Any]) -> list[str]:
     return [
         f"{'/'.join(map(str, e.absolute_path))}: {e.message}"
         for e in _VALIDATOR.iter_errors(envelope)
-        if not _is_payload_key_rule(e)
     ]
 
 
@@ -129,8 +116,3 @@ async def test_error_results_validate(mcp: Any) -> None:
             result = await mcp.call_tool(tool, arguments)
             assert result.structured_content["success"] is False
             assert list(_VALIDATOR.iter_errors(result.structured_content)) == []
-
-
-@pytest.mark.xfail(strict=True, reason="payload is still flat; v1 §1 result/results is open")
-async def test_payload_sits_under_the_primary_key(mcp: Any) -> None:
-    _VALIDATOR.validate((await _call(mcp, "get_term")).structured_content)

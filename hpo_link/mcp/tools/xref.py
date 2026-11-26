@@ -39,7 +39,7 @@ def register_xref_tools(mcp: FastMCP) -> None:
         description=(
             "Resolve an external cross-reference CURIE (UMLS/SNOMEDCT_US/NCIT/MEDDRA/"
             "ICD-10/ICD-9/MONDO/DOID/ORPHA) back to the HPO term(s) that cross-reference "
-            "it. Returns matches[] plus a pagination block {total, returned, limit, "
+            "it. Returns results[] plus a pagination block {total, returned, limit, "
             "offset, truncated, next_offset}; when truncated, next_commands carries a "
             "forward-page step (offset). "
             "Signature: resolve_xref(xref_id, limit=, offset=, response_mode=)."

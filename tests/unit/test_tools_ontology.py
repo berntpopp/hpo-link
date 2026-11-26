@@ -74,7 +74,7 @@ async def test_resolve_term_success(live_hpo_service) -> None:
         context=McpErrorContext("resolve_term", arguments={"query": "Phenotypic abnormality"}),
     )
     assert result["success"] is True
-    assert result["hpo_id"] == "HP:0000118"
+    assert result["result"]["hpo_id"] == "HP:0000118"
     assert "_meta" in result
     assert "next_commands" in result["_meta"]
     assert "hpo_version" in result
@@ -287,8 +287,8 @@ async def test_get_term_success(live_hpo_service) -> None:
         context=McpErrorContext("get_term", arguments={"term": "HP:0000118"}),
     )
     assert result["success"] is True
-    assert result["hpo_id"] == "HP:0000118"
-    assert "name" in result
+    assert result["result"]["hpo_id"] == "HP:0000118"
+    assert "name" in result["result"]
     assert "_meta" in result
     assert "next_commands" in result["_meta"]
 

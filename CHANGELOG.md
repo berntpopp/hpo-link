@@ -6,6 +6,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-26
+
+### Changed
+
+- **Breaking:** every data tool's payload now sits under the Response-Envelope v1 §1 primary key, `results` (array) for a collection tool and `result` (object) for a record tool. List metadata (`total`, `returned`, `limit`, `offset`, `truncated`, `next_offset`, `count`) and the other keys of a collection tool stay at the envelope top level beside `results`; `hpo_version` and `recommended_citation` stay at the top level for every tool. `get_server_capabilities` and `get_diagnostics` are unchanged. Old key to new key:
+
+  | Tool | Old | New |
+  |---|---|---|
+  | `search_terms`, `resolve_terms_batch` | `results` | `results` (unchanged) |
+  | `resolve_xref` | `matches` | `results` |
+  | `get_term_parents` | `parents` | `results` |
+  | `get_term_children` | `children` | `results` |
+  | `get_term_ancestors` | `ancestors` | `results` |
+  | `get_term_descendants` | `descendants` | `results` |
+  | `get_genes_for_phenotype`, `get_genes_for_disease`, `score_genes_for_phenotypes` | `genes` | `results` |
+  | `get_diseases_for_phenotype`, `get_diseases_for_gene` | `diseases` | `results` |
+  | `get_phenotypes_for_gene`, `get_phenotypes_for_disease` | `phenotypes` | `results` |
+  | `get_term`, `resolve_term`, `map_cross_ontology` | every top-level field `<field>` (for example `hpo_id`, `name`, `mappings`) | `result.<field>` |
+
+- Conformance: the vendored envelope schema now applies in full; the strict-xfail exclusion of the `result`/`results` rule is removed.
+
 ## [0.13.0] - 2026-11-26
 
 ### Added

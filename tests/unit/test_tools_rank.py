@@ -48,7 +48,7 @@ async def _call(mcp: Any, **args: Any) -> dict[str, Any]:
 async def test_ranks_exact_match_first_with_matched_pairs(mcp: Any) -> None:
     payload = await _call(mcp, hpo_ids=["HP:0000479"])
     assert payload["success"] is True
-    top = payload["genes"][0]
+    top = payload["results"][0]
     assert (top["rank"], top["gene"], top["best_disease"]["disease_id"]) == (
         1,
         "PAX6",
@@ -66,13 +66,13 @@ async def test_ranks_exact_match_first_with_matched_pairs(mcp: Any) -> None:
         1,
     )
     minimal = await _call(mcp, hpo_ids=["HP:0000479"], response_mode="minimal")
-    assert minimal["close_call"] is False and minimal["genes"][0]["top_matches"]
+    assert minimal["close_call"] is False and minimal["results"][0]["top_matches"]
 
 
 async def test_candidate_filter_reports_unrankable_genes(mcp: Any) -> None:
     # GLI3's only disease is annotated to HP:0000478 alone (IC 0 in the fixture): unrankable.
     payload = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["pax6", "GLI3", "NOPE"])
-    assert [(g["gene"], g["input_id"]) for g in payload["genes"]] == [("PAX6", "pax6")]
+    assert [(g["gene"], g["input_id"]) for g in payload["results"]] == [("PAX6", "pax6")]
     assert payload["unranked_candidate_genes"] == [
         {"input_id": "GLI3", "reason": "not_rankable"},
         {"input_id": "NOPE", "reason": "not_rankable"},
@@ -94,7 +94,7 @@ async def test_foreign_gene_ids_fail_with_accepted_forms_and_remedy(mcp: Any) ->
     assert bad["_meta"]["next_commands"][0] == batch
     assert "hgnc_resolve_symbols_batch" in bad["hint"]
     mixed = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", "ENSG00000007372"])
-    assert [g["input_id"] for g in mixed["genes"]] == ["PAX6"]
+    assert [g["input_id"] for g in mixed["results"]] == ["PAX6"]
     assert mixed["unranked_candidate_genes"] == [
         {"input_id": "ENSG00000007372", "reason": "unsupported_identifier"}
     ]
@@ -102,7 +102,7 @@ async def test_foreign_gene_ids_fail_with_accepted_forms_and_remedy(mcp: Any) ->
     # NCBI gene ids are HPO's own data: ranked, with the caller's spelling echoed.
     for ncbi in ("NCBIGene:5080", "5080"):
         own = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=[ncbi])
-        assert [(g["gene"], g["input_id"]) for g in own["genes"]] == [("PAX6", ncbi)]
+        assert [(g["gene"], g["input_id"]) for g in own["results"]] == [("PAX6", ncbi)]
     # The single-gene tools returned an empty success for an Ensembl id (317 wasted calls).
     for tool in ("get_phenotypes_for_gene", "get_diseases_for_gene"):
         result = await mcp.call_tool(tool, {"gene": "ENSG00000007372"})
@@ -132,12 +132,9 @@ async def test_disease_id_spellings_are_normalised_and_foreign_ontologies_reject
     mcp: Any,
 ) -> None:
     """Router #343: Orphanet:/MIM: are the same namespace; MONDO is not (no empty success)."""
-    for tool, key in (
-        ("get_phenotypes_for_disease", "phenotypes"),
-        ("get_genes_for_disease", "genes"),
-    ):
+    for tool in ("get_phenotypes_for_disease", "get_genes_for_disease"):
         ok = (await mcp.call_tool(tool, {"disease_id": "mim:106210"})).structured_content
-        assert (ok["success"], ok["disease_id"]) == (True, "OMIM:106210") and ok[key]
+        assert (ok["success"], ok["disease_id"]) == (True, "OMIM:106210") and ok["results"]
         orpha = (await mcp.call_tool(tool, {"disease_id": "Orphanet:648"})).structured_content
         assert (orpha["success"], orpha["disease_id"]) == (True, "ORPHA:648")
         bad = (await mcp.call_tool(tool, {"disease_id": "MONDO:0018997"})).structured_content
@@ -158,7 +155,7 @@ async def test_disease_id_spellings_are_normalised_and_foreign_ontologies_reject
         assert [s["tool"] for s in gene["_meta"]["next_commands"]] == ["get_server_capabilities"]
         # a correctly understood disease without annotations is still an honest empty page
         empty = (await mcp.call_tool(tool, {"disease_id": "OMIM:0000000"})).structured_content
-        assert (empty["success"], empty[key]) == (True, [])
+        assert (empty["success"], empty["results"]) == (True, [])
 
 
 async def test_truncation_and_excluded_conflict_on_toy_index(mcp: Any, service: Any) -> None:
@@ -174,8 +171,8 @@ async def test_truncation_and_excluded_conflict_on_toy_index(mcp: Any, service: 
         1,
         2,
     )
-    assert excl["genes"][0]["score"] == plain["genes"][0]["score"]
-    assert excl["genes"][0]["conflicts"][0]["disease_hpo_id"] == ids("MICRO")[0]
+    assert excl["results"][0]["score"] == plain["results"][0]["score"]
+    assert excl["results"][0]["conflicts"][0]["disease_hpo_id"] == ids("MICRO")[0]
     page = excl["_meta"]["next_commands"][0]
     assert page["tool"] == "score_genes_for_phenotypes"
     assert page["arguments"]["offset"] == 1
@@ -187,7 +184,7 @@ async def test_close_call_points_to_curations_of_the_tied_genes(mcp: Any, servic
 
     service._phenotype_index = toy({"a": [("FEB", 0.9)], "b": [("FEB", 0.88)], "c": [("CAT", 0.9)]})
     close = await _call(mcp, hpo_ids=ids("FEB"))
-    assert close["close_call"] is True and close["genes"][0]["other_diseases"] == []
+    assert close["close_call"] is True and close["results"][0]["other_diseases"] == []
     curations = {"tool": "gencc_get_genes_curations", "arguments": {"genes": ["G_a", "G_b"]}}
     assert close["_meta"]["next_commands"][0] == curations
     assert "gencc_get_genes_curations" in close["close_call_note"]  # minimal has no next_commands
@@ -241,7 +238,7 @@ def test_warm_ranking_is_fast_on_shipped_data() -> None:
         runs.append(time.process_time() - t)
     warm = statistics.median(runs)
     print(f"cold index build {cold:.2f}s, warm 8-term ranking median {warm * 1000:.1f} ms")
-    assert payload["total"] > 4000 and payload["genes"][0]["matched_terms"]
+    assert payload["total"] > 4000 and payload["results"][0]["matched_terms"]
     assert warm < 0.050
 
 
@@ -250,9 +247,9 @@ async def test_symbol_less_gene_is_listed_last_and_never_ranked(mcp: Any) -> Non
     result = await mcp.call_tool(
         "get_genes_for_disease", {"disease_id": "OMIM:106210", "response_mode": "standard"}
     )
-    assert [g["gene_symbol"] for g in result.structured_content["genes"]] == ["PAX6", "-"]
+    assert [g["gene_symbol"] for g in result.structured_content["results"]] == ["PAX6", "-"]
     ranked = await _call(mcp, hpo_ids=["HP:0000479"])
-    assert [g["gene"] for g in ranked["genes"]] == ["PAX6"]
+    assert [g["gene"] for g in ranked["results"]] == ["PAX6"]
     by_id = await _call(mcp, hpo_ids=["HP:0000479"], candidate_genes=["PAX6", "3653"])
     assert by_id["unranked_candidate_genes"] == [{"input_id": "3653", "reason": "not_rankable"}]
 

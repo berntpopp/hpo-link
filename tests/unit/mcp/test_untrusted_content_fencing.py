@@ -109,7 +109,7 @@ async def test_get_term_full_fences_definition_and_comments(hostile_mcp: Any) ->
     result = await hostile_mcp.call_tool("get_term", {"hpo_id": _HPO_ID, "response_mode": "full"})
     structured, mirror = await _both_mirrors(result)
 
-    for payload in (structured, mirror):
+    for payload in (structured["result"], mirror["result"]):
         _assert_fenced(payload["definition"], record_id=_HPO_ID)
         assert isinstance(payload["comments"], list) and payload["comments"]
         _assert_fenced(payload["comments"][0], record_id=f"{_HPO_ID}#comment:0")
@@ -122,7 +122,7 @@ async def test_get_term_compact_fences_definition_snippet_and_comments(hostile_m
     )
     structured, mirror = await _both_mirrors(result)
 
-    for payload in (structured, mirror):
+    for payload in (structured["result"], mirror["result"]):
         # compact get_term keeps the key "definition" (a truncated snippet, still fenced)
         _assert_fenced(payload["definition"], record_id=_HPO_ID)
         _assert_fenced(payload["comments"][0], record_id=f"{_HPO_ID}#comment:0")
@@ -163,7 +163,7 @@ async def test_field_projection_does_not_unwrap_fenced_definition(hostile_mcp: A
     )
     structured, _ = await _both_mirrors(result)
 
-    definition = structured["definition"]
+    definition = structured["result"]["definition"]
     assert isinstance(definition, dict)
     # the whole fenced object survived — projection did not descend into the wrapper
     assert set(definition) == {"kind", "text", "provenance", "raw_sha256"}
