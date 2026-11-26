@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-26
+
+### Fixed
+
+- `_meta.next_commands` no longer carries the caller's unvalidated input (GTS-CORE-TXT-04): `search_terms` no longer forwards a no-hit query to `resolve_term` (it offers `get_server_capabilities`), and its page/widen steps repeat the query only when it is at most 200 characters with no control or format characters; `resolve_term` searches on the returned term name; `get_phenotypes_for_gene`, `get_diseases_for_gene`, `get_genes_for_disease` and `get_phenotypes_for_disease` chain the gene or disease only after the index matched it; the phenotype tools chain the resolved HP id; the `score_genes_for_phenotypes` page step is omitted when an input list entry fails the same check.
+
 ## [0.16.0] - 2026-11-26
 
 ### Added
