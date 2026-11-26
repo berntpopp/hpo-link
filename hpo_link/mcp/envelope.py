@@ -33,6 +33,7 @@ from hpo_link.exceptions import (
 )
 from hpo_link.mcp import metrics
 from hpo_link.mcp.next_commands import cmd, default_error_next_commands, withdrawn_recovery
+from hpo_link.mcp.payload import nest_payload
 from hpo_link.mcp.untrusted_content import UntrustedTextLimitError, sanitize_message
 from hpo_link.services.shaping import DEFAULT_RESPONSE_MODE
 
@@ -479,6 +480,7 @@ async def run_mcp_tool(
             _stamp_capabilities_version(meta)
             result["_meta"] = _shape_meta(meta, ctx.response_mode)
             metrics.record(tool_name, elapsed, ok=success)
+            nest_payload(tool_name, result)
         return result
     except Exception as exc:  # broad catch is the error-boundary contract
         elapsed = int((time.perf_counter() - start) * 1000)

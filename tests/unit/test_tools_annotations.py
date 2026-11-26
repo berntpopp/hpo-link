@@ -90,7 +90,7 @@ async def test_get_phenotypes_for_gene_pax6(live_annotation_service) -> None:
     assert "_meta" in result
     assert "next_commands" in result["_meta"]
     assert "hpo_version" in result
-    hpo_ids = [p["hpo_id"] for p in result.get("phenotypes", [])]
+    hpo_ids = [p["hpo_id"] for p in result.get("results", [])]
     assert "HP:0000479" in hpo_ids
 
 
@@ -116,7 +116,7 @@ async def test_get_phenotypes_for_gene_absent_gene_returns_empty(
     )
     assert result["success"] is True
     assert result["total"] == 0
-    assert result["phenotypes"] == []
+    assert result["results"] == []
     assert "_meta" in result
 
 
@@ -143,7 +143,7 @@ async def test_get_genes_for_phenotype_with_descendants(live_annotation_service)
         context=McpErrorContext("get_genes_for_phenotype", arguments={"term": "HP:0000118"}),
     )
     assert result["success"] is True
-    gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
+    gene_symbols = [g["gene_symbol"] for g in result.get("results", []) if "gene_symbol" in g]
     assert "PAX6" in gene_symbols
 
 
@@ -167,7 +167,7 @@ async def test_get_genes_for_phenotype_no_descendants(live_annotation_service) -
     # Either not_found (no direct annotations) or success with PAX6 absent
     env = _envelope(result)
     if env["success"]:
-        gene_symbols = [g["gene_symbol"] for g in env.get("genes", []) if "gene_symbol" in g]
+        gene_symbols = [g["gene_symbol"] for g in env.get("results", []) if "gene_symbol" in g]
         assert "PAX6" not in gene_symbols
     else:
         assert env["error_code"] in ("not_found", "upstream_unavailable")
@@ -196,7 +196,7 @@ async def test_get_phenotypes_for_disease(live_annotation_service) -> None:
         ),
     )
     assert result["success"] is True
-    hpo_ids = [p["hpo_id"] for p in result.get("phenotypes", [])]
+    hpo_ids = [p["hpo_id"] for p in result.get("results", [])]
     assert "HP:0000479" in hpo_ids
 
 
@@ -222,7 +222,7 @@ async def test_get_diseases_for_phenotype(live_annotation_service) -> None:
     )
     assert result["success"] is True
     # The repository returns database_id (HPOA column name)
-    disease_ids = [d.get("database_id") or d.get("disease_id") for d in result.get("diseases", [])]
+    disease_ids = [d.get("database_id") or d.get("disease_id") for d in result.get("results", [])]
     assert "OMIM:106210" in disease_ids
 
 
@@ -247,7 +247,7 @@ async def test_get_genes_for_disease(live_annotation_service) -> None:
         context=McpErrorContext("get_genes_for_disease", arguments={"disease_id": "OMIM:106210"}),
     )
     assert result["success"] is True
-    gene_symbols = [g["gene_symbol"] for g in result.get("genes", []) if "gene_symbol" in g]
+    gene_symbols = [g["gene_symbol"] for g in result.get("results", []) if "gene_symbol" in g]
     assert "PAX6" in gene_symbols
 
 
@@ -272,5 +272,5 @@ async def test_get_diseases_for_gene(live_annotation_service) -> None:
         context=McpErrorContext("get_diseases_for_gene", arguments={"gene": "PAX6"}),
     )
     assert result["success"] is True
-    disease_ids = [d["disease_id"] for d in result.get("diseases", []) if "disease_id" in d]
+    disease_ids = [d["disease_id"] for d in result.get("results", []) if "disease_id" in d]
     assert "OMIM:106210" in disease_ids

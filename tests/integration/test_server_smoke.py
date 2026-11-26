@@ -106,7 +106,7 @@ async def test_smoke_tool_calls(built_test_db) -> None:
         context=McpErrorContext("resolve_term", arguments={"query": "HP:0000118"}),
     )
     assert resolve_result["success"] is True
-    assert resolve_result["hpo_id"] == "HP:0000118"
+    assert resolve_result["result"]["hpo_id"] == "HP:0000118"
 
     # -- get_phenotypes_for_gene --
     async def call_gene_pheno():
@@ -118,7 +118,7 @@ async def test_smoke_tool_calls(built_test_db) -> None:
         context=McpErrorContext("get_phenotypes_for_gene", arguments={"gene": "PAX6"}),
     )
     assert gene_pheno_result["success"] is True
-    hpo_ids = [p["hpo_id"] for p in gene_pheno_result.get("phenotypes", [])]
+    hpo_ids = [p["hpo_id"] for p in gene_pheno_result["results"]]
     assert "HP:0000479" in hpo_ids
 
     # -- get_diagnostics (inline) --
