@@ -462,3 +462,9 @@ def test_resolve_term_text_query_counts_other_matches(
 def test_resolve_term_identifier_query_has_no_other_matches(hpo_service: HpoService) -> None:
     """An HP-id resolve is an identity lookup: no other-matches count."""
     assert "other_matches_count" not in hpo_service.resolve_term("HP:0000118")
+
+
+def test_resolve_xref_miss_is_not_found(hpo_service: HpoService) -> None:
+    """An xref no HPO term carries is a not_found, never an empty success (GTS-REC-BEH-04)."""
+    with pytest.raises(NotFoundError):
+        hpo_service.resolve_xref("UMLS:C9999999")

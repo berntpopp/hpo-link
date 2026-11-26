@@ -33,7 +33,7 @@ from hpo_link.exceptions import (
 )
 from hpo_link.mcp import metrics
 from hpo_link.mcp.next_commands import cmd, default_error_next_commands, withdrawn_recovery
-from hpo_link.mcp.payload import nest_payload
+from hpo_link.mcp.payload import nest_payload, pagination_meta
 from hpo_link.mcp.untrusted_content import UntrustedTextLimitError, sanitize_message
 from hpo_link.services.shaping import DEFAULT_RESPONSE_MODE
 
@@ -475,7 +475,7 @@ async def run_mcp_tool(
                 "request_id": _request_id(),
                 "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
                 "elapsed_ms": elapsed,
-                **(_provenance(tool_name) if success else {}),
+                **(_provenance(tool_name) | pagination_meta(result) if success else {}),
             }
             _stamp_capabilities_version(meta)
             result["_meta"] = _shape_meta(meta, ctx.response_mode)

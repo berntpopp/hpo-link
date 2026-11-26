@@ -103,7 +103,7 @@ def default_error_next_commands(
         return [cmd("get_server_capabilities")]
     if tool == "resolve_xref":
         value = str(arguments.get("xref_id", ""))
-        if _is_xref_curie(value):
+        if _is_xref_curie(value) and error_code != "not_found":
             return [cmd("resolve_xref", xref_id=value), cmd("get_server_capabilities")]
         return [cmd("get_server_capabilities")]
     return [cmd("get_server_capabilities")]
