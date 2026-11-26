@@ -8,6 +8,7 @@ chainers steer the success path (resolve -> record -> hierarchy -> cross-ontolog
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from hpo_link.identifiers import hgnc_resolvable, is_hpo_id, mondo_convertible
@@ -16,6 +17,18 @@ from hpo_link.identifiers import hgnc_resolvable, is_hpo_id, mondo_convertible
 #: value allowed to be reflected into an error-path recovery argument. It is a bounded
 #: identifier that cannot carry whitespace, prose, or forbidden code points.
 _XREF_CURIE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*:[A-Za-z0-9][A-Za-z0-9_.\-]*$")
+
+
+def echo_safe(value: object) -> bool:
+    """True when a caller string may be repeated in a same-tool page/widen step (GTS-CORE-TXT-04).
+
+    At most 200 characters and free of control/format code points (Unicode Cc / Cf).
+    """
+    return (
+        isinstance(value, str)
+        and len(value) <= 200
+        and not any(unicodedata.category(c) in ("Cc", "Cf") for c in value)
+    )
 
 
 def cmd(tool: str, **arguments: Any) -> dict[str, Any]:
@@ -129,13 +142,11 @@ def after_resolve_term(resolution: dict[str, Any]) -> list[dict[str, Any]]:
     """After resolve_term: open the canonical record, else fall back to search."""
     hpo_id = resolution.get("hpo_id")
     if not hpo_id:
-        return [
-            cmd("search_terms", query=str(resolution.get("query", ""))),
-            cmd("get_server_capabilities"),
-        ]
+        return [cmd("get_server_capabilities")]
     steps = [cmd("get_term", term=hpo_id)]
-    if resolution.get("other_matches_count"):
-        steps.append(cmd("search_terms", query=str(resolution.get("query", ""))))
+    # Search on the server-returned term name, never the caller's raw text (GTS-CORE-TXT-04).
+    if resolution.get("other_matches_count") and resolution.get("name"):
+        steps.append(cmd("search_terms", query=str(resolution["name"])))
     return steps
 
 
@@ -143,12 +154,13 @@ def after_search(query: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
     """After search_terms: open the top hit; widen if truncated."""
     hits = payload.get("results", [])
     if not hits:
-        return [cmd("resolve_term", query=query), cmd("get_server_capabilities")]
+        return [cmd("get_server_capabilities")]
     steps: list[dict[str, Any]] = []
     top = hits[0].get("hpo_id")
     if top:
         steps.append(cmd("get_term", term=top))
-    steps += _more_steps("search_terms", {"query": query}, payload, 200)
+    if echo_safe(query):
+        steps += _more_steps("search_terms", {"query": query}, payload, 200)
     return steps or [cmd("get_server_capabilities")]
 
 

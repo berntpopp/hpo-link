@@ -8,7 +8,7 @@ from pydantic import Field
 
 from hpo_link.mcp.annotations import READ_ONLY_OPEN_WORLD
 from hpo_link.mcp.envelope import McpErrorContext, run_mcp_tool
-from hpo_link.mcp.next_commands import cmd, foreign_id_converter, page_cmd
+from hpo_link.mcp.next_commands import cmd, echo_safe, foreign_id_converter, page_cmd
 from hpo_link.mcp.service_adapters import get_annotation_service
 from hpo_link.mcp.tools._common import DiseaseIdStr, GeneStr, ResponseMode, ToolReturn
 
@@ -58,10 +58,15 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 gene, limit=limit, offset=offset, response_mode=response_mode
             )
             phenotypes = payload.get("phenotypes", [])
-            steps: list[dict[str, Any]] = [cmd("get_diseases_for_gene", gene=gene)]
+            # Chain the gene only once the index matched it (GTS-CORE-TXT-04).
+            steps: list[dict[str, Any]] = (
+                [cmd("get_diseases_for_gene", gene=gene)] if payload.get("total") else []
+            )
             if phenotypes and phenotypes[0].get("hpo_id"):
                 steps.append(cmd("get_term", term=phenotypes[0]["hpo_id"]))
-            payload.setdefault("_meta", {})["next_commands"] = steps
+            payload.setdefault("_meta", {})["next_commands"] = steps or [
+                cmd("get_server_capabilities")
+            ]
             return payload
 
         return await run_mcp_tool(
@@ -117,8 +122,8 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_diseases_for_phenotype", hpo_id=hpo_id),
-                cmd("get_term", hpo_id=hpo_id),
+                cmd("get_diseases_for_phenotype", hpo_id=payload["hpo_id"]),
+                cmd("get_term", hpo_id=payload["hpo_id"]),
             ]
             return payload
 
@@ -160,7 +165,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_genes_for_disease", disease_id=disease_id),
+                cmd("get_genes_for_disease", disease_id=payload["disease_id"])
+                if payload.get("total")
+                else cmd("get_server_capabilities")
             ]
             return payload
 
@@ -215,8 +222,8 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 response_mode=response_mode,
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_genes_for_phenotype", hpo_id=hpo_id),
-                cmd("get_term", hpo_id=hpo_id),
+                cmd("get_genes_for_phenotype", hpo_id=payload["hpo_id"]),
+                cmd("get_term", hpo_id=payload["hpo_id"]),
             ]
             return payload
 
@@ -256,7 +263,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 disease_id, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_phenotypes_for_disease", disease_id=disease_id),
+                cmd("get_phenotypes_for_disease", disease_id=payload["disease_id"])
+                if payload.get("total")
+                else cmd("get_server_capabilities")
             ]
             return payload
 
@@ -296,7 +305,9 @@ def register_annotation_tools(mcp: FastMCP) -> None:
                 gene, limit=limit, offset=offset, response_mode=response_mode
             )
             payload.setdefault("_meta", {})["next_commands"] = [
-                cmd("get_phenotypes_for_gene", gene=gene),
+                cmd("get_phenotypes_for_gene", gene=gene)
+                if payload.get("total")
+                else cmd("get_server_capabilities")
             ]
             return payload
 
@@ -401,7 +412,10 @@ def register_annotation_tools(mcp: FastMCP) -> None:
             steps = foreign_id_converter("candidate_genes", {"candidate_genes": unsupported})
             if payload["close_call"]:  # curated gene-disease links HPO may lack; takes symbols
                 steps.append(cmd("gencc_get_genes_curations", genes=payload["close_call_genes"]))
-            if payload.get("truncated"):
+            if payload.get("truncated") and all(
+                echo_safe(v)
+                for v in [*hpo_ids, *(excluded_hpo_ids or []), *(candidate_genes or [])]
+            ):
                 steps.append(
                     page_cmd(
                         "score_genes_for_phenotypes",
