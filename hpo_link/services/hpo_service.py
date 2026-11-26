@@ -383,6 +383,7 @@ class HpoService:
 
         Raises:
             InvalidInputError: when ``xref_id`` is empty.
+            NotFoundError: when no HPO term cross-references ``xref_id``.
         """
         raw = (xref_id or "").strip()
         if not raw:
@@ -405,6 +406,8 @@ class HpoService:
         limit = max(1, min(limit, _MAX_LIMIT))
         offset = max(0, offset)
         total = self._db.count_hpo_for_xref(raw)
+        if total == 0:  # a resolver miss is not_found, never an empty success (GTS-REC-BEH-04)
+            raise NotFoundError(f"No HPO term cross-references {raw}.")
         matches = self._db.hpo_for_xref(raw, limit=limit, offset=offset)
         results = [{"hpo_id": m["hpo_id"], "name": m["name"]} for m in matches]
         return {

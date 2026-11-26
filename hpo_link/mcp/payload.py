@@ -44,3 +44,18 @@ def nest_payload(tool_name: str, result: dict[str, Any]) -> None:
         result["result"] = result.pop("mappings", {})
     elif tool_name in _RECORD_TOOLS and "result" not in result:
         result["result"] = {k: result.pop(k) for k in list(result) if k not in _TOP_LEVEL}
+
+
+def pagination_meta(result: dict[str, Any]) -> dict[str, Any]:
+    """``_meta.pagination`` (Response-Envelope v1 section 5) from a list tool's page fields.
+
+    Paging is by ``offset``, so ``next_cursor`` is always null and ``next_offset`` is the
+    continuation. A result without page fields gets no block.
+    """
+    if "total" not in result or "truncated" not in result:
+        return {}
+    pagination = {"total_count": result["total"], "has_more": result["truncated"]}
+    pagination["next_cursor"] = None  # null on the last page, and always: no cursor paging
+    if "next_offset" in result:
+        pagination["next_offset"] = result["next_offset"]
+    return {"pagination": pagination}

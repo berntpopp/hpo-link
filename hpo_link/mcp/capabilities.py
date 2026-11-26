@@ -266,10 +266,8 @@ def build_capabilities() -> dict[str, Any]:
             "lookups where a free-text term cannot be resolved to any HPO id. "
             "The malformed→invalid_input rule is uniform across the six "
             "association tools (get_phenotypes_for_gene/disease, "
-            "get_genes_for_phenotype/disease, get_diseases_for_phenotype/gene); "
-            "resolve_xref likewise returns an empty 200 page for a well-formed but "
-            "unknown xref (it accepts a bare object id or a CURIE, so it does not "
-            "shape-validate)."
+            "get_genes_for_phenotype/disease, get_diseases_for_phenotype/gene). "
+            "resolve_xref is a resolver: an xref no HPO term carries is not_found."
         ),
         "tool_graph": TOOL_GRAPH,
         "latency_slo": {

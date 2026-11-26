@@ -149,3 +149,24 @@ async def test_minimal_response_mode_still_carries_unsafe_for_clinical_use() -> 
     assert isinstance(err_env, dict)
     assert err_env["_meta"]["unsafe_for_clinical_use"] is True
     assert "next_commands" not in err_env["_meta"]
+
+
+async def test_list_result_carries_pagination_meta() -> None:
+    """A list tool's page fields are reported as ``_meta.pagination`` (Envelope v1 section 5)."""
+
+    async def call() -> dict[str, object]:
+        return {
+            "terms": [{"hpo_id": "HP:0000118"}],
+            "total": 3,
+            "truncated": True,
+            "next_offset": 1,
+        }
+
+    result = await run_mcp_tool("search_terms", call)
+
+    assert result["_meta"]["pagination"] == {
+        "total_count": 3,
+        "has_more": True,
+        "next_cursor": None,
+        "next_offset": 1,
+    }

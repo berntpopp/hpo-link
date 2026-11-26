@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-26
+
+### Added
+
+- Every list tool reports `_meta.pagination` (`total_count`, `has_more`, `next_cursor`, and `next_offset` while more rows remain), built once in the envelope from the page fields the tool already returns (Response-Envelope v1 §5). Paging is by `offset`, so `next_cursor` is always `null`.
+
+### Changed
+
+- **Breaking:** `resolve_xref` answers `not_found` when no HPO term carries the cross-reference; it returned an empty success before. Its recovery step no longer repeats the same lookup.
+
 ## [0.15.0] - 2026-11-26
 
 ### Changed
