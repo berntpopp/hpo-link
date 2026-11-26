@@ -46,6 +46,7 @@ def build_fixed_error_envelope(
         "request_id": _request_id(),
         "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
         "next_commands": [cmd("get_server_capabilities")],
+        "elapsed_ms": 0,
     }
     _stamp_capabilities_version(meta)
     return _scrub_envelope(

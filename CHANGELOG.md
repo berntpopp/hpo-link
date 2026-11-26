@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-26
+
+### Added
+
+- Response-Envelope v1.2 provenance (#138): every successful data result carries `_meta.source` (`hpo`), `_meta.data_version` (the HPO release the index was built from) and `_meta.retrieved_at` (RFC 3339 UTC, `Z`: when that release was downloaded and built), at every `response_mode`. The top-level `hpo_version` stays. `get_server_capabilities` and `get_diagnostics` are outside the rule.
+- Conformance: the envelope JSON Schema (genefoundry-envelope v1.2.0, sha256-pinned) is vendored and every data tool is validated against it in-process; `tests/conformance/behaviour.py` is re-vendored with the provenance check.
+
+### Changed
+
+- `_meta.elapsed_ms` is now present at every `response_mode` and on every error envelope (v1 §4 requires it); `minimal` and `compact` used to drop it.
+
+### Known gaps
+
+- The payload is still returned flat beside `success`; the schema's `result`/`results` primary key (v1 §1) is not met and is tracked by a strict-xfail test.
+
 ### Fixed
 
 - `score_genes_for_phenotypes.excluded_hpo_ids` now declares `examples` (#136), so the schema shows it takes a list of HP ids (Tool-Schema Documentation Standard, rule S3).

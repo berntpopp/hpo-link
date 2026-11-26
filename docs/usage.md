@@ -8,10 +8,12 @@ compact | standard | full` (default `compact`). Every record payload echoes
 `hpo_version` for grounding.
 
 `_meta` verbosity is tiered by `response_mode` to control the per-call token
-cost: `minimal` returns only `{tool, request_id, unsafe_for_clinical_use}`;
-`compact` (default) adds `next_commands` and `capabilities_version` (diff it
-to skip re-fetching capabilities while unchanged) but omits `elapsed_ms`;
-`standard`/`full` add `elapsed_ms`. Pass `response_mode="minimal"` for the
+cost: `minimal` returns `{tool, request_id, elapsed_ms, unsafe_for_clinical_use}`
+and, on a successful data result, the provenance `{source, data_version,
+retrieved_at}` (`hpo`, the HPO release served, and the UTC time that release was
+downloaded); `compact` (default) and richer add `next_commands` and
+`capabilities_version` (diff it to skip re-fetching capabilities while
+unchanged). Pass `response_mode="minimal"` for the
 leanest payload once you know the workflow; widen when you need the guidance
 or timings. `unsafe_for_clinical_use` is a universal invariant with no
 opt-out: it is present in every `_meta` block, success and error alike, at

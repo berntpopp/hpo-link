@@ -9,6 +9,7 @@ silently collapsing ambiguity.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from hpo_link.constants import RECOMMENDED_CITATION
@@ -70,6 +71,7 @@ class HpoService:
         """Bind the service to a pre-opened HPO repository (or None when unavailable)."""
         self._repo = repo
         self._hpo_version: str | None = None
+        self._envelope_provenance: dict[str, str] | None = None
 
     # -- provenance ------------------------------------------------------------
 
@@ -82,6 +84,25 @@ class HpoService:
             meta = self._repo.read_meta()
             self._hpo_version = meta.get("hpo_version") if meta else None
         return self._hpo_version
+
+    def envelope_provenance(self) -> dict[str, str]:
+        """Response-Envelope v1.2 ``_meta`` provenance of the loaded index (cached).
+
+        ``data_version`` is the HPO release the index was built from; ``retrieved_at``
+        is the build time, when the release files were downloaded.
+        """
+        if self._envelope_provenance is None:
+            meta = self._repo.read_meta() if self._repo is not None else {}
+            version = meta.get("hpo_version") or meta.get("hpoa_version")
+            built = meta.get("build_utc")
+            out = {"source": "hpo"}
+            if version:
+                out["data_version"] = str(version)
+            if built:
+                moment = datetime.fromisoformat(built).astimezone(UTC)
+                out["retrieved_at"] = moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+            self._envelope_provenance = out
+        return self._envelope_provenance
 
     @property
     def _db(self) -> HpoRepository:
