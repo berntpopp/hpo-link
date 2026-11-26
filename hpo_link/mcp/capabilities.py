@@ -188,15 +188,20 @@ def build_capabilities() -> dict[str, Any]:
             "request_id",
             "unsafe_for_clinical_use",
             "elapsed_ms",
+            "source",
+            "data_version",
+            "retrieved_at",
             "capabilities_version",
             "next_commands",
         ],
         "per_call_meta_semantics": (
             "_meta verbosity is tiered by response_mode to control the per-call token "
-            "tax: minimal returns only {tool, request_id, unsafe_for_clinical_use}; "
-            "compact (default) adds next_commands (workflow guidance) and "
-            "capabilities_version (the warm-client cache key) but omits elapsed_ms; "
-            "standard/full add elapsed_ms. Every compact or richer response carries "
+            "tax: minimal returns {tool, request_id, elapsed_ms, unsafe_for_clinical_use} "
+            "and, on a successful data result, the provenance {source, data_version, "
+            "retrieved_at}: source is hpo, data_version the HPO release served, "
+            "retrieved_at the UTC time that release was downloaded. compact (default) "
+            "and richer add next_commands (workflow guidance) and capabilities_version "
+            "(the warm-client cache key). Every compact or richer response carries "
             "next_commands; minimal is the explicit opt-out. unsafe_for_clinical_use is "
             "a universal invariant with no opt-out: it is present in every _meta block, "
             "success and error alike, at every response_mode."

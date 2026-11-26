@@ -40,10 +40,11 @@ logger = logging.getLogger(__name__)
 
 # Per-call _meta carries: tool, request_id, unsafe_for_clinical_use (always present,
 # every response_mode, success and error alike -- see the fleet-wide Response-Envelope
-# Standard v1 disclaimer decision), plus [next_commands, capabilities_version,
-# elapsed_ms] -- those three are tiered by response_mode (see _shape_meta). Static
-# provenance (research-use restriction, citation, HPO release) otherwise lives ONLY
-# in get_server_capabilities.
+# Standard v1 disclaimer decision), elapsed_ms, and on a successful data result the
+# v1.2 provenance (source, data_version, retrieved_at), plus [next_commands,
+# capabilities_version] -- those two are tiered by response_mode (see _shape_meta).
+# Static provenance (research-use restriction, citation) otherwise lives ONLY in
+# get_server_capabilities.
 #: The CLOSED error_code enum (Response-Envelope Standard v1, "harmonized with codes
 #: already used in the fleet"). Nothing outside this set may reach the wire — a
 #: ``McpToolError`` carrying an off-contract code is severed to ``internal`` at
@@ -378,33 +379,50 @@ def _stamp_capabilities_version(meta: dict[str, Any]) -> None:
         meta["capabilities_version"] = version
 
 
+#: Tools that orient a client and return no upstream data: outside the
+#: Response-Envelope v1.2 provenance rule.
+_OPS_TOOLS = frozenset({"get_server_capabilities", "get_diagnostics"})
+
+#: ``_meta`` keys kept at ``minimal``: the trace essentials, the disclaimer, and the
+#: fields the Response-Envelope Standard requires on every result (v1 §4, v1.2).
+_MINIMAL_META_KEYS = (
+    "tool",
+    "request_id",
+    "elapsed_ms",
+    "unsafe_for_clinical_use",
+    "source",
+    "data_version",
+    "retrieved_at",
+)
+
+
+def _provenance(tool_name: str) -> dict[str, str]:
+    """v1.2 provenance of a data result: source, HPO release, snapshot time (never raises)."""
+    if tool_name in _OPS_TOOLS:
+        return {}
+    try:
+        from hpo_link.mcp.service_adapters import get_hpo_service
+
+        return get_hpo_service().envelope_provenance()
+    except Exception:  # pragma: no cover - the _meta echo must never break a tool
+        return {}
+
+
 def _shape_meta(meta: dict[str, Any], response_mode: str) -> dict[str, Any]:
     """Tier ``_meta`` verbosity by ``response_mode`` to control the per-call token tax.
 
-    - ``minimal``: the trace essentials only -- ``{tool, request_id,
-      unsafe_for_clinical_use}``. The caller explicitly opted out of guidance, so
-      ``next_commands`` / ``capabilities_version`` / ``elapsed_ms`` are dropped, but
-      the clinical-use disclaimer is never dropped at any response_mode.
-    - ``compact`` (default): keep ``next_commands`` (workflow guidance) and
-      ``capabilities_version`` (the warm-client cache key the discovery contract leans
-      on), but drop the ``elapsed_ms`` observability echo from the hot path -- it is
-      still recorded server-side and surfaced by ``get_diagnostics``.
-    - ``standard`` / ``full``: the complete ``_meta``, including ``elapsed_ms``.
+    - ``minimal``: the trace essentials only (``_MINIMAL_META_KEYS``). The caller
+      explicitly opted out of guidance, so ``next_commands`` / ``capabilities_version``
+      are dropped; the clinical-use disclaimer, ``elapsed_ms`` and the provenance
+      fields are never dropped at any response_mode.
+    - ``compact`` (default) and richer: the complete ``_meta``.
 
     The universal ``next_commands`` invariant therefore holds for ``compact`` and
     richer (every default response still chains); ``minimal`` is the documented opt-out.
-    ``unsafe_for_clinical_use`` is a universal invariant with no opt-out: it is
-    attached uniformly regardless of response_mode (Response-Envelope Standard v1).
     """
     if response_mode == "minimal":
-        return {
-            "tool": meta["tool"],
-            "request_id": meta["request_id"],
-            "unsafe_for_clinical_use": meta["unsafe_for_clinical_use"],
-        }
-    if response_mode in ("standard", "full"):
-        return meta
-    return {k: v for k, v in meta.items() if k != "elapsed_ms"}
+        return {k: meta[k] for k in _MINIMAL_META_KEYS if k in meta}
+    return meta
 
 
 def error_result(envelope: dict[str, Any]) -> ToolResult:
@@ -456,6 +474,7 @@ async def run_mcp_tool(
                 "request_id": _request_id(),
                 "unsafe_for_clinical_use": UNSAFE_FOR_CLINICAL_USE,
                 "elapsed_ms": elapsed,
+                **(_provenance(tool_name) if success else {}),
             }
             _stamp_capabilities_version(meta)
             result["_meta"] = _shape_meta(meta, ctx.response_mode)

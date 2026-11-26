@@ -107,13 +107,13 @@ async def test_map_cross_ontology_fields_projects_mapping_groups(router_mcp: Any
     [
         (
             "minimal",
-            {"tool", "request_id"},
-            {"next_commands", "capabilities_version", "elapsed_ms"},
+            {"tool", "request_id", "elapsed_ms"},
+            {"next_commands", "capabilities_version"},
         ),
         (
             "compact",
-            {"tool", "request_id", "next_commands", "capabilities_version"},
-            {"elapsed_ms"},
+            {"tool", "request_id", "next_commands", "capabilities_version", "elapsed_ms"},
+            set(),
         ),
         (
             "standard",
