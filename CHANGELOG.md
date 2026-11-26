@@ -6,7 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.14.0] - 2026-11-26
+## [0.15.0] - 2026-11-26
+
+### Changed
+
+- **Breaking:** `map_cross_ontology` returns its grouped mappings as `result` (`result.<PREFIX>[]`), with `hpo_id` and `name` at the envelope top level beside it. v0.14.0 nested the whole record (`result.hpo_id`, `result.name`, `result.mappings`). This is the shape the other ontology backends use, and a dict of lists is what the behaviour gate reads as a collection, so its silent-empty check on `prefixes` applies again. Old key to new key, relative to v0.13.0: `mappings` to `result`.
+
 
 ### Changed
 

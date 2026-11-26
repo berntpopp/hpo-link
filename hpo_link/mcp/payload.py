@@ -1,7 +1,8 @@
 """Response-Envelope v1 §1: the primary payload key of a successful data result.
 
-A collection tool's list is ``results`` (array); a record tool's fields sit under
-``result`` (object). Envelope keys and list metadata stay at the top level.
+A collection tool's list is ``results`` (array); a record tool's fields, or the grouped
+mappings of ``map_cross_ontology``, sit under ``result`` (object). Envelope keys and list
+metadata stay at the top level.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ _RESULTS_KEY = {
     "score_genes_for_phenotypes": "genes",
 }
 #: Record tools: every field outside ``_TOP_LEVEL`` moves under ``result``.
-_RECORD_TOOLS = frozenset({"get_term", "resolve_term", "map_cross_ontology"})
+_RECORD_TOOLS = frozenset({"get_term", "resolve_term"})
 _TOP_LEVEL = frozenset({"success", "_meta", "hpo_version", "recommended_citation"})
 
 
@@ -37,5 +38,9 @@ def nest_payload(tool_name: str, result: dict[str, Any]) -> None:
     key = _RESULTS_KEY.get(tool_name)
     if key is not None:
         result["results"] = result.pop(key, [])
+    elif tool_name == "map_cross_ontology":
+        # the grouped mappings are the payload; hpo_id and name stay beside it, and the
+        # behaviour gate still reads a dict of lists as a collection
+        result["result"] = result.pop("mappings", {})
     elif tool_name in _RECORD_TOOLS and "result" not in result:
         result["result"] = {k: result.pop(k) for k in list(result) if k not in _TOP_LEVEL}
